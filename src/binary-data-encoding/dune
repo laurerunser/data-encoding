@@ -1,0 +1,7 @@
+(library
+ (name binary_data_encoding)
+ (public_name binary-data-encoding)
+ (js_of_ocaml)
+ (inline_tests)
+ (preprocess
+  (pps ppx_expect)))

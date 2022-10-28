@@ -1,0 +1,7 @@
+(library
+ (name json_data_encoding)
+ (public_name json-data-encoding)
+ (js_of_ocaml)
+ (inline_tests)
+ (preprocess
+  (pps ppx_expect)))
