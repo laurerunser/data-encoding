@@ -8,10 +8,8 @@
     Guaranteed to no tinclude any line break. *)
 val shape : Format.formatter -> JSON.t -> unit
 
-(* TODO:
+val mini : Format.formatter -> JSON.t -> unit
 
-val compact
-
-val pretty
-
+(* TODO
+val pretty : Format.formatter -> JSON.t -> unit
 *)
