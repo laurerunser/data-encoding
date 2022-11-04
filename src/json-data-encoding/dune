@@ -4,4 +4,5 @@
  (js_of_ocaml)
  (inline_tests)
  (preprocess
-  (pps ppx_expect)))
+  (pps ppx_expect))
+ (libraries data-encoding.commons integers))

@@ -1,0 +1,4 @@
+(library
+ (name commons)
+ (public_name data-encoding.commons)
+ (js_of_ocaml))

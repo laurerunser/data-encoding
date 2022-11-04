@@ -2,4 +2,8 @@
  (name data_encoding)
  (public_name data-encoding)
  (js_of_ocaml)
- (libraries json-data-encoding binary-data-encoding))
+ (libraries
+  data-encoding.commons
+  integers
+  json-data-encoding
+  binary-data-encoding))
