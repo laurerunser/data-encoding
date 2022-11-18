@@ -1,0 +1,8 @@
+(executables
+ (names encoding_translation binary_serialisation)
+ (libraries
+  core_unix.command_unix
+  core_bench
+  data-encoding
+  binary-data-encoding
+  json-data-encoding))
