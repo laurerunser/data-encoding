@@ -1,0 +1,3 @@
+(executable
+ (name serialise)
+ (libraries hex data-encoding json-data-encoding binary-data-encoding))
