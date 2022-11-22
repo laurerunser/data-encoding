@@ -1,0 +1,40 @@
+- Integers
+	- using the `integers` library
+		- should we switch to an alternative? doesn't have all the sizes and such
+		- RP: find alternatives???
+
+- Tuples
+	- currently using heterogeneous lists
+		- pros: nice syntax, no more tree-i-fication
+		- cons: non-standard, requiring covnersion
+	- ok for now
+		- with high-level combinator
+		- check later
+
+- cache translation to different backends
+	- be careful when adding lazy/delay
+
+- Queries (size, maximum size, etc.)
+	- split the backend/json queries (size for binary, is_obj for JSON)
+	- do we return uint sizes?
+	- how do we deal with overflow?
+
+- Schemas and documentation
+
+- TODOs for the encoding type:
+	- records (should we do something similar to tuples? something different?
+	  should fieldnames be erased (mostly erased?) in the binary form?)
+	- headers (length/size, tags)
+	- unions
+	- conv
+	- guards
+	- mu (any limitations we should place on this? Anything
+	- delay
+	- seq/list/array (in JSON we probably want seq/list, in binary probably
+	seq/array, and then we convert the missing thing to the backend-supported one;
+	seq/list?)
+	- common types: option, result, etc. (as higher-level combinator? as dedicated
+	variant?)
+	- high-level smart safe combinators
+
+- revert dependencies?
