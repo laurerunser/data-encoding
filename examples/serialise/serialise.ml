@@ -1,11 +1,11 @@
 let data =
   let open Data_encoding.Encoding.Hlist in
-  [ 0L; 4L; 16L; 0xff_ff_ff_ff_ffL ]
+  [ 0L; 4L; [ 16L; () ]; 0xff_ff_ff_ff_ffL ]
 ;;
 
 let encoding =
   let open Data_encoding.Encoding in
-  [ int64; int64; int64; int64 ]
+  [ int64; int64; [int64; unit]; int64 ]
 ;;
 
 let buffer = Bytes.create 1024
