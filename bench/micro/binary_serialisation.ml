@@ -1,16 +1,16 @@
 let int64_twople =
   let open Data_encoding.Encoding in
-  to_binary [ int64; int64 ]
+  to_binary (tuple [ int64; int64 ])
 ;;
 
 let int64_triple =
   let open Data_encoding.Encoding in
-  to_binary [ int64; int64; int64 ]
+  to_binary (tuple [ int64; int64; int64 ])
 ;;
 
 let int64_quadle =
   let open Data_encoding.Encoding in
-  to_binary [ int64; int64; int64; int64 ]
+  to_binary (tuple [ int64; int64; int64; int64 ])
 ;;
 
 let offset = 0

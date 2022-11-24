@@ -4,7 +4,7 @@ type any_j = Anyj : _ Json_data_encoding.Encoding.t -> any_j
 
 let inputs : (string * any_e) list =
   let open Data_encoding.Encoding in
-  [ "unit", Any unit; "int64", Any int64; "int64*int64", Any [ int64; int64 ] ]
+  [ "unit", Any unit; "int64", Any int64; "int64*int64", Any (tuple [ int64; int64 ]) ]
 ;;
 
 let commands =

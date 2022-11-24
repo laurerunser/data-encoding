@@ -5,7 +5,7 @@ let data =
 
 let encoding =
   let open Data_encoding.Encoding in
-  [ int64; int64; [int64; unit]; int64 ]
+  tuple [ int64; int64; obj [("foo", int64); ("bar", unit)]; int64 ]
 ;;
 
 let buffer = Bytes.create 1024
@@ -27,5 +27,23 @@ let () =
   let s = to_string encoding data in
   let (`Hex s) = Hex.of_string s in
   print_endline s;
+;;
+
+let to_json e v =
+  match
+    Json_data_encoding.Backend.construct
+      (Data_encoding.Encoding.to_json e)
+      v
+  with
+  | Error _ -> exit 1
+  | Ok j -> j
+;;
+
+let () =
+  let j = to_json encoding data in
+  Format.printf "%a\n" Json_data_encoding.PP.mini j;
+;;
+
+let () =
   exit 0
 ;;
