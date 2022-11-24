@@ -5,6 +5,8 @@ module Hlist = Commons.Hlist
 type _ t =
   | Unit : unit t
   | Int64 : int64 t
+  | String : string t
+  | Bytes : bytes t
   | Tuple : 'a tuple -> 'a t
   | Object : 'a obj -> 'a t
   | Split :
@@ -37,6 +39,8 @@ and _ field =
 
 val unit : unit t
 val int64 : int64 t
+val string : string t
+val bytes : bytes t
 val tuple : 'a tuple -> 'a t
 val obj : 'a obj -> 'a t
 val req : string -> 'a t -> 'a field

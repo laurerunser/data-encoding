@@ -5,8 +5,15 @@ module Hlist = Commons.Hlist
 type _ t =
   | Unit : unit t
   | Int64 : int64 t
+  | String : string t
   | Tuple : 'a tuple -> 'a t
   | Object : 'a obj -> 'a t
+  | Conv :
+      { serialisation : 'a -> 'b
+      ; deserialisation : 'b -> ('a, string) result
+      ; encoding : 'b t
+      }
+      -> 'a t
 
 and _ tuple =
   | [] : unit Hlist.t tuple
@@ -32,7 +39,12 @@ and _ field =
 
 let unit = Unit
 let int64 = Int64
+let string = String
 let tuple t = Tuple t
 let obj t = Object t
 let req name encoding = Req { encoding; name }
 let opt name encoding = Opt { encoding; name }
+
+let conv ~serialisation ~deserialisation encoding =
+  Conv { serialisation; deserialisation; encoding }
+;;

@@ -7,7 +7,15 @@ type _ t =
   | Int32 : int32 t
   | UInt32 : Unsigned.UInt32.t t
   | UInt16 : Unsigned.UInt16.t t
+  | String : Unsigned.UInt32.t -> string t
+  | Bytes : Unsigned.UInt32.t -> bytes t
   | Option : 'a t -> 'a option t
+  | Headered :
+      { mkheader : 'a -> 'header
+      ; headerencoding : 'header t
+      ; encoding : 'header -> 'a t
+      }
+      -> 'a t
   | [] : unit Hlist.t t
   | ( :: ) : 'a t * 'b Hlist.t t -> ('a * 'b) Hlist.t t
 
@@ -18,3 +26,5 @@ val int32 : int32 t
 val uint32 : Unsigned.UInt32.t t
 val uint16 : Unsigned.UInt16.t t
 val option : 'a t -> 'a option t
+val string : string t
+val bytes : bytes t

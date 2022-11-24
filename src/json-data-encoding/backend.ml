@@ -5,8 +5,12 @@ let rec construct : type a. a Encoding.t -> a -> (JSON.t, string) result =
     assert (v = ());
     Ok (`O [])
   | Int64 -> Ok (`String (Int64.to_string v))
+  | String -> Ok (`String v) (* TODO check utf8 *)
   | Tuple t -> construct_tuple t v
   | Object o -> construct_obj o v
+  | Conv { serialisation; deserialisation = _; encoding } ->
+    construct encoding (serialisation v)
+(* TODO exception handling?? *)
 
 and construct_tuple : type a. a Encoding.tuple -> a -> (JSON.t, string) result =
  fun encoding v ->
@@ -63,8 +67,16 @@ let rec destruct : type a. a Encoding.t -> JSON.t -> (a, string) result =
       | Some i64 -> Ok i64
       | None -> Error (Format.asprintf "Expected int64 numeral, got %S" s))
     | other -> Error (Format.asprintf "Expected {}, got %a" PP.shape other))
+  | String ->
+    (match json with
+    | `String s -> Ok s
+    | other -> Error (Format.asprintf "Expected \"…\", got %a" PP.shape other))
   | Tuple t -> destruct_tuple t json
   | Object t -> destruct_obj t json
+  | Conv { serialisation = _; deserialisation; encoding } ->
+    (match destruct encoding json with
+    | Error _ as err -> err
+    | Ok w -> deserialisation w (* TODO: wrap error message *))
 
 and destruct_tuple : type a. a Encoding.tuple -> JSON.t -> (a, string) result =
  fun encoding json ->

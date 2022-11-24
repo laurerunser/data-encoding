@@ -5,8 +5,15 @@ module Hlist = Commons.Hlist
 type _ t =
   | Unit : unit t
   | Int64 : int64 t
+  | String : string t
   | Tuple : 'a tuple -> 'a t
   | Object : 'a obj -> 'a t
+  | Conv :
+      { serialisation : 'a -> 'b
+      ; deserialisation : 'b -> ('a, string) result
+      ; encoding : 'b t
+      }
+      -> 'a t
 
 and _ tuple =
   | [] : unit Hlist.t tuple
@@ -32,7 +39,14 @@ and _ field =
 
 val unit : unit t
 val int64 : int64 t
+val string : string t
 val tuple : 'a tuple -> 'a t
 val obj : 'a obj -> 'a t
 val req : string -> 'a t -> 'a field
 val opt : string -> 'a t -> 'a option field
+
+val conv
+  :  serialisation:('a -> 'b)
+  -> deserialisation:('b -> ('a, string) result)
+  -> 'b t
+  -> 'a t

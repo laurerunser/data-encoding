@@ -5,6 +5,8 @@ module Hlist = Commons.Hlist
 type _ t =
   | Unit : unit t
   | Int64 : int64 t
+  | String : string t
+  | Bytes : bytes t
   | Tuple : 'a tuple -> 'a t
   | Object : 'a obj -> 'a t
   | Split :
@@ -37,6 +39,8 @@ and _ field =
 
 let unit = Unit
 let int64 = Int64
+let string = String
+let bytes = Bytes
 let tuple p = Tuple p
 let obj p = Object p
 let req name encoding = Req { encoding; name }
@@ -46,6 +50,13 @@ let split json binary = Split { json; binary }
 let rec to_json : type a. a t -> a Json_data_encoding.Encoding.t = function
   | Unit -> Json_data_encoding.Encoding.unit
   | Int64 -> Json_data_encoding.Encoding.int64
+  | String -> Json_data_encoding.Encoding.string
+  | Bytes ->
+    Json_data_encoding.Encoding.(
+      conv
+        ~serialisation:Bytes.to_string
+        ~deserialisation:(fun s -> Ok (Bytes.of_string s))
+        string)
   | Tuple p -> Json_data_encoding.Encoding.tuple (to_json_tuple p)
   | Object p -> Json_data_encoding.Encoding.obj (to_json_obj p)
   | Split { json; binary = _ } -> json
@@ -72,6 +83,8 @@ and to_json_obj : type a. a obj -> a Json_data_encoding.Encoding.obj = function
 let rec to_binary : type a. a t -> a Binary_data_encoding.Encoding.t = function
   | Unit -> Binary_data_encoding.Encoding.unit
   | Int64 -> Binary_data_encoding.Encoding.int64
+  | String -> Binary_data_encoding.Encoding.string
+  | Bytes -> Binary_data_encoding.Encoding.bytes
   | Tuple p -> to_binary_tuple p
   | Object p -> to_binary_obj p
   | Split { json = _; binary } -> binary
