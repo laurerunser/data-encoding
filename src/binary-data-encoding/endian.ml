@@ -2,6 +2,7 @@ let set_int32 = Bytes.set_int32_be
 let get_int32 = Bytes.get_int32_be
 let get_int32_string s off = Bytes.get_int32_be (Bytes.unsafe_of_string s) off
 let set_int8 = Bytes.set_int8
+let set_uint8 = Bytes.set_uint8
 let get_int8 = Bytes.get_int8
 let get_int8_string s off = Bytes.get_int8 (Bytes.unsafe_of_string s) off
 let set_int16 = Bytes.set_int16_be

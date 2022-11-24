@@ -7,6 +7,7 @@ type _ t =
   | Int32 : int32 t
   | UInt32 : Unsigned.UInt32.t t
   | UInt16 : Unsigned.UInt16.t t
+  | Option : 'a t -> 'a option t
   | [] : unit Hlist.t t
   | ( :: ) : 'a t * 'b Hlist.t t -> ('a * 'b) Hlist.t t
 
@@ -16,3 +17,4 @@ let uint64 = UInt64
 let int32 = Int32
 let uint32 = UInt32
 let uint16 = UInt16
+let option t = Option t

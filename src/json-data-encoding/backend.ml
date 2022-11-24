@@ -26,7 +26,7 @@ and construct_obj : type a. a Encoding.obj -> a -> (JSON.t, string) result =
  fun encoding v ->
   match encoding with
   | [] -> Ok (`O [])
-  | (name, t) :: ts ->
+  | Req { encoding = t; name } :: ts ->
     let (v :: vs) = v in
     (match construct t v with
     | Error _ as err -> err
@@ -35,6 +35,18 @@ and construct_obj : type a. a Encoding.obj -> a -> (JSON.t, string) result =
       | Error _ as err -> err
       | Ok (`O jsons) -> Ok (`O ((name, json) :: jsons))
       | Ok _ -> assert false))
+  | Opt { encoding = t; name } :: ts ->
+    let (v :: vs) = v in
+    (match v with
+    | None -> construct_obj ts vs
+    | Some v ->
+      (match construct t v with
+      | Error _ as err -> err
+      | Ok json ->
+        (match construct_obj ts vs with
+        | Error _ as err -> err
+        | Ok (`O jsons) -> Ok (`O ((name, json) :: jsons))
+        | Ok _ -> assert false)))
 ;;
 
 let rec destruct : type a. a Encoding.t -> JSON.t -> (a, string) result =
@@ -81,7 +93,7 @@ and destruct_obj : type a. a Encoding.obj -> JSON.t -> (a, string) result =
     | other ->
       (* TODO: control what to do with left-over fields *)
       Error (Format.asprintf "Expected {}, got %a" PP.shape other))
-  | (name, t) :: ts ->
+  | Req { encoding = t; name } :: ts ->
     (match json with
     | `O ((namename, json) :: jsons) ->
       if not (String.equal name namename)
@@ -95,5 +107,27 @@ and destruct_obj : type a. a Encoding.obj -> JSON.t -> (a, string) result =
           (match destruct_obj ts (`O jsons) with
           | Error _ as err -> err
           | Ok vs -> Ok (v :: vs)))
+    | `O [] -> Error (Format.asprintf "Expected field {%S:…}, got {}" name)
+    | other -> Error (Format.asprintf "Expected {..}, got %a" PP.shape other))
+  | Opt { encoding = t; name } :: ts ->
+    (match json with
+    | `O [] ->
+      (match destruct_obj ts (`O []) with
+      | Error _ as err -> err
+      | Ok vs -> Ok (None :: vs))
+    | `O ((namename, json) :: jsons) ->
+      if not (String.equal name namename)
+      then (
+        (* TODO: support out-of-order fields *)
+        match destruct_obj ts (`O jsons) with
+        | Error _ as err -> err
+        | Ok vs -> Ok (None :: vs))
+      else (
+        match destruct t json with
+        | Error _ as err -> err
+        | Ok v ->
+          (match destruct_obj ts (`O jsons) with
+          | Error _ as err -> err
+          | Ok vs -> Ok (Some v :: vs)))
     | other -> Error (Format.asprintf "Expected {..}, got %a" PP.shape other))
 ;;

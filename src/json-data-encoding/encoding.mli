@@ -14,7 +14,19 @@ and _ tuple =
 
 and _ obj =
   | [] : unit Hlist.t obj
-  | ( :: ) : (string * 'a t) * 'b Hlist.t obj -> ('a * 'b) Hlist.t obj
+  | ( :: ) : 'a field * 'b Hlist.t obj -> ('a * 'b) Hlist.t obj
+
+and _ field =
+  | Req :
+      { encoding : 'a t
+      ; name : string
+      }
+      -> 'a field
+  | Opt :
+      { encoding : 'a t
+      ; name : string
+      }
+      -> 'a option field
 
 [@@@warning "+30"]
 
@@ -22,3 +34,5 @@ val unit : unit t
 val int64 : int64 t
 val tuple : 'a tuple -> 'a t
 val obj : 'a obj -> 'a t
+val req : string -> 'a t -> 'a field
+val opt : string -> 'a t -> 'a option field

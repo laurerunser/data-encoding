@@ -19,7 +19,19 @@ and _ tuple =
 
 and _ obj =
   | [] : unit Hlist.t obj
-  | ( :: ) : (string * 'a t) * 'b Hlist.t obj -> ('a * 'b) Hlist.t obj
+  | ( :: ) : 'a field * 'b Hlist.t obj -> ('a * 'b) Hlist.t obj
+
+and _ field =
+  | Req :
+      { encoding : 'a t
+      ; name : string
+      }
+      -> 'a field
+  | Opt :
+      { encoding : 'a t
+      ; name : string
+      }
+      -> 'a option field
 
 [@@@warning "+30"]
 
@@ -27,6 +39,8 @@ let unit = Unit
 let int64 = Int64
 let tuple p = Tuple p
 let obj p = Object p
+let req name encoding = Req { encoding; name }
+let opt name encoding = Opt { encoding; name }
 let split json binary = Split { json; binary }
 
 let rec to_json : type a. a t -> a Json_data_encoding.Encoding.t = function
@@ -45,10 +59,14 @@ and to_json_tuple : type a. a tuple -> a Json_data_encoding.Encoding.tuple = fun
 
 and to_json_obj : type a. a obj -> a Json_data_encoding.Encoding.obj = function
   | [] -> Json_data_encoding.Encoding.[]
-  | (n, t) :: ts ->
+  | Req { encoding = t; name } :: ts ->
     let t = to_json t in
     let ts = to_json_obj ts in
-    Json_data_encoding.Encoding.( :: ) ((n, t), ts)
+    Json_data_encoding.Encoding.( :: ) (Req { encoding = t; name }, ts)
+  | Opt { encoding = t; name } :: ts ->
+    let t = to_json t in
+    let ts = to_json_obj ts in
+    Json_data_encoding.Encoding.( :: ) (Opt { encoding = t; name }, ts)
 ;;
 
 let rec to_binary : type a. a t -> a Binary_data_encoding.Encoding.t = function
@@ -67,8 +85,12 @@ and to_binary_tuple : type a. a tuple -> a Binary_data_encoding.Encoding.t = fun
 
 and to_binary_obj : type a. a obj -> a Binary_data_encoding.Encoding.t = function
   | [] -> Binary_data_encoding.Encoding.[]
-  | (_, t) :: ts ->
+  | Req { encoding = t; name = _ } :: ts ->
     let t = to_binary t in
     let ts = to_binary_obj ts in
     Binary_data_encoding.Encoding.( :: ) (t, ts)
+  | Opt { encoding = t; name = _ } :: ts ->
+    let t = to_binary t in
+    let ts = to_binary_obj ts in
+    Binary_data_encoding.Encoding.( :: ) (Binary_data_encoding.Encoding.option t, ts)
 ;;

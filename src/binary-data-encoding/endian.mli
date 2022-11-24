@@ -10,6 +10,7 @@ val get_int16_string : string -> int -> int
 val set_int64 : bytes -> int -> int64 -> unit
 val get_int64 : bytes -> int -> int64
 val get_int64_string : string -> int -> int64
+val set_uint8 : bytes -> int -> int -> unit
 val get_uint8 : bytes -> int -> int
 val get_uint8_string : string -> int -> int
 val get_uint16 : bytes -> int -> int

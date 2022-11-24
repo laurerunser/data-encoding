@@ -1,3 +1,8 @@
+(* TODO: make updates of [written] more principled.
+   Currently written is updated "manually" with literal constants
+   (let written = written + 2). *)
+(* TODO: same remark for offset and maximum length *)
+
 let rec write
     : type a.
       dst:bytes
@@ -54,6 +59,23 @@ let rec write
         Endian.set_int16 dst offset v;
         let written = written + 2 in
         Ok written)
+    | Option t ->
+      if maximum_length < 1
+      then Error (0, "length limited exceeded")
+      else (
+        match v with
+        | None ->
+          (* TODO: 0 is a magic constant, make it a named tag *)
+          Endian.set_uint8 dst offset 0;
+          let written = written + 1 in
+          Ok written
+        | Some v ->
+          (* TODO: 1 is a magic constant, make it a named tag *)
+          Endian.set_uint8 dst offset 1;
+          let offset = offset + 1 in
+          let maximum_length = maximum_length - 1 in
+          let written = written + 1 in
+          write ~dst ~offset ~maximum_length written t v)
     | [] ->
       assert (v = []);
       Ok written
@@ -153,6 +175,21 @@ let rec read
         let v = Endian.get_int16_string src offset in
         let v = Unsigned.UInt16.of_int v in
         Ok (v, 2))
+    | Option t ->
+      if maximum_length < 1
+      then Error "length limited exceeded"
+      else (
+        let n = Endian.get_uint8_string src offset in
+        let offset = offset + 1 in
+        let maximum_length = maximum_length - 1 in
+        if n = 0
+        then Ok (None, 1)
+        else if n = 1
+        then (
+          match read ~src ~offset ~maximum_length t with
+          | Error _ as err -> err
+          | Ok (v, readed) -> Ok (Some v, 1 + readed))
+        else Error "Unknown tag for Option")
     | [] -> Ok ([], 0)
     | t :: ts ->
       (match read ~src ~offset ~maximum_length t with
