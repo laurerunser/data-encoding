@@ -1,96 +1,78 @@
-module Hlist = Commons.Hlist
-
-type 'a testable =
-  { encoding : 'a Json_data_encoding.Encoding.t
-  ; generator : 'a QCheck2.Gen.t
-  ; equal : 'a -> 'a -> bool
-  }
-
-let rec testable_of_encoding : type t. t Json_data_encoding.Encoding.t -> t testable
-  = function
-  | Unit ->
-    { encoding = Json_data_encoding.Encoding.unit
-    ; generator = QCheck2.Gen.unit
-    ; equal = Unit.equal
-    }
-  | Int64 ->
-    { encoding = Json_data_encoding.Encoding.int64
-    ; generator = QCheck2.Gen.int64
-    ; equal = Int64.equal
-    }
-  | String ->
-    { encoding = Json_data_encoding.Encoding.string
-    ; generator = QCheck2.Gen.(string_size (0 -- 10))
-    ; equal = String.equal
-    }
-  | Tuple t -> testable_of_encoding_tuple t
-  | Object t -> testable_of_encoding_object t
+let rec generator_of_encoding : type t. t Json_data_encoding.Encoding.t -> t QCheck2.Gen.t
+  =
+ fun encoding ->
+  match encoding with
+  | Unit -> QCheck2.Gen.unit
+  | Int64 -> QCheck2.Gen.int64
+  | String -> QCheck2.Gen.(string_size (0 -- 10))
+  | Tuple t -> generator_of_encoding_tuple t
+  | Object t -> generator_of_encoding_object t
   | Conv _ -> failwith "TODO"
 
-and testable_of_encoding_tuple : type t. t Json_data_encoding.Encoding.tuple -> t testable
-  = function
-  | [] ->
-    { encoding = Json_data_encoding.Encoding.tuple []
-    ; generator = QCheck2.Gen.pure Hlist.[]
-    ; equal = (fun [] [] -> true)
-    }
+and generator_of_encoding_tuple
+    : type t. t Json_data_encoding.Encoding.tuple -> t QCheck2.Gen.t
+  =
+ fun t ->
+  match t with
+  | [] -> QCheck2.Gen.pure Commons.Hlist.[]
   | head :: tail ->
-    let head = testable_of_encoding head in
-    let tail = testable_of_encoding_tuple tail in
-    (match tail.encoding with
-    | Tuple tail_encoding ->
-      { encoding = Json_data_encoding.Encoding.Tuple (head.encoding :: tail_encoding)
-      ; generator =
-          QCheck2.Gen.map2 (fun h t -> Hlist.( :: ) (h, t)) head.generator tail.generator
-      ; equal = (fun (ah :: at) (bh :: bt) -> head.equal ah bh && tail.equal at bt)
-      }
-    | Object _ -> assert false
-    | Conv _ -> assert false)
+    let head = generator_of_encoding head in
+    let tail = generator_of_encoding_tuple tail in
+    QCheck2.Gen.map2 (fun h t -> Commons.Hlist.( :: ) (h, t)) head tail
 
-and testable_of_encoding_object : type t. t Json_data_encoding.Encoding.obj -> t testable
-  = function
-  | [] ->
-    { encoding = Json_data_encoding.Encoding.obj []
-    ; generator = QCheck2.Gen.pure Hlist.[]
-    ; equal = (fun [] [] -> true)
-    }
-  | Req { encoding = head; name } :: tail ->
-    let head = testable_of_encoding head in
-    let tail = testable_of_encoding_object tail in
-    (match tail.encoding with
-    | Object tail_encoding ->
-      { encoding =
-          Json_data_encoding.Encoding.Object
-            (Req { encoding = head.encoding; name } :: tail_encoding)
-      ; generator =
-          QCheck2.Gen.map2 (fun h t -> Hlist.( :: ) (h, t)) head.generator tail.generator
-      ; equal = (fun (ah :: at) (bh :: bt) -> head.equal ah bh && tail.equal at bt)
-      }
-    | Tuple _ -> assert false
-    | Conv _ -> assert false)
-  | Opt { encoding = head; name } :: tail ->
-    let head = testable_of_encoding head in
-    let tail = testable_of_encoding_object tail in
-    (match tail.encoding with
-    | Object tail_encoding ->
-      { encoding =
-          Json_data_encoding.Encoding.Object
-            (Opt { encoding = head.encoding; name } :: tail_encoding)
-      ; generator =
-          QCheck2.Gen.map2
-            (fun h t -> Hlist.( :: ) (h, t))
-            (QCheck2.Gen.option head.generator)
-            tail.generator
-      ; equal =
-          (fun (ah :: at) (bh :: bt) -> Option.equal head.equal ah bh && tail.equal at bt)
-      }
-    | Tuple _ -> assert false
-    | Conv _ -> assert false)
+and generator_of_encoding_object
+    : type t. t Json_data_encoding.Encoding.obj -> t QCheck2.Gen.t
+  =
+ fun t ->
+  match t with
+  | [] -> QCheck2.Gen.pure Commons.Hlist.[]
+  | Req { encoding = head; name = _ } :: tail ->
+    let head = generator_of_encoding head in
+    let tail = generator_of_encoding_object tail in
+    QCheck2.Gen.map2 (fun h t -> Commons.Hlist.( :: ) (h, t)) head tail
+  | Opt { encoding = head; name = _ } :: tail ->
+    let head = generator_of_encoding head in
+    let head = QCheck2.Gen.option head in
+    let tail = generator_of_encoding_object tail in
+    QCheck2.Gen.map2 (fun h t -> Commons.Hlist.( :: ) (h, t)) head tail
 ;;
 
-type any_testable = AnyTestable : _ testable -> any_testable
+let rec equal_of_encoding : type t. t Json_data_encoding.Encoding.t -> t -> t -> bool =
+ fun encoding ->
+  match encoding with
+  | Unit -> Unit.equal
+  | Int64 -> Int64.equal
+  | String -> String.equal
+  | Tuple t -> equal_of_encoding_tuple t
+  | Object t -> equal_of_encoding_object t
+  | Conv _ -> failwith "TODO"
 
-let mk e = AnyTestable (testable_of_encoding e)
+and equal_of_encoding_tuple
+    : type t. t Json_data_encoding.Encoding.tuple -> t -> t -> bool
+  =
+ fun t ->
+  match t with
+  | [] -> fun [] [] -> true
+  | head :: tail ->
+    let head = equal_of_encoding head in
+    let tail = equal_of_encoding_tuple tail in
+    fun (ah :: at) (bh :: bt) -> head ah bh && tail at bt
+
+and equal_of_encoding_object : type t. t Json_data_encoding.Encoding.obj -> t -> t -> bool
+  =
+ fun t ->
+  match t with
+  | [] -> fun [] [] -> true
+  | Req { encoding = head; name = _ } :: tail ->
+    let head = equal_of_encoding head in
+    let tail = equal_of_encoding_object tail in
+    fun (ah :: at) (bh :: bt) -> head ah bh && tail at bt
+  | Opt { encoding = head; name = _ } :: tail ->
+    let head = equal_of_encoding head in
+    let head = Option.equal head in
+    let tail = equal_of_encoding_object tail in
+    fun (ah :: at) (bh :: bt) -> head ah bh && tail at bt
+;;
 
 let ( let* ) x f =
   match x with
@@ -98,7 +80,10 @@ let ( let* ) x f =
   | Ok v -> f v
 ;;
 
-let to_test (AnyTestable { encoding; generator; equal }) =
+let to_test : type t. t Json_data_encoding.Encoding.t -> QCheck2.Test.t =
+ fun encoding ->
+  let generator = generator_of_encoding encoding in
+  let equal = equal_of_encoding encoding in
   QCheck2.Test.make generator (fun v ->
       let* j = Json_data_encoding.Backend.construct encoding v in
       let* vv = Json_data_encoding.Backend.destruct encoding j in
