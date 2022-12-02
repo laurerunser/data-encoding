@@ -1,0 +1,4 @@
+(tests
+ (names roundtrip)
+ (package json-data-encoding)
+ (libraries qcheck data-encoding.commons json-data-encoding))
