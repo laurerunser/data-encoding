@@ -7,7 +7,11 @@ let rec generator_of_encoding : type t. t Json_data_encoding.Encoding.t -> t QCh
   | String -> QCheck2.Gen.(string_size (0 -- 10))
   | Tuple t -> generator_of_encoding_tuple t
   | Object t -> generator_of_encoding_object t
-  | Conv _ -> failwith "TODO"
+  | Conv { serialisation = _; deserialisation; encoding } ->
+    (*TODO: support errors*)
+    QCheck2.Gen.map
+      (fun w -> Result.get_ok @@ deserialisation w)
+      (generator_of_encoding encoding)
 
 and generator_of_encoding_tuple
     : type t. t Json_data_encoding.Encoding.tuple -> t QCheck2.Gen.t
@@ -45,7 +49,8 @@ let rec equal_of_encoding : type t. t Json_data_encoding.Encoding.t -> t -> t ->
   | String -> String.equal
   | Tuple t -> equal_of_encoding_tuple t
   | Object t -> equal_of_encoding_object t
-  | Conv _ -> failwith "TODO"
+  | Conv { serialisation; deserialisation = _; encoding } ->
+    fun a b -> (equal_of_encoding encoding) (serialisation a) (serialisation b)
 
 and equal_of_encoding_tuple
     : type t. t Json_data_encoding.Encoding.tuple -> t -> t -> bool
