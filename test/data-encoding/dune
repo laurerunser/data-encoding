@@ -1,4 +1,9 @@
 (tests
  (names roundtrip)
  (package data-encoding)
- (libraries qcheck data-encoding json-data-encoding binary-data-encoding))
+ (libraries
+  qcheck
+  data-encoding.commons
+  data-encoding
+  json-data-encoding
+  binary-data-encoding))
