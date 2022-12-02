@@ -53,6 +53,32 @@ and construct_obj : type a. a Encoding.obj -> a -> (JSON.t, string) result =
         | Ok _ -> assert false)))
 ;;
 
+let%expect_test _ =
+  let w : type a. a Encoding.t -> a -> unit =
+   fun e v ->
+    match construct e v with
+    | Ok j -> Format.printf "%a\n" PP.mini j
+    | Error s -> Format.printf "Error: %s\n" s
+  in
+  w Encoding.unit ();
+  [%expect {| {} |}];
+  w Encoding.int64 0x4c_6f_6f_6f_6f_6f_6f_4cL;
+  [%expect {| "5507743393699032908" |}];
+  w Encoding.int64 0xff_ff_ff_ff_ff_ff_ff_ffL;
+  [%expect {| "-1" |}];
+  w
+    Encoding.(tuple [ unit; unit; int64; unit; int64 ])
+    [ (); (); 0x4c_6f_6f_4cL; (); 0x4c_6f_6f_4cL ];
+  [%expect {| [{},{},"1282371404",{},"1282371404"] |}];
+  w Encoding.(tuple [ string; unit ]) [ "FOO"; () ];
+  [%expect {| ["FOO",{}] |}];
+  w Encoding.(obj [ req "foo" string; req "bar" unit ]) [ "FOO"; () ];
+  [%expect {| {"foo":"FOO","bar":{}} |}];
+  w Encoding.(obj [ req "foo" string; opt "bar" unit ]) [ "FOO"; None ];
+  [%expect {| {"foo":"FOO"} |}];
+  ()
+;;
+
 let rec destruct : type a. a Encoding.t -> JSON.t -> (a, string) result =
  fun encoding json ->
   match encoding with
