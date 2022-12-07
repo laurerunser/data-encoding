@@ -83,18 +83,17 @@ let to_test_binary : type t. t Data_encoding.Encoding.t -> QCheck2.Test.t =
   let generator = generator_of_encoding encoding in
   let equal = equal_of_encoding encoding in
   let e_b = Data_encoding.Encoding.to_binary encoding in
-  let dst = Bytes.make 100 '\x00' in
-  (* TODO: adapt length to encoding *)
   let offset = 0 in
-  let maximum_length = 100 in
-  (* TODO: adapt maximum_length to encoding *)
+  (* TODO: adapt length to encoding *)
+  let length = 100 in
+  let dst = Bytes.make length '\x00' in
   QCheck2.Test.make generator (fun v ->
       let* written_length =
-        Binary_data_encoding.Backend.write ~dst ~offset ~maximum_length e_b v
+        Binary_data_encoding.Backend.write ~dst ~offset ~length e_b v
       in
       let src = Bytes.to_string dst in
       let* vv =
-        Binary_data_encoding.Backend.read ~src ~offset ~maximum_length:written_length e_b
+        Binary_data_encoding.Backend.read ~src ~offset ~length:written_length e_b
       in
       equal v vv)
 ;;

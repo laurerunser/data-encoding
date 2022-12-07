@@ -48,9 +48,10 @@ let rec equal_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> t 
     fun (ah :: at) (bh :: bt) -> head ah bh && tail at bt
 ;;
 
-let rec pp_of_encoding : type t. t Binary_data_encoding.Encoding.t ->
-  Format.formatter -> t -> unit
-  = fun encoding fmt v ->
+let rec pp_of_encoding
+    : type t. t Binary_data_encoding.Encoding.t -> Format.formatter -> t -> unit
+  =
+ fun encoding fmt v ->
   match encoding with
   | Unit -> Format.fprintf fmt "()"
   | Int64 -> Format.fprintf fmt "%Ld" v
@@ -60,30 +61,29 @@ let rec pp_of_encoding : type t. t Binary_data_encoding.Encoding.t ->
   | UInt16 -> Unsigned.UInt16.pp fmt v
   | String _ -> Format.fprintf fmt "%s" v
   | Bytes _ -> Format.fprintf fmt "%s" (Bytes.unsafe_to_string v)
-  | Option t -> (
-    match v with
+  | Option t ->
+    (match v with
     | None -> Format.fprintf fmt "None"
     | Some v ->
-        let pp = pp_of_encoding t in
-        Format.fprintf fmt "Some(%a)" pp v
-  )
-  | Headered { mkheader; headerencoding=_; encoding } ->
-      let pp = pp_of_encoding (encoding (mkheader v)) in
-      Format.fprintf fmt "%a" pp v
+      let pp = pp_of_encoding t in
+      Format.fprintf fmt "Some(%a)" pp v)
+  | Headered { mkheader; headerencoding = _; encoding } ->
+    let pp = pp_of_encoding (encoding (mkheader v)) in
+    Format.fprintf fmt "%a" pp v
   | [] -> ()
-  | [head] ->
-      let [v] = v in
-      let pp = pp_of_encoding head in
-      Format.fprintf fmt "%a" pp v
+  | [ head ] ->
+    let [ v ] = v in
+    let pp = pp_of_encoding head in
+    Format.fprintf fmt "%a" pp v
   | head :: tail ->
-      let v :: vs = v in
-      let pph = pp_of_encoding head in
-      let ppt = pp_of_encoding tail in
-      Format.fprintf fmt "%a;%a" pph v ppt vs
+    let (v :: vs) = v in
+    let pph = pp_of_encoding head in
+    let ppt = pp_of_encoding tail in
+    Format.fprintf fmt "%a;%a" pph v ppt vs
 ;;
 
-let print_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> string
-= fun encoding v -> Format.asprintf "%a" (fun fmt v -> pp_of_encoding encoding fmt v) v
+let print_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> string =
+ fun encoding v -> Format.asprintf "%a" (fun fmt v -> pp_of_encoding encoding fmt v) v
 ;;
 
 let ( let* ) x f =
@@ -97,22 +97,17 @@ let to_test : type t. string -> t Binary_data_encoding.Encoding.t -> QCheck2.Tes
   let generator = generator_of_encoding encoding in
   let equal = equal_of_encoding encoding in
   let print = print_of_encoding encoding in
-  let dst = Bytes.make 100 '\x00' in
-  (* TODO: adapt length to encoding *)
   let offset = 0 in
-  let maximum_length = 100 in
-  (* TODO: adapt maximum_length to encoding *)
+  (* TODO: adapt length to encoding *)
+  let length = 100 in
+  let dst = Bytes.make length '\x00' in
   QCheck2.Test.make ~name ~print generator (fun v ->
       let* written_length =
-        Binary_data_encoding.Backend.write ~dst ~offset ~maximum_length encoding v
+        Binary_data_encoding.Backend.write ~dst ~offset ~length encoding v
       in
       let src = Bytes.to_string dst in
       let* vv =
-        Binary_data_encoding.Backend.read
-          ~src
-          ~offset
-          ~maximum_length:written_length
-          encoding
+        Binary_data_encoding.Backend.read ~src ~offset ~length:written_length encoding
       in
       equal v vv)
 ;;

@@ -7,4 +7,8 @@ let testables =
   ]
 ;;
 
-let () = List.iter (fun (AnyE (name, t)) -> QCheck2.Test.check_exn (Pbtlib.to_test name t)) testables
+let () =
+  List.iter
+    (fun (AnyE (name, t)) -> QCheck2.Test.check_exn (Pbtlib.to_test name t))
+    testables
+;;
