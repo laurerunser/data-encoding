@@ -107,7 +107,7 @@ let to_test : type t. string -> t Binary_data_encoding.Encoding.t -> QCheck2.Tes
         Binary_data_encoding.Backend.write ~dst ~offset ~maximum_length encoding v
       in
       let src = Bytes.to_string dst in
-      let* vv, _ =
+      let* vv =
         Binary_data_encoding.Backend.read
           ~src
           ~offset

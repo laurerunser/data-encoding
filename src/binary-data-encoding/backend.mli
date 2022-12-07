@@ -13,4 +13,4 @@ val read
   -> offset:int
   -> maximum_length:int
   -> 'a Encoding.t
-  -> ('a * int, string) result
+  -> ('a, string) result
