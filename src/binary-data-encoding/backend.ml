@@ -429,9 +429,62 @@ let readk : type a. source -> a Encoding.t -> a readed =
  fun source encoding ->
   if source.offset < 0
   then Failed { source; error = "offset is negative" }
-  else if source.offset + source.maximum_length > String.length source.blob
-  then Failed { source; error = "maximum-length exceeds buffer size" }
+  else if source.offset + source.length > String.length source.blob
+  then Failed { source; error = "length exceeds buffer size" }
   else readk source encoding
+;;
+
+let%expect_test _ =
+  let w
+      : type a.
+        (string * int * int) Seq.t
+        -> a Encoding.t
+        -> (Format.formatter -> a -> unit)
+        -> unit
+    =
+   fun sources e f ->
+    let rec loop (blob, offset, length) sources k =
+      match k blob offset length with
+      | Readed { source = _; value } -> Format.printf "Ok: %a" f value
+      | Failed { source = _; error } -> Format.printf "Error: %s" error
+      | Suspended { source = _; cont } ->
+        (match sources () with
+        | Seq.Nil -> Format.printf "Error: not enough input"
+        | Seq.Cons (source, sources) -> loop source sources cont)
+    in
+    match sources () with
+    | Seq.Nil -> assert false
+    | Seq.Cons (source, sources) ->
+      loop source sources (fun blob offset length ->
+          let source = mk_source blob offset length in
+          readk source e)
+  in
+  w
+    (List.to_seq [ "LooooooL", 0, 8 ])
+    Encoding.int64
+    (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
+  [%expect {| Ok: 4c6f6f6f6f6f6f4c |}];
+  w
+    (List.to_seq [ "Looo", 0, 4; "oooL", 0, 4 ])
+    Encoding.int64
+    (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
+  [%expect {| Ok: 4c6f6f6f6f6f6f4c |}];
+  w
+    (List.to_seq [ "LooLLooL", 0, 8 ])
+    Encoding.[ unit; int32; int32; unit ]
+    (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx" l r);
+  [%expect {| Ok: 4c6f6f4c_4c6f6f4c |}];
+  w
+    (List.to_seq [ "LooL", 0, 4; "LooL", 0, 4 ])
+    Encoding.[ unit; int32; int32; unit ]
+    (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx" l r);
+  [%expect {| Ok: 4c6f6f4c_4c6f6f4c |}];
+  w
+    (List.to_seq [ "FOO", 0, 3 ])
+    Encoding.(String (Unsigned.UInt32.of_int 3))
+    Format.pp_print_string;
+  [%expect {| Ok: FOO |}];
+  ()
 ;;
 
 let read
