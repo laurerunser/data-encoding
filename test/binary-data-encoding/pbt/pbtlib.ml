@@ -48,22 +48,61 @@ let rec equal_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> t 
     fun (ah :: at) (bh :: bt) -> head ah bh && tail at bt
 ;;
 
+let rec pp_of_encoding : type t. t Binary_data_encoding.Encoding.t ->
+  Format.formatter -> t -> unit
+  = fun encoding fmt v ->
+  match encoding with
+  | Unit -> Format.fprintf fmt "()"
+  | Int64 -> Format.fprintf fmt "%Ld" v
+  | UInt64 -> Unsigned.UInt64.pp fmt v
+  | Int32 -> Format.fprintf fmt "%ld" v
+  | UInt32 -> Unsigned.UInt32.pp fmt v
+  | UInt16 -> Unsigned.UInt16.pp fmt v
+  | String _ -> Format.fprintf fmt "%s" v
+  | Bytes _ -> Format.fprintf fmt "%s" (Bytes.unsafe_to_string v)
+  | Option t -> (
+    match v with
+    | None -> Format.fprintf fmt "None"
+    | Some v ->
+        let pp = pp_of_encoding t in
+        Format.fprintf fmt "Some(%a)" pp v
+  )
+  | Headered { mkheader; headerencoding=_; encoding } ->
+      let pp = pp_of_encoding (encoding (mkheader v)) in
+      Format.fprintf fmt "%a" pp v
+  | [] -> ()
+  | [head] ->
+      let [v] = v in
+      let pp = pp_of_encoding head in
+      Format.fprintf fmt "%a" pp v
+  | head :: tail ->
+      let v :: vs = v in
+      let pph = pp_of_encoding head in
+      let ppt = pp_of_encoding tail in
+      Format.fprintf fmt "%a;%a" pph v ppt vs
+;;
+
+let print_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> string
+= fun encoding v -> Format.asprintf "%a" (fun fmt v -> pp_of_encoding encoding fmt v) v
+;;
+
 let ( let* ) x f =
   match x with
   | Error _ -> false
   | Ok v -> f v
 ;;
 
-let to_test : type t. t Binary_data_encoding.Encoding.t -> QCheck2.Test.t =
- fun encoding ->
+let to_test : type t. string -> t Binary_data_encoding.Encoding.t -> QCheck2.Test.t =
+ fun name encoding ->
   let generator = generator_of_encoding encoding in
   let equal = equal_of_encoding encoding in
+  let print = print_of_encoding encoding in
   let dst = Bytes.make 100 '\x00' in
   (* TODO: adapt length to encoding *)
   let offset = 0 in
   let maximum_length = 100 in
   (* TODO: adapt maximum_length to encoding *)
-  QCheck2.Test.make generator (fun v ->
+  QCheck2.Test.make ~name ~print generator (fun v ->
       let* written_length =
         Binary_data_encoding.Backend.write ~dst ~offset ~maximum_length encoding v
       in
