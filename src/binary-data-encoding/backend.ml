@@ -335,31 +335,52 @@ let read1 source reading read =
       { source
       ; cont =
           (fun blob offset length ->
-            let source =
-              if source.readed = source.length
-              then
-                (* full read to the end of the previous source *)
+            assert (source.readed <= source.length);
+            if source.readed = source.length
+            then (
+              let source =
                 mk_source ~maximum_length:source.maximum_length blob offset length
+              in
+              if reading > source.length
+              then Failed { source; error = source_too_small_to_continue_message }
               else (
-                assert (source.readed < source.length);
-                (* TODO: avoid this allocation escalation *)
-                let blob =
-                  String.sub
-                    source.blob
-                    (source.offset + source.readed)
-                    (source.length - source.readed)
-                  ^ String.sub blob offset length
-                in
-                let offset = 0 in
-                let length = source.length - source.readed + length in
-                mk_source ~maximum_length:source.maximum_length blob offset length)
-            in
-            if source.offset + reading > source.length
-            then Failed { source; error = source_too_small_to_continue_message }
+                let value = read source.blob source.offset in
+                let source = bump_readed source reading in
+                Readed { source; value }))
             else (
-              let value = read source.blob source.offset in
-              let source = bump_readed source reading in
-              Readed { source; value }))
+              assert (source.readed < source.length);
+              (* First check that the current here small read1 has enough data *)
+              let available_length = source.length - source.readed + length in
+              if reading > available_length
+              then Failed { source; error = source_too_small_to_continue_message }
+              else (
+                (* prepare for this small here read1 *)
+                let source =
+                  let blob =
+                    String.sub
+                      source.blob
+                      (source.offset + source.readed)
+                      (source.length - source.readed)
+                    ^ String.sub blob offset (reading - (source.length - source.readed))
+                  in
+                  let offset = 0 in
+                  let length = reading in
+                  mk_source ~maximum_length:source.maximum_length blob offset length
+                in
+                (* actually do this small here read *)
+                let value = read source.blob source.offset in
+                let source = bump_readed source reading in
+                assert (source.readed = source.length);
+                (* Second prepare the source for giving back *)
+                let source =
+                  mk_source ~maximum_length:source.maximum_length blob offset length
+                in
+                (* delta is the part of the new blob that has already been
+                         read by the actual small read above *)
+                let delta = reading - (source.length - source.readed) in
+                assert (source.readed = 0);
+                let source = { source with readed = delta } in
+                Readed { source; value })))
       }
   else (
     let value = read source.blob (source.offset + source.readed) in
@@ -406,7 +427,7 @@ let rec readk : type a. source -> a Encoding.t -> a readed =
     let n = Unsigned.UInt32.to_int n in
     read1 source n (fun blob offset -> Bytes.unsafe_of_string (String.sub blob offset n))
   | Option t ->
-    let* tag, source = read1 source 1 Endian.get_uint8_string in
+    let* tag, source = read1 source Size.uint8 Endian.get_uint8_string in
     if tag = 0
     then Readed { source; value = None }
     else if tag = 1
@@ -479,6 +500,26 @@ let%expect_test _ =
     Encoding.[ unit; int32; int32; unit ]
     (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx" l r);
   [%expect {| Ok: 4c6f6f4c_4c6f6f4c |}];
+  w
+    (List.to_seq [ "LooLLo", 0, 6; "oL", 0, 2 ])
+    Encoding.[ unit; int32; int32; unit ]
+    (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx" l r);
+  [%expect {| Ok: 4c6f6f4c_4c6f6f4c |}];
+  w
+    (List.to_seq [ "LooLLooL", 0, 4; "LooLLooL", 4, 4 ])
+    Encoding.[ unit; int32; int32; unit ]
+    (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx" l r);
+  [%expect {| Ok: 4c6f6f4c_4c6f6f4c |}];
+  w
+    Seq.(ints 0 |> take 8 |> map (fun i -> "LooLLooL", i, 1))
+    Encoding.[ unit; int32; int32; unit ]
+    (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx" l r);
+  [%expect {| Error: new source blob is too small to continue |}];
+  w
+    Seq.(ints 0 |> take 4 |> map (fun i -> "LooLLooL", i * 2, 2))
+    Encoding.[ unit; int32; int32; unit ]
+    (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx" l r);
+  [%expect {| Error: new source blob is too small to continue |}];
   w
     (List.to_seq [ "FOO", 0, 3 ])
     Encoding.(String (Unsigned.UInt32.of_int 3))
