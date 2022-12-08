@@ -1,3 +1,7 @@
+(* TODO: more documentation *)
+(* TODO: more assertion checks *)
+(* TODO: benchmark and optimise (later, after we add more features) *)
+
 (* a [destination] is a buffer (with metadata) that the basic serialisation
    function writes into *)
 type destination =
@@ -73,7 +77,10 @@ let write1 destination writing write =
             in
             if destination.offset + writing > destination.length
             then
-              (* if the new destination is too small again we just fail *)
+              (* TODO: instead of failing here, allow to continue after more
+                 buffering, possibly go a slow path where the value is written
+                 to an internal buffer which is blitted bit by bit on the small
+                 buffers that are passed by the user *)
               Failed { destination; error = destination_too_small_to_continue_message }
             else (
               write destination.buffer (destination.offset + destination.written);
@@ -123,11 +130,15 @@ let rec writek : type a. destination -> a Encoding.t -> a -> written =
         let v = Unsigned.UInt16.to_int v in
         Endian.set_int16 buffer offset v)
   | String n ->
+    (* TODO: support chunk writing of strings so that it's possible to serialise
+     a big blob onto several small buffers *)
     let n = Unsigned.UInt32.to_int n in
     if String.length v <> n
     then Failed { destination; error = "inconsistent length of string" }
     else write1 destination n (fun buffer offset -> Bytes.blit_string v 0 buffer offset n)
   | Bytes n ->
+    (* TODO: support chunk writing of bytes so that it's possible to serialise
+     a big blob onto several small buffers *)
     let n = Unsigned.UInt32.to_int n in
     if Bytes.length v <> n
     then Failed { destination; error = "inconsistent length of bytes" }
@@ -342,6 +353,9 @@ let read1 source reading read =
                 mk_source ~maximum_length:source.maximum_length blob offset length
               in
               if reading > source.length
+                 (* TODO: instead of failing here (and below), allow to continue
+                 after more feeding, possibly by concatenating bigger and bigger
+                 blobs until the value is readable *)
               then Failed { source; error = source_too_small_to_continue_message }
               else (
                 let value = read source.blob source.offset in
@@ -421,9 +435,13 @@ let rec readk : type a. source -> a Encoding.t -> a readed =
         let v = Endian.get_int16_string blob offset in
         Unsigned.UInt16.of_int v)
   | String n ->
+    (* TODO: support chunk reading of string so that it's possible to deserialise
+     a big blob from several small blobs *)
     let n = Unsigned.UInt32.to_int n in
     read1 source n (fun blob offset -> String.sub blob offset n)
   | Bytes n ->
+    (* TODO: support chunk reading of bytes so that it's possible to deserialise
+     a big blob from several small blobs *)
     let n = Unsigned.UInt32.to_int n in
     read1 source n (fun blob offset -> Bytes.unsafe_of_string (String.sub blob offset n))
   | Option t ->

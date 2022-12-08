@@ -1,3 +1,8 @@
+(* TODO: documentation of @raise *)
+(* TODO: documentation of string/bytes ownership and mutation discipline *)
+(* TODO: more variants of read/write *)
+(* TODO: separate the low-level backend functions ([*k]) from the high-level
+   backend functions (all others) *)
 type destination
 
 val mk_destination : ?maximum_length:int -> bytes -> int -> int -> destination
