@@ -164,3 +164,4 @@ val write
 
 val string_of : ?buffer_size:int -> 'a Encoding.t -> 'a -> (string, string) result
 val read : src:string -> offset:int -> length:int -> 'a Encoding.t -> ('a, string) result
+val read_strings : (string * int * int) Seq.t -> 'a Encoding.t -> ('a, string) result
