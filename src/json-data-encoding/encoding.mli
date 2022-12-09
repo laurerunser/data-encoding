@@ -50,3 +50,17 @@ val conv
   -> deserialisation:('b -> ('a, string) result)
   -> 'b t
   -> 'a t
+
+module Record : sig
+  type ('a, 'r) field
+
+  val field : string -> ('r -> 'a) -> 'a t -> ('a, 'r) field
+
+  type ('mk, 'prod, 'r) fields =
+    | [] : ('r, unit, 'r) fields
+    | ( :: ) :
+        ('a, 'r) field * ('mk, 'prod, 'r) fields
+        -> ('a -> 'mk, 'a * 'prod, 'r) fields
+
+  val record : 'mk -> ('mk, 'prod, 'r) fields -> 'r t
+end

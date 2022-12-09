@@ -76,6 +76,21 @@ let%expect_test _ =
   [%expect {| {"foo":"FOO","bar":{}} |}];
   w Encoding.(obj [ req "foo" string; opt "bar" unit ]) [ "FOO"; None ];
   [%expect {| {"foo":"FOO"} |}];
+  let module R = struct
+    type t =
+      { foo : string
+      ; bar : int64
+      }
+  end
+  in
+  w
+    Encoding.(
+      Record.(
+        record
+          (fun foo bar -> R.{ foo; bar })
+          [ field "foo" (fun r -> r.R.foo) string; field "bar" (fun r -> r.R.bar) int64 ]))
+    R.{ foo = "FOO"; bar = 0xff_ff_ff_ff_ff_ff_ff_ffL };
+  [%expect {| {"foo":"FOO","bar":"-1"} |}];
   ()
 ;;
 
