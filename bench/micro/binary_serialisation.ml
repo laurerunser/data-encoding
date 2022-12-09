@@ -14,30 +14,24 @@ let int64_quadle =
 ;;
 
 let offset = 0
-let maximum_length = 8 * 4
-let dst = Bytes.make maximum_length 'x'
+let length = 8 * 4
+let dst = Bytes.make length 'x'
 
 let twople ij =
   Core_bench.Bench.Test.create ~name:"twople" (fun () ->
-      let _ =
-        Binary_data_encoding.Backend.write ~dst ~offset ~maximum_length int64_twople ij
-      in
+      let _ = Binary_data_encoding.Backend.write ~dst ~offset ~length int64_twople ij in
       ())
 ;;
 
 let triple ijk =
   Core_bench.Bench.Test.create ~name:"triple" (fun () ->
-      let _ =
-        Binary_data_encoding.Backend.write ~dst ~offset ~maximum_length int64_triple ijk
-      in
+      let _ = Binary_data_encoding.Backend.write ~dst ~offset ~length int64_triple ijk in
       ())
 ;;
 
 let quadle ijkl =
   Core_bench.Bench.Test.create ~name:"quadle" (fun () ->
-      let _ =
-        Binary_data_encoding.Backend.write ~dst ~offset ~maximum_length int64_quadle ijkl
-      in
+      let _ = Binary_data_encoding.Backend.write ~dst ~offset ~length int64_quadle ijkl in
       ())
 ;;
 
