@@ -2,24 +2,16 @@ module Hlist = Commons.Hlist
 
 [@@@warning "-30"]
 
-type _ t =
-  | Unit : unit t
-  | Int64 : int64 t
-  | String : string t
-  | Bytes : bytes t
-  | Tuple : 'a tuple -> 'a t
-  | Object : 'a obj -> 'a t
-  | Split :
-      { json : 'a Json_data_encoding.Encoding.t
-      ; binary : 'a Binary_data_encoding.Encoding.t
-      }
-      -> 'a t
+type 'a t =
+  { json : 'a Json_data_encoding.Encoding.t
+  ; binary : 'a Binary_data_encoding.Encoding.t
+  }
 
-and _ tuple =
+type _ tuple =
   | [] : unit Hlist.t tuple
   | ( :: ) : 'a t * 'b Hlist.t tuple -> ('a * 'b) Hlist.t tuple
 
-and _ obj =
+type _ obj =
   | [] : unit Hlist.t obj
   | ( :: ) : 'a field * 'b Hlist.t obj -> ('a * 'b) Hlist.t obj
 
