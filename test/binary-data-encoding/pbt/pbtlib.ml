@@ -19,6 +19,14 @@ let rec generator_of_encoding
     let t = generator_of_encoding t in
     QCheck2.Gen.option t
   | Headered _ -> failwith "TODO"
+  | Conv { serialisation = _; deserialisation; encoding } ->
+    let t = generator_of_encoding encoding in
+    QCheck2.Gen.map
+      (fun v ->
+        match deserialisation v with
+        | Error msg -> failwith msg
+        | Ok v -> v)
+      t
   | [] -> QCheck2.Gen.pure Commons.Hlist.[]
   | head :: tail ->
     let head = generator_of_encoding head in
@@ -41,6 +49,8 @@ let rec equal_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> t 
     let t = equal_of_encoding t in
     Option.equal t
   | Headered _ -> failwith "TODO"
+  | Conv { serialisation; deserialisation = _; encoding } ->
+    fun x y -> (equal_of_encoding encoding) (serialisation x) (serialisation y)
   | [] -> fun [] [] -> true
   | head :: tail ->
     let head = equal_of_encoding head in
@@ -70,6 +80,9 @@ let rec pp_of_encoding
   | Headered { mkheader; headerencoding = _; encoding } ->
     let pp = pp_of_encoding (encoding (mkheader v)) in
     Format.fprintf fmt "%a" pp v
+  | Conv { serialisation; deserialisation = _; encoding } ->
+    let pp fmt v = pp_of_encoding encoding fmt (serialisation v) in
+    Format.fprintf fmt "conved(%a)" pp v
   | [] -> ()
   | [ head ] ->
     let [ v ] = v in

@@ -16,6 +16,12 @@ type _ t =
       ; encoding : 'header -> 'a t
       }
       -> 'a t
+  | Conv :
+      { serialisation : 'a -> 'b
+      ; deserialisation : 'b -> ('a, string) result
+      ; encoding : 'b t
+      }
+      -> 'a t
   | [] : unit Hlist.t t
   | ( :: ) : 'a t * 'b Hlist.t t -> ('a * 'b) Hlist.t t
 
@@ -53,4 +59,8 @@ let bytes =
     ; headerencoding = UInt32
     ; encoding = (fun i -> Bytes i)
     }
+;;
+
+let conv ~serialisation ~deserialisation encoding =
+  Conv { serialisation; deserialisation; encoding }
 ;;

@@ -33,6 +33,13 @@ val unit : unit t
 val int64 : int64 t
 val string : string t
 val bytes : bytes t
+
+val conv
+  :  serialisation:('a -> 'b)
+  -> deserialisation:('b -> ('a, string) result)
+  -> 'b t
+  -> 'a t
+
 val tuple : 'a tuple -> 'a t
 val obj : 'a obj -> 'a t
 val req : string -> 'a t -> 'a field

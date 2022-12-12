@@ -59,6 +59,17 @@ let bytes =
   }
 ;;
 
+let conv ~serialisation ~deserialisation encoding =
+  { json =
+      Json_data_encoding.Encoding.conv ~serialisation ~deserialisation (to_json encoding)
+  ; binary =
+      Binary_data_encoding.Encoding.conv
+        ~serialisation
+        ~deserialisation
+        (to_binary encoding)
+  }
+;;
+
 let rec to_json_tuple : type a. a tuple -> a Json_data_encoding.Encoding.tuple = function
   | [] -> Json_data_encoding.Encoding.[]
   | t :: ts ->

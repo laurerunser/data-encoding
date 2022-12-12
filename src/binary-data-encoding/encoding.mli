@@ -16,6 +16,12 @@ type _ t =
       ; encoding : 'header -> 'a t
       }
       -> 'a t
+  | Conv :
+      { serialisation : 'a -> 'b
+      ; deserialisation : 'b -> ('a, string) result
+      ; encoding : 'b t
+      }
+      -> 'a t
   | [] : unit Hlist.t t
   | ( :: ) : 'a t * 'b Hlist.t t -> ('a * 'b) Hlist.t t
 
@@ -28,3 +34,9 @@ val uint16 : Unsigned.UInt16.t t
 val option : 'a t -> 'a option t
 val string : string t
 val bytes : bytes t
+
+val conv
+  :  serialisation:('a -> 'b)
+  -> deserialisation:('b -> ('a, string) result)
+  -> 'b t
+  -> 'a t

@@ -16,6 +16,8 @@ let rec size_of : type t. t Encoding.t -> t -> Unsigned.UInt32.t =
   | Headered { mkheader; headerencoding; encoding } ->
     let header = mkheader v in
     Unsigned.UInt32.add (size_of headerencoding header) (size_of (encoding header) v)
+  | Conv { serialisation; deserialisation = _; encoding } ->
+    size_of encoding (serialisation v)
   | [] -> Unsigned.UInt32.zero
   | ehead :: etail ->
     (match v with
@@ -56,6 +58,7 @@ let rec maximum_size_of : type t. t Encoding.t -> Unsigned.UInt32.t =
   | Bytes n -> n
   | Option encoding -> Unsigned.UInt32.add Unsigned.UInt32.one (maximum_size_of encoding)
   | Headered _ -> failwith "TODO"
+  | Conv { serialisation = _; deserialisation = _; encoding } -> maximum_size_of encoding
   | [] -> Unsigned.UInt32.zero
   | head :: tail -> Unsigned.UInt32.add (maximum_size_of head) (maximum_size_of tail)
 ;;
