@@ -15,6 +15,8 @@
 
 (documentation https://nomadic-labs.gitlab.io/data-encoding)
 
+(version 1.99.0)
+
 (package
  (name data-encoding)
  (synopsis "Backend-independent codec declaration")
