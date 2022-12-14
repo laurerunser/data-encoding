@@ -10,10 +10,6 @@ workflow:
 include: 'https://gitlab.com/nomadic-labs/gitlab-ocaml-ci-example/-/raw/main/.gitlab-ci.yml'
 
 .build-matrix:
-  before_script:
-    - sudo apt-get update
-    - sudo apt-get install --yes libgmp-dev
-    - sudo apt-get install --yes nodejs
   parallel:
     matrix:
     - OCAML_COMPILER: ["4.10.2", "4.11.2", "4.12.1", "4.13.1", "4.14.0"]
