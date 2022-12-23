@@ -35,30 +35,25 @@ let uint16 = UInt16
 let uint8 = UInt8
 let option t = Option t
 
-let with_uint8_header mkheader encoding =
-  Headered { mkheader; headerencoding = UInt8; encoding }
-;;
-
-let with_uint16_header mkheader encoding =
-  Headered { mkheader; headerencoding = UInt16; encoding }
-;;
-
-let with_uint32_header mkheader encoding =
-  Headered { mkheader; headerencoding = UInt32; encoding }
+let with_header headerencoding mkheader encoding =
+  Headered { mkheader; headerencoding; encoding }
 ;;
 
 let string = function
   | `Fixed u -> String u
   | `UInt32 ->
-    with_uint32_header
+    with_header
+      UInt32
       (fun v -> Ok (Unsigned.UInt32.of_int (String.length v)))
       (fun n -> Ok (String n))
   | `UInt16 ->
-    with_uint16_header
+    with_header
+      UInt16
       (fun v -> Ok (Unsigned.UInt16.of_int (String.length v)))
       (fun n -> Ok (String (Unsigned.UInt32.of_int (Unsigned.UInt16.to_int n))))
   | `UInt8 ->
-    with_uint8_header
+    with_header
+      UInt8
       (fun v -> Ok (Unsigned.UInt8.of_int (String.length v)))
       (fun n -> Ok (String (Unsigned.UInt32.of_int (Unsigned.UInt8.to_int n))))
 ;;
@@ -66,15 +61,18 @@ let string = function
 let bytes = function
   | `Fixed u -> Bytes u
   | `UInt32 ->
-    with_uint32_header
+    with_header
+      UInt32
       (fun v -> Ok (Unsigned.UInt32.of_int (Bytes.length v)))
       (fun n -> Ok (Bytes n))
   | `UInt16 ->
-    with_uint16_header
+    with_header
+      UInt16
       (fun v -> Ok (Unsigned.UInt16.of_int (Bytes.length v)))
       (fun n -> Ok (Bytes (Unsigned.UInt32.of_int (Unsigned.UInt16.to_int n))))
   | `UInt8 ->
-    with_uint8_header
+    with_header
+      UInt8
       (fun v -> Ok (Unsigned.UInt8.of_int (Bytes.length v)))
       (fun n -> Ok (Bytes (Unsigned.UInt32.of_int (Unsigned.UInt8.to_int n))))
 ;;

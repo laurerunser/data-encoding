@@ -41,19 +41,10 @@ val conv
   -> 'b t
   -> 'a t
 
-val with_uint8_header
-  :  ('a -> (Unsigned.UInt8.t, string) result)
-  -> (Unsigned.UInt8.t -> ('a t, string) result)
-  -> 'a t
-
-val with_uint16_header
-  :  ('a -> (Unsigned.UInt16.t, string) result)
-  -> (Unsigned.UInt16.t -> ('a t, string) result)
-  -> 'a t
-
-val with_uint32_header
-  :  ('a -> (Unsigned.UInt32.t, string) result)
-  -> (Unsigned.UInt32.t -> ('a t, string) result)
+val with_header
+  :  'h t
+  -> ('a -> ('h, string) result)
+  -> ('h -> ('a t, string) result)
   -> 'a t
 
 val string : [ `Fixed of Unsigned.UInt32.t | `UInt32 | `UInt16 | `UInt8 ] -> string t
