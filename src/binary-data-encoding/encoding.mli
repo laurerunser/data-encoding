@@ -7,6 +7,7 @@ type _ t =
   | Int32 : int32 t
   | UInt32 : Unsigned.UInt32.t t
   | UInt16 : Unsigned.UInt16.t t
+  | UInt8 : Unsigned.UInt8.t t
   | String : Unsigned.UInt32.t -> string t
   | Bytes : Unsigned.UInt32.t -> bytes t
   | Option : 'a t -> 'a option t
@@ -31,6 +32,7 @@ val uint64 : Unsigned.UInt64.t t
 val int32 : int32 t
 val uint32 : Unsigned.UInt32.t t
 val uint16 : Unsigned.UInt16.t t
+val uint8 : Unsigned.UInt8.t t
 val option : 'a t -> 'a option t
 val string : string t
 val bytes : bytes t

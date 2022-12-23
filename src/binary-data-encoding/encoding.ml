@@ -7,6 +7,7 @@ type _ t =
   | Int32 : int32 t
   | UInt32 : Unsigned.UInt32.t t
   | UInt16 : Unsigned.UInt16.t t
+  | UInt8 : Unsigned.UInt8.t t
   | String : Unsigned.UInt32.t -> string t
   | Bytes : Unsigned.UInt32.t -> bytes t
   | Option : 'a t -> 'a option t
@@ -31,6 +32,7 @@ let uint64 = UInt64
 let int32 = Int32
 let uint32 = UInt32
 let uint16 = UInt16
+let uint8 = UInt8
 let option t = Option t
 
 let string =

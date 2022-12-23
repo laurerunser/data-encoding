@@ -9,6 +9,7 @@ let rec generator_of_encoding
   | Int32 -> QCheck2.Gen.int32
   | UInt32 -> QCheck2.Gen.(map Unsigned.UInt32.of_int32 int32)
   | UInt16 -> QCheck2.Gen.(map Unsigned.UInt16.of_int (0 -- 0xff_ff))
+  | UInt8 -> QCheck2.Gen.(map Unsigned.UInt8.of_int (0 -- 0xff))
   | String n ->
     let n = Unsigned.UInt32.to_int n in
     QCheck2.Gen.(string_size (pure n))
@@ -43,6 +44,7 @@ let rec equal_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> t 
   | Int32 -> Int32.equal
   | UInt32 -> Unsigned.UInt32.equal
   | UInt16 -> Unsigned.UInt16.equal
+  | UInt8 -> Unsigned.UInt8.equal
   | String _ -> String.equal
   | Bytes _ -> Bytes.equal
   | Option t ->
@@ -69,6 +71,7 @@ let rec pp_of_encoding
   | Int32 -> Format.fprintf fmt "%ld" v
   | UInt32 -> Unsigned.UInt32.pp fmt v
   | UInt16 -> Unsigned.UInt16.pp fmt v
+  | UInt8 -> Unsigned.UInt8.pp fmt v
   | String _ -> Format.fprintf fmt "%s" v
   | Bytes _ -> Format.fprintf fmt "%s" (Bytes.unsafe_to_string v)
   | Option t ->

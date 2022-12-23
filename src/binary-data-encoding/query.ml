@@ -7,6 +7,7 @@ let rec size_of : type t. t Encoding.t -> t -> Unsigned.UInt32.t =
   | Int32 -> Unsigned.UInt32.of_int 4
   | UInt32 -> Unsigned.UInt32.of_int 4
   | UInt16 -> Unsigned.UInt32.of_int 2
+  | UInt8 -> Unsigned.UInt32.of_int 1
   | String n -> n
   | Bytes n -> n
   | Option encoding ->
@@ -54,6 +55,7 @@ let rec maximum_size_of : type t. t Encoding.t -> Unsigned.UInt32.t =
   | Int32 -> Unsigned.UInt32.of_int 4
   | UInt32 -> Unsigned.UInt32.of_int 4
   | UInt16 -> Unsigned.UInt32.of_int 2
+  | UInt8 -> Unsigned.UInt32.of_int 1
   | String n -> n
   | Bytes n -> n
   | Option encoding -> Unsigned.UInt32.add Unsigned.UInt32.one (maximum_size_of encoding)
