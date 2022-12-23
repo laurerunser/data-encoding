@@ -44,7 +44,7 @@ let int64 =
 
 let string =
   { json = Json_data_encoding.Encoding.string
-  ; binary = Binary_data_encoding.Encoding.string
+  ; binary = Binary_data_encoding.Encoding.string `UInt32
   }
 ;;
 
@@ -55,7 +55,7 @@ let bytes =
           ~serialisation:Bytes.to_string
           ~deserialisation:(fun s -> Ok (Bytes.of_string s))
           string)
-  ; binary = Binary_data_encoding.Encoding.bytes
+  ; binary = Binary_data_encoding.Encoding.bytes `UInt32
   }
 ;;
 

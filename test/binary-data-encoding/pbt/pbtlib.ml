@@ -81,8 +81,16 @@ let rec pp_of_encoding
       let pp = pp_of_encoding t in
       Format.fprintf fmt "Some(%a)" pp v)
   | Headered { mkheader; headerencoding = _; encoding } ->
-    let pp = pp_of_encoding (encoding (mkheader v)) in
-    Format.fprintf fmt "%a" pp v
+    let ( let* ) = Result.bind in
+    (match
+       let* header = mkheader v in
+       let* encoding = encoding header in
+       Ok encoding
+     with
+    | Ok encoding ->
+      let pp = pp_of_encoding encoding in
+      Format.fprintf fmt "%a" pp v
+    | Error msg -> Format.fprintf fmt "Error: %s" msg)
   | Conv { serialisation; deserialisation = _; encoding } ->
     let pp fmt v = pp_of_encoding encoding fmt (serialisation v) in
     Format.fprintf fmt "conved(%a)" pp v

@@ -12,9 +12,9 @@ type _ t =
   | Bytes : Unsigned.UInt32.t -> bytes t
   | Option : 'a t -> 'a option t
   | Headered :
-      { mkheader : 'a -> 'header
+      { mkheader : 'a -> ('header, string) result
       ; headerencoding : 'header t
-      ; encoding : 'header -> 'a t
+      ; encoding : 'header -> ('a t, string) result
       }
       -> 'a t
   | Conv :
@@ -35,32 +35,48 @@ let uint16 = UInt16
 let uint8 = UInt8
 let option t = Option t
 
-let string =
-  (* TODO: give control over representation of header *)
-  (* TODO: error management *)
-  Headered
-    { mkheader =
-        (fun s ->
-          let l = String.length s in
-          assert (l < 0xff_ff_ff_ff);
-          Unsigned.UInt32.of_int l)
-    ; headerencoding = UInt32
-    ; encoding = (fun i -> String i)
-    }
+let with_uint8_header mkheader encoding =
+  Headered { mkheader; headerencoding = UInt8; encoding }
 ;;
 
-let bytes =
-  (* TODO: give control over representation of header *)
-  (* TODO: error management *)
-  Headered
-    { mkheader =
-        (fun s ->
-          let l = Bytes.length s in
-          assert (l < 0xff_ff_ff_ff);
-          Unsigned.UInt32.of_int l)
-    ; headerencoding = UInt32
-    ; encoding = (fun i -> Bytes i)
-    }
+let with_uint16_header mkheader encoding =
+  Headered { mkheader; headerencoding = UInt16; encoding }
+;;
+
+let with_uint32_header mkheader encoding =
+  Headered { mkheader; headerencoding = UInt32; encoding }
+;;
+
+let string = function
+  | `Fixed u -> String u
+  | `UInt32 ->
+    with_uint32_header
+      (fun v -> Ok (Unsigned.UInt32.of_int (String.length v)))
+      (fun n -> Ok (String n))
+  | `UInt16 ->
+    with_uint16_header
+      (fun v -> Ok (Unsigned.UInt16.of_int (String.length v)))
+      (fun n -> Ok (String (Unsigned.UInt32.of_int (Unsigned.UInt16.to_int n))))
+  | `UInt8 ->
+    with_uint8_header
+      (fun v -> Ok (Unsigned.UInt8.of_int (String.length v)))
+      (fun n -> Ok (String (Unsigned.UInt32.of_int (Unsigned.UInt8.to_int n))))
+;;
+
+let bytes = function
+  | `Fixed u -> Bytes u
+  | `UInt32 ->
+    with_uint32_header
+      (fun v -> Ok (Unsigned.UInt32.of_int (Bytes.length v)))
+      (fun n -> Ok (Bytes n))
+  | `UInt16 ->
+    with_uint16_header
+      (fun v -> Ok (Unsigned.UInt16.of_int (Bytes.length v)))
+      (fun n -> Ok (Bytes (Unsigned.UInt32.of_int (Unsigned.UInt16.to_int n))))
+  | `UInt8 ->
+    with_uint8_header
+      (fun v -> Ok (Unsigned.UInt8.of_int (Bytes.length v)))
+      (fun n -> Ok (Bytes (Unsigned.UInt32.of_int (Unsigned.UInt8.to_int n))))
 ;;
 
 let conv ~serialisation ~deserialisation encoding =

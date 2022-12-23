@@ -1,33 +1,46 @@
-let rec size_of : type t. t Encoding.t -> t -> Unsigned.UInt32.t =
+let ( let* ) = Result.bind
+
+let rec size_of : type t. t Encoding.t -> t -> (Unsigned.UInt32.t, string) result =
  fun encoding v ->
   match encoding with
-  | Unit -> Unsigned.UInt32.zero
-  | Int64 -> Unsigned.UInt32.of_int 8
-  | UInt64 -> Unsigned.UInt32.of_int 8
-  | Int32 -> Unsigned.UInt32.of_int 4
-  | UInt32 -> Unsigned.UInt32.of_int 4
-  | UInt16 -> Unsigned.UInt32.of_int 2
-  | UInt8 -> Unsigned.UInt32.of_int 1
-  | String n -> n
-  | Bytes n -> n
+  | Unit -> Ok Unsigned.UInt32.zero
+  | Int64 -> Ok (Unsigned.UInt32.of_int 8)
+  | UInt64 -> Ok (Unsigned.UInt32.of_int 8)
+  | Int32 -> Ok (Unsigned.UInt32.of_int 4)
+  | UInt32 -> Ok (Unsigned.UInt32.of_int 4)
+  | UInt16 -> Ok (Unsigned.UInt32.of_int 2)
+  | UInt8 -> Ok (Unsigned.UInt32.of_int 1)
+  | String n -> Ok n
+  | Bytes n -> Ok n
   | Option encoding ->
     (match v with
-    | None -> Unsigned.UInt32.one
-    | Some v -> Unsigned.UInt32.add Unsigned.UInt32.one (size_of encoding v))
+    | None -> Ok Unsigned.UInt32.one
+    | Some v ->
+      let* size = size_of encoding v in
+      Ok (Unsigned.UInt32.add Unsigned.UInt32.one size))
   | Headered { mkheader; headerencoding; encoding } ->
-    let header = mkheader v in
-    Unsigned.UInt32.add (size_of headerencoding header) (size_of (encoding header) v)
+    let* header = mkheader v in
+    let* headersize = size_of headerencoding header in
+    let* encoding = encoding header in
+    let* payloadsize = size_of encoding v in
+    Ok (Unsigned.UInt32.add headersize payloadsize)
   | Conv { serialisation; deserialisation = _; encoding } ->
     size_of encoding (serialisation v)
-  | [] -> Unsigned.UInt32.zero
+  | [] -> Ok Unsigned.UInt32.zero
   | ehead :: etail ->
     (match v with
-    | vhead :: vtail -> Unsigned.UInt32.add (size_of ehead vhead) (size_of etail vtail))
+    | vhead :: vtail ->
+      let* shead = size_of ehead vhead in
+      let* stail = size_of etail vtail in
+      Ok (Unsigned.UInt32.add shead stail))
 ;;
 
 let%expect_test _ =
   let w : type a. a Encoding.t -> a -> unit =
-   fun e v -> Format.printf "%d\n" (Unsigned.UInt32.to_int @@ size_of e v)
+   fun e v ->
+    match size_of e v with
+    | Ok s -> Format.printf "%d\n" (Unsigned.UInt32.to_int s)
+    | Error msg -> Format.printf "Error: %s\n" msg
   in
   w Encoding.unit ();
   [%expect {| 0 |}];
@@ -37,8 +50,14 @@ let%expect_test _ =
   [%expect {| 8 |}];
   w Encoding.[ unit; unit; int32; unit; int32 ] [ (); (); 0x00l; (); 0x00l ];
   [%expect {| 8 |}];
-  w Encoding.[ string; unit ] [ "FOO"; () ];
+  w Encoding.[ string `UInt32; unit ] [ "FOO"; () ];
   [%expect {| 7 |}];
+  w Encoding.[ string `UInt16; unit ] [ "FOO"; () ];
+  [%expect {| 5 |}];
+  w Encoding.[ string `UInt8; unit ] [ "FOO"; () ];
+  [%expect {| 4 |}];
+  w Encoding.[ string (`Fixed (Unsigned.UInt32.of_int 3)); unit ] [ "FOO"; () ];
+  [%expect {| 3 |}];
   w Encoding.(option int32) None;
   [%expect {| 1 |}];
   w Encoding.(option int32) (Some 0xff_ffl);

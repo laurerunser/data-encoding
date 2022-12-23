@@ -12,9 +12,9 @@ type _ t =
   | Bytes : Unsigned.UInt32.t -> bytes t
   | Option : 'a t -> 'a option t
   | Headered :
-      { mkheader : 'a -> 'header
+      { mkheader : 'a -> ('header, string) result
       ; headerencoding : 'header t
-      ; encoding : 'header -> 'a t
+      ; encoding : 'header -> ('a t, string) result
       }
       -> 'a t
   | Conv :
@@ -34,11 +34,27 @@ val uint32 : Unsigned.UInt32.t t
 val uint16 : Unsigned.UInt16.t t
 val uint8 : Unsigned.UInt8.t t
 val option : 'a t -> 'a option t
-val string : string t
-val bytes : bytes t
 
 val conv
   :  serialisation:('a -> 'b)
   -> deserialisation:('b -> ('a, string) result)
   -> 'b t
   -> 'a t
+
+val with_uint8_header
+  :  ('a -> (Unsigned.UInt8.t, string) result)
+  -> (Unsigned.UInt8.t -> ('a t, string) result)
+  -> 'a t
+
+val with_uint16_header
+  :  ('a -> (Unsigned.UInt16.t, string) result)
+  -> (Unsigned.UInt16.t -> ('a t, string) result)
+  -> 'a t
+
+val with_uint32_header
+  :  ('a -> (Unsigned.UInt32.t, string) result)
+  -> (Unsigned.UInt32.t -> ('a t, string) result)
+  -> 'a t
+
+val string : [ `Fixed of Unsigned.UInt32.t | `UInt32 | `UInt16 | `UInt8 ] -> string t
+val bytes : [ `Fixed of Unsigned.UInt32.t | `UInt32 | `UInt16 | `UInt8 ] -> bytes t
