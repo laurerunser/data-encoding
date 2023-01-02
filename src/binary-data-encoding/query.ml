@@ -18,7 +18,7 @@ let rec size_of : type t. t Encoding.t -> t -> (Optint.t, string) result =
     | Some v ->
       let* size = size_of encoding v in
       Ok (Optint.add Optint.one size))
-  | Headered { mkheader; headerencoding; encoding } ->
+  | Headered { mkheader; headerencoding; encoding; equal = _ } ->
     let* header = mkheader v in
     let* headersize = size_of headerencoding header in
     let* encoding = encoding header in

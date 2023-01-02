@@ -15,6 +15,7 @@ type _ t =
       { mkheader : 'a -> ('header, string) result
       ; headerencoding : 'header t
       ; encoding : 'header -> ('a t, string) result
+      ; equal : 'a -> 'a -> bool
       }
       -> 'a t
   | Conv :
@@ -35,8 +36,8 @@ let uint16 = UInt16
 let uint8 = UInt8
 let option t = Option t
 
-let with_header headerencoding mkheader encoding =
-  Headered { mkheader; headerencoding; encoding }
+let with_header headerencoding mkheader encoding equal =
+  Headered { mkheader; headerencoding; encoding; equal }
 ;;
 
 let string = function
@@ -46,16 +47,19 @@ let string = function
       UInt32
       (fun v -> Ok (Stdint.Uint32.of_int (String.length v)))
       (fun n -> Ok (String n))
+      String.equal
   | `UInt16 ->
     with_header
       UInt16
       (fun v -> Ok (Stdint.Uint16.of_int (String.length v)))
       (fun n -> Ok (String (Stdint.Uint32.of_int (Stdint.Uint16.to_int n))))
+      String.equal
   | `UInt8 ->
     with_header
       UInt8
       (fun v -> Ok (Stdint.Uint8.of_int (String.length v)))
       (fun n -> Ok (String (Stdint.Uint32.of_int (Stdint.Uint8.to_int n))))
+      String.equal
 ;;
 
 let bytes = function
@@ -65,16 +69,19 @@ let bytes = function
       UInt32
       (fun v -> Ok (Stdint.Uint32.of_int (Bytes.length v)))
       (fun n -> Ok (Bytes n))
+      Bytes.equal
   | `UInt16 ->
     with_header
       UInt16
       (fun v -> Ok (Stdint.Uint16.of_int (Bytes.length v)))
       (fun n -> Ok (Bytes (Stdint.Uint32.of_int (Stdint.Uint16.to_int n))))
+      Bytes.equal
   | `UInt8 ->
     with_header
       UInt8
       (fun v -> Ok (Stdint.Uint8.of_int (Bytes.length v)))
       (fun n -> Ok (Bytes (Stdint.Uint32.of_int (Stdint.Uint8.to_int n))))
+      Bytes.equal
 ;;
 
 let conv ~serialisation ~deserialisation encoding =

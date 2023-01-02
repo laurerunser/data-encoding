@@ -50,7 +50,7 @@ let rec equal_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> t 
   | Option t ->
     let t = equal_of_encoding t in
     Option.equal t
-  | Headered _ -> failwith "TODO"
+  | Headered { mkheader = _; headerencoding = _; encoding = _; equal } -> equal
   | Conv { serialisation; deserialisation = _; encoding } ->
     fun x y -> (equal_of_encoding encoding) (serialisation x) (serialisation y)
   | [] -> fun [] [] -> true
@@ -80,7 +80,7 @@ let rec pp_of_encoding
     | Some v ->
       let pp = pp_of_encoding t in
       Format.fprintf fmt "Some(%a)" pp v)
-  | Headered { mkheader; headerencoding = _; encoding } ->
+  | Headered { mkheader; headerencoding = _; encoding; equal = _ } ->
     let ( let* ) = Result.bind in
     (match
        let* header = mkheader v in

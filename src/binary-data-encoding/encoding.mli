@@ -15,6 +15,7 @@ type _ t =
       { mkheader : 'a -> ('header, string) result
       ; headerencoding : 'header t
       ; encoding : 'header -> ('a t, string) result
+      ; equal : 'a -> 'a -> bool
       }
       -> 'a t
   | Conv :
@@ -45,6 +46,7 @@ val with_header
   :  'h t
   -> ('a -> ('h, string) result)
   -> ('h -> ('a t, string) result)
+  -> ('a -> 'a -> bool)
   -> 'a t
 
 val string : [ `Fixed of Stdint.Uint32.t | `UInt32 | `UInt16 | `UInt8 ] -> string t
