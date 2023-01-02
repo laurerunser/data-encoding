@@ -49,7 +49,6 @@ let string = function
       UInt32
       (fun v ->
         let len = String.length v in
-        (*TODO: handle 32bit architectures too *)
         if len > Stdint.Uint32.(to_int max_int)
         then Error "String larger than header-size can encode"
         else Ok (Stdint.Uint32.of_int len))
@@ -84,7 +83,6 @@ let bytes = function
       UInt32
       (fun v ->
         let len = Bytes.length v in
-        (*TODO: handle 32bit architectures too *)
         if len > Stdint.Uint32.(to_int max_int)
         then Error "Bytes larger than header-size can encode"
         else Ok (Stdint.Uint32.of_int len))
