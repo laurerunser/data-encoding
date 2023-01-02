@@ -8,6 +8,9 @@ let testables =
   ; AnyE ("ui32", Binary_data_encoding.Encoding.uint32)
   ; AnyE ("ui8", Binary_data_encoding.Encoding.uint8)
   ; AnyE ("i64,opt(i32)", Binary_data_encoding.Encoding.[ int64; option int32 ])
+  ; AnyE ("str[ui8]", Binary_data_encoding.Encoding.string `UInt8)
+  ; AnyE
+      ("str[10]", Binary_data_encoding.Encoding.string (`Fixed (Stdint.Uint32.of_int 10)))
   ]
 ;;
 

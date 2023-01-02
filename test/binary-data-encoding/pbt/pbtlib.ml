@@ -25,7 +25,15 @@ let rec generator_of_encoding
   | Option t ->
     let t = generator_of_encoding t in
     QCheck2.Gen.option t
-  | Headered _ -> failwith "TODO"
+  | Headered { mkheader; headerencoding; encoding; equal = _ } ->
+    let headert = generator_of_encoding headerencoding in
+    QCheck2.Gen.bind headert (fun header ->
+        let* payloadencoding = encoding header in
+        QCheck2.Gen.map
+          (fun payload ->
+            QCheck2.assume (Result.is_ok (mkheader payload));
+            payload)
+          (generator_of_encoding payloadencoding))
   | Conv { serialisation = _; deserialisation; encoding } ->
     let t = generator_of_encoding encoding in
     QCheck2.Gen.map

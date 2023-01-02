@@ -45,19 +45,32 @@ let string = function
   | `UInt32 ->
     with_header
       UInt32
-      (fun v -> Ok (Stdint.Uint32.of_int (String.length v)))
+      (fun v ->
+        let len = String.length v in
+        (*TODO: handle 32bit architectures too *)
+        if len > Stdint.Uint32.(to_int max_int)
+        then Error "String larger than header-size can encode"
+        else Ok (Stdint.Uint32.of_int len))
       (fun n -> Ok (String n))
       String.equal
   | `UInt16 ->
     with_header
       UInt16
-      (fun v -> Ok (Stdint.Uint16.of_int (String.length v)))
+      (fun v ->
+        let len = String.length v in
+        if len > Stdint.Uint16.(to_int max_int)
+        then Error "String larger than header-size can encode"
+        else Ok (Stdint.Uint16.of_int len))
       (fun n -> Ok (String (Stdint.Uint32.of_int (Stdint.Uint16.to_int n))))
       String.equal
   | `UInt8 ->
     with_header
       UInt8
-      (fun v -> Ok (Stdint.Uint8.of_int (String.length v)))
+      (fun v ->
+        let len = String.length v in
+        if len > Stdint.Uint8.(to_int max_int)
+        then Error "String larger than header-size can encode"
+        else Ok (Stdint.Uint8.of_int len))
       (fun n -> Ok (String (Stdint.Uint32.of_int (Stdint.Uint8.to_int n))))
       String.equal
 ;;
@@ -67,19 +80,32 @@ let bytes = function
   | `UInt32 ->
     with_header
       UInt32
-      (fun v -> Ok (Stdint.Uint32.of_int (Bytes.length v)))
+      (fun v ->
+        let len = Bytes.length v in
+        (*TODO: handle 32bit architectures too *)
+        if len > Stdint.Uint32.(to_int max_int)
+        then Error "Bytes larger than header-size can encode"
+        else Ok (Stdint.Uint32.of_int len))
       (fun n -> Ok (Bytes n))
       Bytes.equal
   | `UInt16 ->
     with_header
       UInt16
-      (fun v -> Ok (Stdint.Uint16.of_int (Bytes.length v)))
+      (fun v ->
+        let len = Bytes.length v in
+        if len > Stdint.Uint16.(to_int max_int)
+        then Error "Bytes larger than header-size can encode"
+        else Ok (Stdint.Uint16.of_int len))
       (fun n -> Ok (Bytes (Stdint.Uint32.of_int (Stdint.Uint16.to_int n))))
       Bytes.equal
   | `UInt8 ->
     with_header
       UInt8
-      (fun v -> Ok (Stdint.Uint8.of_int (Bytes.length v)))
+      (fun v ->
+        let len = Bytes.length v in
+        if len > Stdint.Uint8.(to_int max_int)
+        then Error "Bytes larger than header-size can encode"
+        else Ok (Stdint.Uint8.of_int len))
       (fun n -> Ok (Bytes (Stdint.Uint32.of_int (Stdint.Uint8.to_int n))))
       Bytes.equal
 ;;
