@@ -3,13 +3,13 @@ module Hlist = Commons.Hlist
 type _ t =
   | Unit : unit t
   | Int64 : int64 t
-  | UInt64 : Unsigned.UInt64.t t
+  | UInt64 : Stdint.Uint64.t t
   | Int32 : int32 t
-  | UInt32 : Unsigned.UInt32.t t
-  | UInt16 : Unsigned.UInt16.t t
-  | UInt8 : Unsigned.UInt8.t t
-  | String : Unsigned.UInt32.t -> string t
-  | Bytes : Unsigned.UInt32.t -> bytes t
+  | UInt32 : Stdint.Uint32.t t
+  | UInt16 : Stdint.Uint16.t t
+  | UInt8 : Stdint.Uint8.t t
+  | String : Stdint.Uint32.t -> string t
+  | Bytes : Stdint.Uint32.t -> bytes t
   | Option : 'a t -> 'a option t
   | Headered :
       { mkheader : 'a -> ('header, string) result
@@ -44,18 +44,18 @@ let string = function
   | `UInt32 ->
     with_header
       UInt32
-      (fun v -> Ok (Unsigned.UInt32.of_int (String.length v)))
+      (fun v -> Ok (Stdint.Uint32.of_int (String.length v)))
       (fun n -> Ok (String n))
   | `UInt16 ->
     with_header
       UInt16
-      (fun v -> Ok (Unsigned.UInt16.of_int (String.length v)))
-      (fun n -> Ok (String (Unsigned.UInt32.of_int (Unsigned.UInt16.to_int n))))
+      (fun v -> Ok (Stdint.Uint16.of_int (String.length v)))
+      (fun n -> Ok (String (Stdint.Uint32.of_int (Stdint.Uint16.to_int n))))
   | `UInt8 ->
     with_header
       UInt8
-      (fun v -> Ok (Unsigned.UInt8.of_int (String.length v)))
-      (fun n -> Ok (String (Unsigned.UInt32.of_int (Unsigned.UInt8.to_int n))))
+      (fun v -> Ok (Stdint.Uint8.of_int (String.length v)))
+      (fun n -> Ok (String (Stdint.Uint32.of_int (Stdint.Uint8.to_int n))))
 ;;
 
 let bytes = function
@@ -63,18 +63,18 @@ let bytes = function
   | `UInt32 ->
     with_header
       UInt32
-      (fun v -> Ok (Unsigned.UInt32.of_int (Bytes.length v)))
+      (fun v -> Ok (Stdint.Uint32.of_int (Bytes.length v)))
       (fun n -> Ok (Bytes n))
   | `UInt16 ->
     with_header
       UInt16
-      (fun v -> Ok (Unsigned.UInt16.of_int (Bytes.length v)))
-      (fun n -> Ok (Bytes (Unsigned.UInt32.of_int (Unsigned.UInt16.to_int n))))
+      (fun v -> Ok (Stdint.Uint16.of_int (Bytes.length v)))
+      (fun n -> Ok (Bytes (Stdint.Uint32.of_int (Stdint.Uint16.to_int n))))
   | `UInt8 ->
     with_header
       UInt8
-      (fun v -> Ok (Unsigned.UInt8.of_int (Bytes.length v)))
-      (fun n -> Ok (Bytes (Unsigned.UInt32.of_int (Unsigned.UInt8.to_int n))))
+      (fun v -> Ok (Stdint.Uint8.of_int (Bytes.length v)))
+      (fun n -> Ok (Bytes (Stdint.Uint32.of_int (Stdint.Uint8.to_int n))))
 ;;
 
 let conv ~serialisation ~deserialisation encoding =

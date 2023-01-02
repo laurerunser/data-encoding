@@ -3,13 +3,13 @@ module Hlist = Commons.Hlist
 type _ t =
   | Unit : unit t
   | Int64 : int64 t
-  | UInt64 : Unsigned.UInt64.t t
+  | UInt64 : Stdint.Uint64.t t
   | Int32 : int32 t
-  | UInt32 : Unsigned.UInt32.t t
-  | UInt16 : Unsigned.UInt16.t t
-  | UInt8 : Unsigned.UInt8.t t
-  | String : Unsigned.UInt32.t -> string t
-  | Bytes : Unsigned.UInt32.t -> bytes t
+  | UInt32 : Stdint.Uint32.t t
+  | UInt16 : Stdint.Uint16.t t
+  | UInt8 : Stdint.Uint8.t t
+  | String : Stdint.Uint32.t -> string t
+  | Bytes : Stdint.Uint32.t -> bytes t
   | Option : 'a t -> 'a option t
   | Headered :
       { mkheader : 'a -> ('header, string) result
@@ -28,11 +28,11 @@ type _ t =
 
 val unit : unit t
 val int64 : int64 t
-val uint64 : Unsigned.UInt64.t t
+val uint64 : Stdint.Uint64.t t
 val int32 : int32 t
-val uint32 : Unsigned.UInt32.t t
-val uint16 : Unsigned.UInt16.t t
-val uint8 : Unsigned.UInt8.t t
+val uint32 : Stdint.Uint32.t t
+val uint16 : Stdint.Uint16.t t
+val uint8 : Stdint.Uint8.t t
 val option : 'a t -> 'a option t
 
 val conv
@@ -47,5 +47,5 @@ val with_header
   -> ('h -> ('a t, string) result)
   -> 'a t
 
-val string : [ `Fixed of Unsigned.UInt32.t | `UInt32 | `UInt16 | `UInt8 ] -> string t
-val bytes : [ `Fixed of Unsigned.UInt32.t | `UInt32 | `UInt16 | `UInt8 ] -> bytes t
+val string : [ `Fixed of Stdint.Uint32.t | `UInt32 | `UInt16 | `UInt8 ] -> string t
+val bytes : [ `Fixed of Stdint.Uint32.t | `UInt32 | `UInt16 | `UInt8 ] -> bytes t

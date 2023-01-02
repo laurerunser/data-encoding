@@ -5,16 +5,16 @@ let rec generator_of_encoding
   match encoding with
   | Unit -> QCheck2.Gen.unit
   | Int64 -> QCheck2.Gen.int64
-  | UInt64 -> QCheck2.Gen.(map Unsigned.UInt64.of_int64 int64)
+  | UInt64 -> QCheck2.Gen.(map Stdint.Uint64.of_int64 int64)
   | Int32 -> QCheck2.Gen.int32
-  | UInt32 -> QCheck2.Gen.(map Unsigned.UInt32.of_int32 int32)
-  | UInt16 -> QCheck2.Gen.(map Unsigned.UInt16.of_int (0 -- 0xff_ff))
-  | UInt8 -> QCheck2.Gen.(map Unsigned.UInt8.of_int (0 -- 0xff))
+  | UInt32 -> QCheck2.Gen.(map Stdint.Uint32.of_int32 int32)
+  | UInt16 -> QCheck2.Gen.(map Stdint.Uint16.of_int (0 -- 0xff_ff))
+  | UInt8 -> QCheck2.Gen.(map Stdint.Uint8.of_int (0 -- 0xff))
   | String n ->
-    let n = Unsigned.UInt32.to_int n in
+    let n = Stdint.Uint32.to_int n in
     QCheck2.Gen.(string_size (pure n))
   | Bytes n ->
-    let n = Unsigned.UInt32.to_int n in
+    let n = Stdint.Uint32.to_int n in
     QCheck2.Gen.(map Bytes.unsafe_of_string (string_size (pure n)))
   | Option t ->
     let t = generator_of_encoding t in
@@ -40,11 +40,11 @@ let rec equal_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> t 
   match encoding with
   | Unit -> Unit.equal
   | Int64 -> Int64.equal
-  | UInt64 -> Unsigned.UInt64.equal
+  | UInt64 -> fun a b -> Stdint.Uint64.compare a b = 0
   | Int32 -> Int32.equal
-  | UInt32 -> Unsigned.UInt32.equal
-  | UInt16 -> Unsigned.UInt16.equal
-  | UInt8 -> Unsigned.UInt8.equal
+  | UInt32 -> fun a b -> Stdint.Uint32.compare a b = 0
+  | UInt16 -> fun a b -> Stdint.Uint16.compare a b = 0
+  | UInt8 -> fun a b -> Stdint.Uint8.compare a b = 0
   | String _ -> String.equal
   | Bytes _ -> Bytes.equal
   | Option t ->
@@ -67,11 +67,11 @@ let rec pp_of_encoding
   match encoding with
   | Unit -> Format.fprintf fmt "()"
   | Int64 -> Format.fprintf fmt "%Ld" v
-  | UInt64 -> Unsigned.UInt64.pp fmt v
+  | UInt64 -> Stdint.Uint64.printer fmt v
   | Int32 -> Format.fprintf fmt "%ld" v
-  | UInt32 -> Unsigned.UInt32.pp fmt v
-  | UInt16 -> Unsigned.UInt16.pp fmt v
-  | UInt8 -> Unsigned.UInt8.pp fmt v
+  | UInt32 -> Stdint.Uint32.printer fmt v
+  | UInt16 -> Stdint.Uint16.printer fmt v
+  | UInt8 -> Stdint.Uint8.printer fmt v
   | String _ -> Format.fprintf fmt "%s" v
   | Bytes _ -> Format.fprintf fmt "%s" (Bytes.unsafe_to_string v)
   | Option t ->
