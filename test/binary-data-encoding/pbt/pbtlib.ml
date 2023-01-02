@@ -123,7 +123,7 @@ let to_test : type t. string -> t Binary_data_encoding.Encoding.t -> QCheck2.Tes
   let print = print_of_encoding encoding in
   let offset = 0 in
   (* TODO: adapt length to encoding *)
-  let length = 100 in
+  let length = 1024 in
   let dst = Bytes.make length '\x00' in
   QCheck2.Test.make ~name ~print generator (fun v ->
       let* written_length =
