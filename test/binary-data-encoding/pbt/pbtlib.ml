@@ -1,3 +1,9 @@
+let ( let* ) x f =
+  match x with
+  | Error msg -> failwith msg
+  | Ok x -> f x
+;;
+
 let rec generator_of_encoding
     : type t. t Binary_data_encoding.Encoding.t -> t QCheck2.Gen.t
   =
@@ -24,9 +30,8 @@ let rec generator_of_encoding
     let t = generator_of_encoding encoding in
     QCheck2.Gen.map
       (fun v ->
-        match deserialisation v with
-        | Error msg -> failwith msg
-        | Ok v -> v)
+        let* v = deserialisation v in
+        v)
       t
   | [] -> QCheck2.Gen.pure Commons.Hlist.[]
   | head :: tail ->
