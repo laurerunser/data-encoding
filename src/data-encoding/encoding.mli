@@ -30,6 +30,7 @@ and _ field =
 [@@@warning "+30"]
 
 val unit : unit t
+val bool : bool t
 val int64 : int64 t
 val string : string t
 val bytes : bytes t

@@ -4,6 +4,7 @@ let all_ground_encodings : any_encoding Seq.t =
   let open Binary_data_encoding.Encoding in
   List.to_seq
     [ AnyE ("unit", unit)
+    ; AnyE ("bool", bool)
     ; AnyE ("i64", int64)
     ; AnyE ("ui64", uint64)
     ; AnyE ("i32", int32)

@@ -4,6 +4,7 @@ let rec construct : type a. a Encoding.t -> a -> (JSON.t, string) result =
   | Unit ->
     assert (v = ());
     Ok (`O [])
+  | Bool -> Ok (`Bool v)
   | Int64 -> Ok (`String (Int64.to_string v))
   | String -> Ok (`String v) (* TODO check utf8 *)
   | Tuple t -> construct_tuple t v
@@ -101,6 +102,10 @@ let rec destruct : type a. a Encoding.t -> JSON.t -> (a, string) result =
     (match json with
     | `O [] -> Ok ()
     | other -> Error (Format.asprintf "Expected {}, got %a" PP.shape other))
+  | Bool ->
+    (match json with
+    | `Bool b -> Ok b
+    | other -> Error (Format.asprintf "Expected bool, got %a" PP.shape other))
   | Int64 ->
     (match json with
     | `String s ->

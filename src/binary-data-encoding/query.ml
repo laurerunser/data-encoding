@@ -4,6 +4,7 @@ let rec size_of : type t. t Encoding.t -> t -> (Optint.t, string) result =
  fun encoding v ->
   match encoding with
   | Unit -> Ok Optint.zero
+  | Bool -> Ok Optint.one
   | Int64 -> Ok (Optint.of_int 8)
   | UInt64 -> Ok (Optint.of_int 8)
   | Int32 -> Ok (Optint.of_int 4)
@@ -69,6 +70,7 @@ let rec maximum_size_of : type t. t Encoding.t -> Optint.t =
  fun encoding ->
   match encoding with
   | Unit -> Optint.zero
+  | Bool -> Optint.one
   | Int64 -> Optint.of_int 8
   | UInt64 -> Optint.of_int 8
   | Int32 -> Optint.of_int 4

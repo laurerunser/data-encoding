@@ -3,6 +3,7 @@ let rec generator_of_encoding : type t. t Json_data_encoding.Encoding.t -> t QCh
  fun encoding ->
   match encoding with
   | Unit -> QCheck2.Gen.unit
+  | Bool -> QCheck2.Gen.bool
   | Int64 -> QCheck2.Gen.int64
   | String -> QCheck2.Gen.(string_size (0 -- 10))
   | Tuple t -> generator_of_encoding_tuple t
@@ -45,6 +46,7 @@ let rec equal_of_encoding : type t. t Json_data_encoding.Encoding.t -> t -> t ->
  fun encoding ->
   match encoding with
   | Unit -> Unit.equal
+  | Bool -> Bool.equal
   | Int64 -> Int64.equal
   | String -> String.equal
   | Tuple t -> equal_of_encoding_tuple t

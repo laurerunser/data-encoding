@@ -36,6 +36,10 @@ let unit =
   { json = Json_data_encoding.Encoding.unit; binary = Binary_data_encoding.Encoding.unit }
 ;;
 
+let bool =
+  { json = Json_data_encoding.Encoding.bool; binary = Binary_data_encoding.Encoding.bool }
+;;
+
 let int64 =
   { json = Json_data_encoding.Encoding.int64
   ; binary = Binary_data_encoding.Encoding.int64

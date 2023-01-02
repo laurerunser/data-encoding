@@ -2,6 +2,7 @@ module Hlist = Commons.Hlist
 
 type _ t =
   | Unit : unit t
+  | Bool : bool t
   | Int64 : int64 t
   | UInt64 : Stdint.Uint64.t t
   | Int32 : int32 t
@@ -28,6 +29,7 @@ type _ t =
   | ( :: ) : 'a t * 'b Hlist.t t -> ('a * 'b) Hlist.t t
 
 let unit = Unit
+let bool = Bool
 let int64 = Int64
 let uint64 = UInt64
 let int32 = Int32

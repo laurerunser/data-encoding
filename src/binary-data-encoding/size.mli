@@ -6,3 +6,5 @@ val int32 : t
 val uint32 : t
 val uint16 : t
 val uint8 : t
+val bool : t
+val unit : t

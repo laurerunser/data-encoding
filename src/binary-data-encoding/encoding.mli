@@ -2,6 +2,7 @@ module Hlist = Commons.Hlist
 
 type _ t =
   | Unit : unit t
+  | Bool : bool t
   | Int64 : int64 t
   | UInt64 : Stdint.Uint64.t t
   | Int32 : int32 t
@@ -28,6 +29,7 @@ type _ t =
   | ( :: ) : 'a t * 'b Hlist.t t -> ('a * 'b) Hlist.t t
 
 val unit : unit t
+val bool : bool t
 val int64 : int64 t
 val uint64 : Stdint.Uint64.t t
 val int32 : int32 t

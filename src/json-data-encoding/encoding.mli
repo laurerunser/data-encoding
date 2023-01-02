@@ -4,6 +4,7 @@ module Hlist = Commons.Hlist
 
 type _ t =
   | Unit : unit t
+  | Bool : bool t
   | Int64 : int64 t
   | String : string t
   | Tuple : 'a tuple -> 'a t
@@ -38,6 +39,7 @@ and _ field =
 [@@@warning "+30"]
 
 val unit : unit t
+val bool : bool t
 val int64 : int64 t
 val string : string t
 val tuple : 'a tuple -> 'a t

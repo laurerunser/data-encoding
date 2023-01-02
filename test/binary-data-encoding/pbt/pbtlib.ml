@@ -10,6 +10,7 @@ let rec generator_of_encoding
  fun encoding ->
   match encoding with
   | Unit -> QCheck2.Gen.unit
+  | Bool -> QCheck2.Gen.bool
   | Int64 -> QCheck2.Gen.int64
   | UInt64 -> QCheck2.Gen.(map Stdint.Uint64.of_int64 int64)
   | Int32 -> QCheck2.Gen.int32
@@ -52,6 +53,7 @@ let rec equal_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> t 
  fun encoding ->
   match encoding with
   | Unit -> Unit.equal
+  | Bool -> Bool.equal
   | Int64 -> Int64.equal
   | UInt64 -> fun a b -> Stdint.Uint64.compare a b = 0
   | Int32 -> Int32.equal
@@ -79,6 +81,7 @@ let rec pp_of_encoding
  fun encoding fmt v ->
   match encoding with
   | Unit -> Format.fprintf fmt "()"
+  | Bool -> Format.fprintf fmt "%b" v
   | Int64 -> Format.fprintf fmt "%Ld" v
   | UInt64 -> Stdint.Uint64.printer fmt v
   | Int32 -> Format.fprintf fmt "%ld" v
