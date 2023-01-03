@@ -18,6 +18,7 @@ module Uint30 : sig
   val to_uint62 : t -> Uint62.t
   val set_be : bytes -> int -> t -> unit
   val get_be : bytes -> int -> t
+  val get_be_string : string -> int -> t
 end
 
 module Uint16 : sig
@@ -29,6 +30,7 @@ module Uint16 : sig
   val to_uint62 : t -> Uint62.t
   val set_be : bytes -> int -> t -> unit
   val get_be : bytes -> int -> t
+  val get_be_string : string -> int -> t
 end
 
 module Uint8 : sig
@@ -42,4 +44,5 @@ module Uint8 : sig
   val to_uint62 : t -> Uint62.t
   val set : bytes -> int -> t -> unit
   val get : bytes -> int -> t
+  val get_string : string -> int -> t
 end
