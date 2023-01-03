@@ -3,7 +3,7 @@ let rec construct : type a. a Encoding.t -> a -> (JSON.t, string) result =
   match encoding with
   | Unit ->
     assert (v = ());
-    Ok (`O [])
+    Ok (`O Seq.empty)
   | Bool -> Ok (`Bool v)
   | Int64 -> Ok (`String (Int64.to_string v))
   | String -> Ok (`String v) (* TODO check utf8 *)
@@ -16,7 +16,7 @@ let rec construct : type a. a Encoding.t -> a -> (JSON.t, string) result =
 and construct_tuple : type a. a Encoding.tuple -> a -> (JSON.t, string) result =
  fun encoding v ->
   match encoding with
-  | [] -> Ok (`A [])
+  | [] -> Ok (`A Seq.empty)
   | t :: ts ->
     let (v :: vs) = v in
     (match construct t v with
@@ -24,13 +24,13 @@ and construct_tuple : type a. a Encoding.tuple -> a -> (JSON.t, string) result =
     | Ok json ->
       (match construct_tuple ts vs with
       | Error _ as err -> err
-      | Ok (`A jsons) -> Ok (`A (json :: jsons))
+      | Ok (`A jsons) -> Ok (`A (Seq.cons json jsons))
       | Ok _ -> assert false))
 
 and construct_obj : type a. a Encoding.obj -> a -> (JSON.t, string) result =
  fun encoding v ->
   match encoding with
-  | [] -> Ok (`O [])
+  | [] -> Ok (`O Seq.empty)
   | Req { encoding = t; name } :: ts ->
     let (v :: vs) = v in
     (match construct t v with
@@ -38,7 +38,7 @@ and construct_obj : type a. a Encoding.obj -> a -> (JSON.t, string) result =
     | Ok json ->
       (match construct_obj ts vs with
       | Error _ as err -> err
-      | Ok (`O jsons) -> Ok (`O ((name, json) :: jsons))
+      | Ok (`O jsons) -> Ok (`O (Seq.cons (name, json) jsons))
       | Ok _ -> assert false))
   | Opt { encoding = t; name } :: ts ->
     let (v :: vs) = v in
@@ -50,7 +50,7 @@ and construct_obj : type a. a Encoding.obj -> a -> (JSON.t, string) result =
       | Ok json ->
         (match construct_obj ts vs with
         | Error _ as err -> err
-        | Ok (`O jsons) -> Ok (`O ((name, json) :: jsons))
+        | Ok (`O jsons) -> Ok (`O (Seq.cons (name, json) jsons))
         | Ok _ -> assert false)))
 ;;
 
@@ -100,7 +100,7 @@ let rec destruct : type a. a Encoding.t -> JSON.t -> (a, string) result =
   match encoding with
   | Unit ->
     (match json with
-    | `O [] -> Ok ()
+    | `O seq when Seq.is_empty seq -> Ok ()
     | other -> Error (Format.asprintf "Expected {}, got %a" PP.shape other))
   | Bool ->
     (match json with
@@ -129,17 +129,20 @@ and destruct_tuple : type a. a Encoding.tuple -> JSON.t -> (a, string) result =
   match encoding with
   | [] ->
     (match json with
-    | `A [] -> Ok []
+    | `A seq when Seq.is_empty seq -> Ok []
     | other -> Error (Format.asprintf "Expected [], got %a" PP.shape other))
   | t :: ts ->
     (match json with
-    | `A (json :: jsons) ->
-      (match destruct t json with
-      | Error _ as err -> err
-      | Ok v ->
-        (match destruct_tuple ts (`A jsons) with
+    | `A seq ->
+      (match Seq.uncons seq with
+      | Some (json, jsons) ->
+        (match destruct t json with
         | Error _ as err -> err
-        | Ok vs -> Ok (v :: vs)))
+        | Ok v ->
+          (match destruct_tuple ts (`A jsons) with
+          | Error _ as err -> err
+          | Ok vs -> Ok (v :: vs)))
+      | None -> Error (Format.asprintf "Expected [..], got %a" PP.shape json))
     | other -> Error (Format.asprintf "Expected [..], got %a" PP.shape other))
 
 and destruct_obj : type a. a Encoding.obj -> JSON.t -> (a, string) result =
@@ -147,45 +150,49 @@ and destruct_obj : type a. a Encoding.obj -> JSON.t -> (a, string) result =
   match encoding with
   | [] ->
     (match json with
-    | `O [] -> Ok []
+    | `O seq when Seq.is_empty seq -> Ok []
     | other ->
       (* TODO: control what to do with left-over fields *)
       Error (Format.asprintf "Expected {}, got %a" PP.shape other))
   | Req { encoding = t; name } :: ts ->
     (match json with
-    | `O ((namename, json) :: jsons) ->
-      if not (String.equal name namename)
-      then
-        (* TODO: support out-of-order fields *)
-        Error (Format.asprintf "Expected field {%S:…}, got {%S:…}" name namename)
-      else (
-        match destruct t json with
-        | Error _ as err -> err
-        | Ok v ->
-          (match destruct_obj ts (`O jsons) with
+    | `O seq ->
+      (match Seq.uncons seq with
+      | Some ((namename, json), jsons) ->
+        if not (String.equal name namename)
+        then
+          (* TODO: support out-of-order fields *)
+          Error (Format.asprintf "Expected field {%S:…}, got {%S:…}" name namename)
+        else (
+          match destruct t json with
           | Error _ as err -> err
-          | Ok vs -> Ok (v :: vs)))
-    | `O [] -> Error (Format.asprintf "Expected field {%S:…}, got {}" name)
+          | Ok v ->
+            (match destruct_obj ts (`O jsons) with
+            | Error _ as err -> err
+            | Ok vs -> Ok (v :: vs)))
+      | None -> Error (Format.asprintf "Expected field {%S:…}, got {}" name))
     | other -> Error (Format.asprintf "Expected {..}, got %a" PP.shape other))
   | Opt { encoding = t; name } :: ts ->
     (match json with
-    | `O [] ->
-      (match destruct_obj ts (`O []) with
-      | Error _ as err -> err
-      | Ok vs -> Ok (None :: vs))
-    | `O ((namename, json) :: jsons) ->
-      if not (String.equal name namename)
-      then (
-        (* TODO: support out-of-order fields *)
-        match destruct_obj ts (`O jsons) with
+    | `O seq ->
+      (match Seq.uncons seq with
+      | None ->
+        (match destruct_obj ts (`O Seq.empty) with
         | Error _ as err -> err
         | Ok vs -> Ok (None :: vs))
-      else (
-        match destruct t json with
-        | Error _ as err -> err
-        | Ok v ->
-          (match destruct_obj ts (`O jsons) with
+      | Some ((namename, json), jsons) ->
+        if not (String.equal name namename)
+        then (
+          (* TODO: support out-of-order fields *)
+          match destruct_obj ts (`O jsons) with
           | Error _ as err -> err
-          | Ok vs -> Ok (Some v :: vs)))
+          | Ok vs -> Ok (None :: vs))
+        else (
+          match destruct t json with
+          | Error _ as err -> err
+          | Ok v ->
+            (match destruct_obj ts (`O jsons) with
+            | Error _ as err -> err
+            | Ok vs -> Ok (Some v :: vs))))
     | other -> Error (Format.asprintf "Expected {..}, got %a" PP.shape other))
 ;;

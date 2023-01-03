@@ -1,9 +1,13 @@
 let shape fmt json =
   match json with
-  | `O [] -> Format.pp_print_string fmt "{}"
-  | `O (_ :: _) -> Format.pp_print_string fmt "{…}"
-  | `A [] -> Format.pp_print_string fmt "[]"
-  | `A (_ :: _) -> Format.pp_print_string fmt "[…]"
+  | `O seq ->
+    if Seq.is_empty seq
+    then Format.pp_print_string fmt "{}"
+    else Format.pp_print_string fmt "{…}"
+  | `A seq ->
+    if Seq.is_empty seq
+    then Format.pp_print_string fmt "[]"
+    else Format.pp_print_string fmt "[…]"
   | `Bool true -> Format.pp_print_string fmt "true"
   | `Bool false -> Format.pp_print_string fmt "false"
   | `Float f ->
@@ -21,13 +25,13 @@ let shape fmt json =
 ;;
 
 let%expect_test _ =
-  Format.printf "%a\n" shape (`O []);
+  Format.printf "%a\n" shape (`O Seq.empty);
   [%expect {| {} |}];
-  Format.printf "%a\n" shape (`O [ "this", `Null ]);
+  Format.printf "%a\n" shape (`O (List.to_seq [ "this", `Null ]));
   [%expect {| {…} |}];
-  Format.printf "%a\n" shape (`A []);
+  Format.printf "%a\n" shape (`A Seq.empty);
   [%expect {| [] |}];
-  Format.printf "%a\n" shape (`A [ `Null; `A [] ]);
+  Format.printf "%a\n" shape (`A (List.to_seq [ `Null; `A [] ]));
   [%expect {| […] |}];
   Format.printf "%a\n" shape (`Bool true);
   [%expect {| true |}];
@@ -60,7 +64,7 @@ let rec mini fmt json =
     Format.fprintf
       fmt
       "{%a}"
-      (Format.pp_print_list
+      (Format.pp_print_seq
          ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
          mini_field)
       fields
@@ -68,7 +72,7 @@ let rec mini fmt json =
     Format.fprintf
       fmt
       "[%a]"
-      (Format.pp_print_list ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',') mini)
+      (Format.pp_print_seq ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',') mini)
       elems
   | `Bool true -> Format.pp_print_string fmt "true"
   | `Bool false -> Format.pp_print_string fmt "false"
@@ -82,13 +86,13 @@ and mini_field fmt (name, json) =
 ;;
 
 let%expect_test _ =
-  Format.printf "%a\n" mini (`O []);
+  Format.printf "%a\n" mini (`O Seq.empty);
   [%expect {| {} |}];
-  Format.printf "%a\n" mini (`O [ "this", `Null ]);
+  Format.printf "%a\n" mini (`O (List.to_seq [ "this", `Null ]));
   [%expect {| {"this":null} |}];
-  Format.printf "%a\n" mini (`A []);
+  Format.printf "%a\n" mini (`A Seq.empty);
   [%expect {| [] |}];
-  Format.printf "%a\n" mini (`A [ `Null; `A [] ]);
+  Format.printf "%a\n" mini (`A (List.to_seq [ `Null; `A Seq.empty ]));
   [%expect {| [null,[]] |}];
   Format.printf "%a\n" mini (`Bool true);
   [%expect {| true |}];
