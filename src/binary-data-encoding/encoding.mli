@@ -1,6 +1,10 @@
 module Hlist = Commons.Hlist
 module Sizedints = Commons.Sizedints
 
+type ('step, 'finish) reducer =
+  | K of 'step
+  | Finish of 'finish
+
 type _ t =
   | Unit : unit t
   | Bool : bool t
@@ -17,6 +21,15 @@ type _ t =
       { mkheader : 'a -> ('header, string) result
       ; headerencoding : 'header t
       ; mkencoding : 'header -> ('a t, string) result
+      ; equal : 'a -> 'a -> bool
+      ; maximum_size : Optint.Int63.t
+      }
+      -> 'a t
+  | Fold :
+      { chunkencoding : 'chunk t
+      ; chunkify : 'a -> 'chunk Seq.t
+      ; readinit : 'acc
+      ; reducer : 'acc -> 'chunk -> ('acc, 'a) reducer
       ; equal : 'a -> 'a -> bool
       ; maximum_size : Optint.Int63.t
       }
@@ -61,3 +74,14 @@ val string
 val bytes
   :  [ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
   -> bytes t
+
+val fold
+  :  chunkencoding:'chunk t
+  -> chunkify:('a -> 'chunk Seq.t)
+  -> readinit:'acc
+  -> reducer:('acc -> 'chunk -> ('acc, 'a) reducer)
+  -> equal:('a -> 'a -> bool)
+  -> maximum_size:Optint.Int63.t
+  -> 'a t
+
+val ellastic_uint30 : Sizedints.Uint30.t t

@@ -9,6 +9,7 @@ let all_ground_encodings : any_encoding Seq.t =
     ; AnyE ("i32", int32)
     ; AnyE ("ui62", uint62)
     ; AnyE ("ui30", uint30)
+    ; AnyE ("ellastic_ui30", ellastic_uint30)
     ; AnyE ("ui16", uint16)
     ; AnyE ("ui8", uint8)
     ; AnyE ("str[ui8]", Binary_data_encoding.Encoding.string `UInt8)

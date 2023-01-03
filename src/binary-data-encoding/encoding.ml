@@ -1,6 +1,10 @@
 module Hlist = Commons.Hlist
 module Sizedints = Commons.Sizedints
 
+type ('step, 'finish) reducer =
+  | K of 'step
+  | Finish of 'finish
+
 type _ t =
   | Unit : unit t
   | Bool : bool t
@@ -19,6 +23,15 @@ type _ t =
       ; mkencoding : 'header -> ('a t, string) result
       ; equal : 'a -> 'a -> bool
       ; maximum_size : Optint.Int63.t (* the max size of the payload *)
+      }
+      -> 'a t
+  | Fold :
+      { chunkencoding : 'chunk t
+      ; chunkify : 'a -> 'chunk Seq.t
+      ; readinit : 'acc
+      ; reducer : 'acc -> 'chunk -> ('acc, 'a) reducer
+      ; equal : 'a -> 'a -> bool
+      ; maximum_size : Optint.Int63.t
       }
       -> 'a t
   | Conv :
@@ -138,4 +151,50 @@ let bytes = function
 
 let conv ~serialisation ~deserialisation encoding =
   Conv { serialisation; deserialisation; encoding }
+;;
+
+let fold ~chunkencoding ~chunkify ~readinit ~reducer ~equal ~maximum_size =
+  Fold { chunkencoding; chunkify; readinit; reducer; equal; maximum_size }
+;;
+
+let ellastic_uint30 : Sizedints.Uint30.t t =
+  let payload_mask = (* significant bits of each byte *) 0b0111_1111 in
+  let tag_mask = (* metadata bits of each byte *) 0b1000_0000 in
+  let payload_width = (* number of significant bits in each byte of payload *) 7 in
+  fold
+    ~chunkencoding:UInt8
+    ~chunkify:(fun (u30 : Sizedints.Uint30.t) ->
+      let u30 = (u30 :> int) in
+      let rec chunkify u30 () =
+        assert (u30 >= 0);
+        if u30 land payload_mask = u30
+        then (
+          let chunk =
+            (* TODO: optimise by avoiding boxing w/ option *)
+            Option.get @@ Sizedints.Uint8.of_int u30
+          in
+          Seq.Cons (chunk, Seq.empty))
+        else (
+          let chunk = u30 land payload_mask lor tag_mask in
+          let chunk =
+            (* TODO: optimise by avoiding boxing w/ option *)
+            Option.get @@ Sizedints.Uint8.of_int chunk
+          in
+          let rest = u30 lsr payload_width in
+          Seq.Cons (chunk, chunkify rest))
+      in
+      chunkify u30)
+    ~readinit:(0, 0)
+    ~reducer:(fun (acc, shift) chunk ->
+      let chunk = (chunk :> int) in
+      let acc = acc lor ((chunk land payload_mask) lsl shift) in
+      if chunk land tag_mask = 0
+      then
+        (* TODO: handle errors here *)
+        (* TODO: check overflow as we go along to avoid decoding too many bytes;
+         maybe limit the number of chunks too? *)
+        Finish (Option.get @@ Sizedints.Uint30.of_int acc)
+      else K (acc, shift + payload_width))
+    ~equal:(fun a b -> Int.equal (a :> int) (b :> int))
+    ~maximum_size:(Optint.Int63.of_int 5)
 ;;

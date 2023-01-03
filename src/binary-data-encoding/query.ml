@@ -25,6 +25,21 @@ let rec size_of : type t. t Encoding.t -> t -> (Optint.Int63.t, string) result =
     let* encoding = mkencoding header in
     let* payloadsize = size_of encoding v in
     Ok (Optint.Int63.add headersize payloadsize)
+  | Fold
+      { chunkencoding; chunkify; readinit = _; reducer = _; equal = _; maximum_size = _ }
+    ->
+    let chunks = chunkify v in
+    let rec fold acc s =
+      match s () with
+      | Seq.Nil -> Ok acc
+      | Seq.Cons (chunk, s) ->
+        (match size_of chunkencoding chunk with
+        | Ok chunksize ->
+          let acc = Optint.Int63.add chunksize chunksize in
+          fold acc s
+        | Error e -> Error e)
+    in
+    fold Optint.Int63.zero chunks
   | Conv { serialisation; deserialisation = _; encoding } ->
     size_of encoding (serialisation v)
   | [] -> Ok Optint.Int63.zero
@@ -84,6 +99,14 @@ let rec maximum_size_of : type t. t Encoding.t -> Optint.Int63.t =
   | Option encoding -> Optint.Int63.add Optint.Int63.one (maximum_size_of encoding)
   | Headered { mkheader = _; headerencoding; mkencoding = _; equal = _; maximum_size } ->
     Optint.Int63.add (maximum_size_of headerencoding) maximum_size
+  | Fold
+      { chunkencoding = _
+      ; chunkify = _
+      ; readinit = _
+      ; reducer = _
+      ; equal = _
+      ; maximum_size
+      } -> maximum_size
   | Conv { serialisation = _; deserialisation = _; encoding } -> maximum_size_of encoding
   | [] -> Optint.Int63.zero
   | head :: tail -> Optint.Int63.add (maximum_size_of head) (maximum_size_of tail)

@@ -172,6 +172,17 @@ let rec writek : type a. destination -> a Encoding.t -> a -> written =
         let error = "error in user-provided encoding function: " ^ msg in
         Failed { destination; error }
       | Ok encoding -> writek destination encoding v))
+  | Fold
+      { chunkencoding; chunkify; readinit = _; reducer = _; equal = _; maximum_size = _ }
+    ->
+    let rec fold destination chunks =
+      match chunks () with
+      | Seq.Nil -> Written { destination }
+      | Seq.Cons (chunk, chunks) ->
+        let* destination = writek destination chunkencoding chunk in
+        fold destination chunks
+    in
+    fold destination (chunkify v)
   | Conv { serialisation; deserialisation = _; encoding } ->
     writek destination encoding (serialisation v)
   | [] ->
@@ -205,38 +216,61 @@ let write
 ;;
 
 let%expect_test _ =
-  let scratch = String.make 10 '_' in
+  let scratch = String.make 10 '\x00' in
+  let pp_bytes fmt b =
+    Format.pp_print_seq
+      ~pp_sep:(fun _ () -> ())
+      (fun fmt ch -> Format.fprintf fmt "%02x" (Char.code ch))
+      fmt
+      (Bytes.to_seq b)
+  in
   let w : type a. a Encoding.t -> a -> unit =
    fun e v ->
     let dst = Bytes.of_string scratch in
     match write ~dst ~offset:1 ~length:8 e v with
-    | Ok n -> Format.printf "Ok(%d): %S\n" n (Bytes.to_string dst)
-    | Error (n, s) -> Format.printf "Error(%d,%s): %S" n s (Bytes.to_string dst)
+    | Ok n -> Format.printf "Ok(%d): %a\n" n pp_bytes dst
+    | Error (n, s) -> Format.printf "Error(%d,%s): %a" n s pp_bytes dst
   in
   w Encoding.unit ();
-  [%expect {| Ok(0): "__________" |}];
+  [%expect {| Ok(0): 00000000000000000000 |}];
   w Encoding.int64 0x4c_6f_6f_6f_6f_6f_6f_4cL;
-  [%expect {| Ok(8): "_LooooooL_" |}];
+  [%expect {| Ok(8): 004c6f6f6f6f6f6f4c00 |}];
   w Encoding.int64 0xff_ff_ff_ff_ff_ff_ff_ffL;
-  [%expect {| Ok(8): "_\255\255\255\255\255\255\255\255_" |}];
+  [%expect {| Ok(8): 00ffffffffffffffff00 |}];
   w Encoding.uint62 (Option.get @@ Commons.Sizedints.Uint62.of_int64 0L);
-  [%expect {| Ok(8): "_\000\000\000\000\000\000\000\000_" |}];
+  [%expect {| Ok(8): 00000000000000000000 |}];
   w
     Encoding.uint62
     (Option.get @@ Commons.Sizedints.Uint62.of_int64 0x3c_6f_6f_6f_6f_6f_6f_4cL);
-  [%expect {| Ok(8): "_<ooooooL_" |}];
+  [%expect {| Ok(8): 003c6f6f6f6f6f6f4c00 |}];
   w Encoding.uint62 Commons.Sizedints.Uint62.max_int;
-  [%expect {| Ok(8): "_?\255\255\255\255\255\255\255_" |}];
+  [%expect {| Ok(8): 003fffffffffffffff00 |}];
   w
     Encoding.[ unit; unit; int32; unit; int32 ]
     [ (); (); 0x4c_6f_6f_4cl; (); 0x4c_6f_6f_4cl ];
-  [%expect {| Ok(8): "_LooLLooL_" |}];
+  [%expect {| Ok(8): 004c6f6f4c4c6f6f4c00 |}];
   w Encoding.[ string `UInt30; unit ] [ "FOO"; () ];
-  [%expect {| Ok(7): "_\000\000\000\003FOO__" |}];
+  [%expect {| Ok(7): 0000000003464f4f0000 |}];
   w Encoding.[ string `UInt16; unit ] [ "FOOo0"; () ];
-  [%expect {| Ok(7): "_\000\005FOOo0__" |}];
+  [%expect {| Ok(7): 000005464f4f6f300000 |}];
   w Encoding.[ string `UInt8; unit ] [ "FOOo00o"; () ];
-  [%expect {| Ok(8): "_\007FOOo00o_" |}];
+  [%expect {| Ok(8): 0007464f4f6f30306f00 |}];
+  w Encoding.ellastic_uint30 Commons.Sizedints.Uint30.min_int;
+  [%expect {| Ok(1): 00000000000000000000 |}];
+  w Encoding.ellastic_uint30 (Option.get @@ Commons.Sizedints.Uint30.of_int 1);
+  [%expect {| Ok(1): 00010000000000000000 |}];
+  w Encoding.ellastic_uint30 (Option.get @@ Commons.Sizedints.Uint30.of_int 0b0111_1110);
+  [%expect {| Ok(1): 007e0000000000000000 |}];
+  w Encoding.ellastic_uint30 (Option.get @@ Commons.Sizedints.Uint30.of_int 0b0111_1111);
+  [%expect {| Ok(1): 007f0000000000000000 |}];
+  w Encoding.ellastic_uint30 (Option.get @@ Commons.Sizedints.Uint30.of_int 0b1000_0000);
+  [%expect {| Ok(2): 00800100000000000000 |}];
+  w Encoding.ellastic_uint30 (Option.get @@ Commons.Sizedints.Uint30.of_int 0b1000_0001);
+  [%expect {| Ok(2): 00810100000000000000 |}];
+  w
+    Encoding.ellastic_uint30
+    (Option.get @@ Commons.Sizedints.Uint30.of_int 0b1010_1010_1010_1010);
+  [%expect {| Ok(3): 00aad502000000000000 |}];
   ()
 ;;
 
@@ -485,6 +519,15 @@ let rec readk : type a. source -> a Encoding.t -> a readed =
       let error = "error in user-provided encoding function: " ^ msg in
       Failed { source; error }
     | Ok encoding -> readk source encoding)
+  | Fold { chunkencoding; chunkify = _; readinit; reducer; equal = _; maximum_size = _ }
+    ->
+    let rec reduce acc source =
+      let* chunk, source = readk source chunkencoding in
+      match reducer acc chunk with
+      | K acc -> reduce acc source
+      | Finish value -> Readed { source; value }
+    in
+    reduce readinit source
   | Conv { serialisation = _; deserialisation; encoding } ->
     let* v, source = readk source encoding in
     (match deserialisation v with
@@ -647,5 +690,20 @@ let%expect_test _ =
           | Some i32 -> Format.fprintf fmt "Some(%ld)" i32)
         oi32);
   [%expect {| Ok: 0;Some(0) |}];
+  w "\x00" Encoding.ellastic_uint30 (fun fmt u30 -> Format.fprintf fmt "%x" (u30 :> int));
+  [%expect {| Ok: 0 |}];
+  w "\x01" Encoding.ellastic_uint30 (fun fmt u30 -> Format.fprintf fmt "%x" (u30 :> int));
+  [%expect {| Ok: 1 |}];
+  w "\x7f" Encoding.ellastic_uint30 (fun fmt u30 -> Format.fprintf fmt "%x" (u30 :> int));
+  [%expect {| Ok: 7f |}];
+  w "\x80\x01" Encoding.ellastic_uint30 (fun fmt u30 ->
+      Format.fprintf fmt "%x" (u30 :> int));
+  [%expect {| Ok: 80 |}];
+  w "\x81\x01" Encoding.ellastic_uint30 (fun fmt u30 ->
+      Format.fprintf fmt "%x" (u30 :> int));
+  [%expect {| Ok: 81 |}];
+  w "\xaa\xd5\x02" Encoding.ellastic_uint30 (fun fmt u30 ->
+      Format.fprintf fmt "%x" (u30 :> int));
+  [%expect {| Ok: aaaa |}];
   ()
 ;;

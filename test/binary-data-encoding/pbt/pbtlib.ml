@@ -65,6 +65,10 @@ let rec generator_of_encoding
             QCheck2.assume (Result.is_ok (mkheader payload));
             payload)
           (generator_of_encoding payloadencoding))
+  | Fold _ ->
+    if Obj.magic encoding == Binary_data_encoding.Encoding.ellastic_uint30
+    then Obj.magic (generator_of_encoding UInt30)
+    else failwith "TODO"
   | Conv { serialisation = _; deserialisation; encoding } ->
     let t = generator_of_encoding encoding in
     QCheck2.Gen.map
@@ -97,6 +101,14 @@ let rec equal_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> t 
     Option.equal t
   | Headered { mkheader = _; headerencoding = _; mkencoding = _; equal; maximum_size = _ }
     -> equal
+  | Fold
+      { chunkencoding = _
+      ; chunkify = _
+      ; readinit = _
+      ; reducer = _
+      ; equal
+      ; maximum_size = _
+      } -> equal
   | Conv { serialisation; deserialisation = _; encoding } ->
     fun x y -> (equal_of_encoding encoding) (serialisation x) (serialisation y)
   | [] -> fun [] [] -> true
@@ -138,6 +150,16 @@ let rec pp_of_encoding
       let pp = pp_of_encoding encoding in
       Format.fprintf fmt "%a" pp v
     | Error msg -> Format.fprintf fmt "Error: %s" msg)
+  | Fold
+      { chunkencoding; chunkify; readinit = _; reducer = _; equal = _; maximum_size = _ }
+    ->
+    Format.fprintf
+      fmt
+      "chunked(%a)"
+      (Format.pp_print_seq
+         ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
+         (pp_of_encoding chunkencoding))
+      (chunkify v)
   | Conv { serialisation; deserialisation = _; encoding } ->
     let pp fmt v = pp_of_encoding encoding fmt (serialisation v) in
     Format.fprintf fmt "conved(%a)" pp v
