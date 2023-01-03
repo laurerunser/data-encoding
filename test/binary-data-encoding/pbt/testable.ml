@@ -7,6 +7,7 @@ let all_ground_encodings : any_encoding Seq.t =
     ; AnyE ("bool", bool)
     ; AnyE ("i64", int64)
     ; AnyE ("i32", int32)
+    ; AnyE ("ui62", uint62)
     ; AnyE ("ui30", uint30)
     ; AnyE ("ui16", uint16)
     ; AnyE ("ui8", uint8)
@@ -20,17 +21,17 @@ let str_encodings : any_encoding Seq.t =
     (Seq.map
        (fun n ->
          AnyE
-           ( Format.asprintf "str[%d]" n
+           ( Format.asprintf "str[%Ld]" n
            , Binary_data_encoding.Encoding.string
-               (`Fixed (Option.get @@ Commons.Sizedints.Uint30.of_int n)) ))
-       (List.to_seq [ 0; 1; 129 ]))
+               (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 n)) ))
+       (List.to_seq [ 0L; 1L; 129L ]))
     (Seq.map
        (fun n ->
          AnyE
-           ( Format.asprintf "bytes[%d]" n
+           ( Format.asprintf "bytes[%Ld]" n
            , Binary_data_encoding.Encoding.bytes
-               (`Fixed (Option.get @@ Commons.Sizedints.Uint30.of_int n)) ))
-       (List.to_seq [ 0; 1; 129 ]))
+               (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 n)) ))
+       (List.to_seq [ 0L; 1L; 129L ]))
 ;;
 
 let simplish_encodings : any_encoding Seq.t -> any_encoding Seq.t =

@@ -7,10 +7,11 @@ type _ t =
   | UInt8 : Sizedints.Uint8.t t
   | UInt16 : Sizedints.Uint16.t t
   | UInt30 : Sizedints.Uint30.t t
+  | UInt62 : Sizedints.Uint62.t t
   | Int32 : int32 t
   | Int64 : int64 t
-  | String : Sizedints.Uint30.t -> string t
-  | Bytes : Sizedints.Uint30.t -> bytes t
+  | String : Sizedints.Uint62.t -> string t
+  | Bytes : Sizedints.Uint62.t -> bytes t
   | Option : 'a t -> 'a option t
   | Headered :
       { mkheader : 'a -> ('header, string) result
@@ -33,6 +34,7 @@ val bool : bool t
 val int64 : int64 t
 val int32 : int32 t
 val uint30 : Sizedints.Uint30.t t
+val uint62 : Sizedints.Uint62.t t
 val uint16 : Sizedints.Uint16.t t
 val uint8 : Sizedints.Uint8.t t
 val option : 'a t -> 'a option t
@@ -50,5 +52,10 @@ val with_header
   -> ('a -> 'a -> bool)
   -> 'a t
 
-val string : [ `Fixed of Sizedints.Uint30.t | `UInt30 | `UInt16 | `UInt8 ] -> string t
-val bytes : [ `Fixed of Sizedints.Uint30.t | `UInt30 | `UInt16 | `UInt8 ] -> bytes t
+val string
+  :  [ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
+  -> string t
+
+val bytes
+  :  [ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
+  -> bytes t

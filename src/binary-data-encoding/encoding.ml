@@ -7,10 +7,11 @@ type _ t =
   | UInt8 : Sizedints.Uint8.t t
   | UInt16 : Sizedints.Uint16.t t
   | UInt30 : Sizedints.Uint30.t t
+  | UInt62 : Sizedints.Uint62.t t
   | Int32 : int32 t
   | Int64 : int64 t
-  | String : Sizedints.Uint30.t -> string t
-  | Bytes : Sizedints.Uint30.t -> bytes t
+  | String : Sizedints.Uint62.t -> string t
+  | Bytes : Sizedints.Uint62.t -> bytes t
   | Option : 'a t -> 'a option t
   | Headered :
       { mkheader : 'a -> ('header, string) result
@@ -33,6 +34,7 @@ let bool = Bool
 let int64 = Int64
 let int32 = Int32
 let uint30 = UInt30
+let uint62 = UInt62
 let uint16 = UInt16
 let uint8 = UInt8
 let option t = Option t
@@ -43,6 +45,16 @@ let with_header headerencoding mkheader encoding equal =
 
 let string = function
   | `Fixed u -> String u
+  | `UInt62 ->
+    with_header
+      UInt62
+      (fun v ->
+        let len = String.length v in
+        match Sizedints.Uint62.of_int64 (Int64.of_int len) with
+        | None -> Error "String larger than header-size can encode"
+        | Some n -> Ok n)
+      (fun n -> Ok (String n))
+      String.equal
   | `UInt30 ->
     with_header
       UInt30
@@ -51,7 +63,7 @@ let string = function
         match Sizedints.Uint30.of_int len with
         | None -> Error "String larger than header-size can encode"
         | Some n -> Ok n)
-      (fun n -> Ok (String n))
+      (fun n -> Ok (String (Sizedints.Uint30.to_uint62 n)))
       String.equal
   | `UInt16 ->
     with_header
@@ -61,7 +73,7 @@ let string = function
         match Sizedints.Uint16.of_int len with
         | None -> Error "String larger than header-size can encode"
         | Some n -> Ok n)
-      (fun n -> Ok (String (Sizedints.Uint16.to_uint30 n)))
+      (fun n -> Ok (String (Sizedints.Uint16.to_uint62 n)))
       String.equal
   | `UInt8 ->
     with_header
@@ -71,12 +83,21 @@ let string = function
         match Sizedints.Uint8.of_int len with
         | None -> Error "String larger than header-size can encode"
         | Some n -> Ok n)
-      (fun n -> Ok (String (Sizedints.Uint8.to_uint30 n)))
+      (fun n -> Ok (String (Sizedints.Uint8.to_uint62 n)))
       String.equal
 ;;
 
 let bytes = function
   | `Fixed u -> Bytes u
+  | `UInt62 ->
+    with_header
+      UInt62
+      (fun v ->
+        match Sizedints.Uint62.of_int64 (Int64.of_int (Bytes.length v)) with
+        | None -> Error "Bytes larger than header-size can encode"
+        | Some n -> Ok n)
+      (fun n -> Ok (Bytes n))
+      Bytes.equal
   | `UInt30 ->
     with_header
       UInt30
@@ -84,7 +105,7 @@ let bytes = function
         match Sizedints.Uint30.of_int (Bytes.length v) with
         | None -> Error "Bytes larger than header-size can encode"
         | Some n -> Ok n)
-      (fun n -> Ok (Bytes n))
+      (fun n -> Ok (Bytes (Sizedints.Uint30.to_uint62 n)))
       Bytes.equal
   | `UInt16 ->
     with_header
@@ -93,7 +114,7 @@ let bytes = function
         match Sizedints.Uint16.of_int (Bytes.length v) with
         | None -> Error "Bytes larger than header-size can encode"
         | Some n -> Ok n)
-      (fun n -> Ok (Bytes (Sizedints.Uint16.to_uint30 n)))
+      (fun n -> Ok (Bytes (Sizedints.Uint16.to_uint62 n)))
       Bytes.equal
   | `UInt8 ->
     with_header
@@ -102,7 +123,7 @@ let bytes = function
         match Sizedints.Uint8.of_int (Bytes.length v) with
         | None -> Error "Bytes larger than header-size can encode"
         | Some n -> Ok n)
-      (fun n -> Ok (Bytes (Sizedints.Uint8.to_uint30 n)))
+      (fun n -> Ok (Bytes (Sizedints.Uint8.to_uint62 n)))
       Bytes.equal
 ;;
 

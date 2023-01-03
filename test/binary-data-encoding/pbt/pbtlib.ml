@@ -18,6 +18,24 @@ let rec generator_of_encoding
       map
         (fun v -> Option.get @@ Commons.Sizedints.Uint30.of_int v)
         (0 -- (Commons.Sizedints.Uint30.max_int :> int)))
+  | UInt62 ->
+    QCheck2.Gen.(
+      map
+        (fun v -> Option.get @@ Commons.Sizedints.Uint62.of_int64 v)
+        (make_primitive
+           ~gen:(fun prng ->
+             let incl_bound =
+               Optint.Int63.to_int64 (Commons.Sizedints.Uint62.max_int :> Optint.Int63.t)
+             in
+             let excl_bound = Int64.succ incl_bound in
+             Random.State.int64 prng excl_bound)
+           ~shrink:
+             (Seq.unfold (fun i64 ->
+                  if i64 = 0L
+                  then None
+                  else (
+                    let shrunk = Int64.shift_right i64 1 in
+                    Some (shrunk, shrunk))))))
   | UInt16 ->
     QCheck2.Gen.(
       map
@@ -28,8 +46,13 @@ let rec generator_of_encoding
       map
         (fun v -> Option.get @@ Commons.Sizedints.Uint8.of_int v)
         (0 -- (Commons.Sizedints.Uint8.max_int :> int)))
-  | String n -> QCheck2.Gen.(string_size (pure (n :> int)))
-  | Bytes n -> QCheck2.Gen.(map Bytes.unsafe_of_string (string_size (pure (n :> int))))
+  | String n ->
+    QCheck2.Gen.(string_size (pure (Optint.Int63.to_int (n :> Optint.Int63.t))))
+  | Bytes n ->
+    QCheck2.Gen.(
+      map
+        Bytes.unsafe_of_string
+        (string_size (pure (Optint.Int63.to_int (n :> Optint.Int63.t)))))
   | Option t ->
     let t = generator_of_encoding t in
     QCheck2.Gen.option t
@@ -63,6 +86,7 @@ let rec equal_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> t 
   | Bool -> Bool.equal
   | Int64 -> Int64.equal
   | Int32 -> Int32.equal
+  | UInt62 -> fun a b -> Optint.Int63.equal (a :> Optint.Int63.t) (b :> Optint.Int63.t)
   | UInt30 -> fun a b -> Int.equal (a :> int) (b :> int)
   | UInt16 -> fun a b -> Int.equal (a :> int) (b :> int)
   | UInt8 -> fun a b -> Int.equal (a :> int) (b :> int)
@@ -90,6 +114,7 @@ let rec pp_of_encoding
   | Bool -> Format.fprintf fmt "%b" v
   | Int64 -> Format.fprintf fmt "%Ld" v
   | Int32 -> Format.fprintf fmt "%ld" v
+  | UInt62 -> Format.fprintf fmt "%Ld" (Optint.Int63.to_int64 (v :> Optint.Int63.t))
   | UInt30 -> Format.fprintf fmt "%d" (v :> int)
   | UInt16 -> Format.fprintf fmt "%d" (v :> int)
   | UInt8 -> Format.fprintf fmt "%d" (v :> int)
