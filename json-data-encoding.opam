@@ -12,7 +12,6 @@ bug-reports: "https://gitlab.com/nomadic-labs/data-encoding/-/issues"
 depends: [
   "ocaml" {>= "4.14"}
   "dune" {>= "3.0"}
-  "stdint"
   "optint"
   "qcheck" {with-test & >= "0.19"}
   "qcheck-alcotest" {with-test}

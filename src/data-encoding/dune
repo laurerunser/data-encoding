@@ -4,7 +4,6 @@
  (js_of_ocaml)
  (libraries
   data-encoding.commons
-  stdint
   optint
   json-data-encoding
   binary-data-encoding))

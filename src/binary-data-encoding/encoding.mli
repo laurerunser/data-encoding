@@ -1,16 +1,16 @@
 module Hlist = Commons.Hlist
+module Sizedints = Commons.Sizedints
 
 type _ t =
   | Unit : unit t
   | Bool : bool t
-  | Int64 : int64 t
-  | UInt64 : Stdint.Uint64.t t
+  | UInt8 : Sizedints.Uint8.t t
+  | UInt16 : Sizedints.Uint16.t t
+  | UInt30 : Sizedints.Uint30.t t
   | Int32 : int32 t
-  | UInt32 : Stdint.Uint32.t t
-  | UInt16 : Stdint.Uint16.t t
-  | UInt8 : Stdint.Uint8.t t
-  | String : Stdint.Uint32.t -> string t
-  | Bytes : Stdint.Uint32.t -> bytes t
+  | Int64 : int64 t
+  | String : Sizedints.Uint30.t -> string t
+  | Bytes : Sizedints.Uint30.t -> bytes t
   | Option : 'a t -> 'a option t
   | Headered :
       { mkheader : 'a -> ('header, string) result
@@ -31,11 +31,10 @@ type _ t =
 val unit : unit t
 val bool : bool t
 val int64 : int64 t
-val uint64 : Stdint.Uint64.t t
 val int32 : int32 t
-val uint32 : Stdint.Uint32.t t
-val uint16 : Stdint.Uint16.t t
-val uint8 : Stdint.Uint8.t t
+val uint30 : Sizedints.Uint30.t t
+val uint16 : Sizedints.Uint16.t t
+val uint8 : Sizedints.Uint8.t t
 val option : 'a t -> 'a option t
 
 val conv
@@ -51,5 +50,5 @@ val with_header
   -> ('a -> 'a -> bool)
   -> 'a t
 
-val string : [ `Fixed of Stdint.Uint32.t | `UInt32 | `UInt16 | `UInt8 ] -> string t
-val bytes : [ `Fixed of Stdint.Uint32.t | `UInt32 | `UInt16 | `UInt8 ] -> bytes t
+val string : [ `Fixed of Sizedints.Uint30.t | `UInt30 | `UInt16 | `UInt8 ] -> string t
+val bytes : [ `Fixed of Sizedints.Uint30.t | `UInt30 | `UInt16 | `UInt8 ] -> bytes t

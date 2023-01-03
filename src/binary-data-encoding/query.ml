@@ -6,13 +6,12 @@ let rec size_of : type t. t Encoding.t -> t -> (Optint.t, string) result =
   | Unit -> Ok Optint.zero
   | Bool -> Ok Optint.one
   | Int64 -> Ok (Optint.of_int 8)
-  | UInt64 -> Ok (Optint.of_int 8)
   | Int32 -> Ok (Optint.of_int 4)
-  | UInt32 -> Ok (Optint.of_int 4)
+  | UInt30 -> Ok (Optint.of_int 4)
   | UInt16 -> Ok (Optint.of_int 2)
   | UInt8 -> Ok Optint.one
-  | String n -> Ok (Optint.of_unsigned_int32 (Stdint.Uint32.to_int32 n))
-  | Bytes n -> Ok (Optint.of_unsigned_int32 (Stdint.Uint32.to_int32 n))
+  | String n -> Ok (Optint.of_int (n :> int))
+  | Bytes n -> Ok (Optint.of_int (n :> int))
   | Option encoding ->
     (match v with
     | None -> Ok Optint.one
@@ -51,13 +50,15 @@ let%expect_test _ =
   [%expect {| 8 |}];
   w Encoding.[ unit; unit; int32; unit; int32 ] [ (); (); 0x00l; (); 0x00l ];
   [%expect {| 8 |}];
-  w Encoding.[ string `UInt32; unit ] [ "FOO"; () ];
+  w Encoding.[ string `UInt30; unit ] [ "FOO"; () ];
   [%expect {| 7 |}];
   w Encoding.[ string `UInt16; unit ] [ "FOO"; () ];
   [%expect {| 5 |}];
   w Encoding.[ string `UInt8; unit ] [ "FOO"; () ];
   [%expect {| 4 |}];
-  w Encoding.[ string (`Fixed (Stdint.Uint32.of_int 3)); unit ] [ "FOO"; () ];
+  w
+    Encoding.[ string (`Fixed (Option.get @@ Sizedints.Uint30.of_int 3)); unit ]
+    [ "FOO"; () ];
   [%expect {| 3 |}];
   w Encoding.(option int32) None;
   [%expect {| 1 |}];
@@ -72,13 +73,12 @@ let rec maximum_size_of : type t. t Encoding.t -> Optint.t =
   | Unit -> Optint.zero
   | Bool -> Optint.one
   | Int64 -> Optint.of_int 8
-  | UInt64 -> Optint.of_int 8
   | Int32 -> Optint.of_int 4
-  | UInt32 -> Optint.of_int 4
+  | UInt30 -> Optint.of_int 4
   | UInt16 -> Optint.of_int 2
   | UInt8 -> Optint.one
-  | String n -> Optint.of_unsigned_int32 (Stdint.Uint32.to_int32 n)
-  | Bytes n -> Optint.of_unsigned_int32 (Stdint.Uint32.to_int32 n)
+  | String n -> Optint.of_int (n :> int)
+  | Bytes n -> Optint.of_int (n :> int)
   | Option encoding -> Optint.add Optint.one (maximum_size_of encoding)
   | Headered _ -> failwith "TODO"
   | Conv { serialisation = _; deserialisation = _; encoding } -> maximum_size_of encoding

@@ -26,7 +26,6 @@
    dune
    (json-data-encoding (= :version))
    (binary-data-encoding (= :version))
-   stdint
    optint
    (qcheck (and :with-test (>= 0.19)))
    (qcheck-alcotest :with-test)
@@ -42,7 +41,6 @@
  (depends
    (ocaml (>= 4.14))
    dune
-   stdint
    optint
    (qcheck (and :with-test (>= 0.19)))
    (qcheck-alcotest :with-test)
@@ -58,7 +56,6 @@
  (depends
    (ocaml (>= 4.14))
    dune
-   stdint
    optint
    (qcheck (and :with-test (>= 0.19)))
    (qcheck-alcotest :with-test)

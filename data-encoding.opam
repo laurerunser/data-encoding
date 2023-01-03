@@ -14,7 +14,6 @@ depends: [
   "dune" {>= "3.0"}
   "json-data-encoding" {= version}
   "binary-data-encoding" {= version}
-  "stdint"
   "optint"
   "qcheck" {with-test & >= "0.19"}
   "qcheck-alcotest" {with-test}

@@ -12,17 +12,24 @@ let rec generator_of_encoding
   | Unit -> QCheck2.Gen.unit
   | Bool -> QCheck2.Gen.bool
   | Int64 -> QCheck2.Gen.int64
-  | UInt64 -> QCheck2.Gen.(map Stdint.Uint64.of_int64 int64)
   | Int32 -> QCheck2.Gen.int32
-  | UInt32 -> QCheck2.Gen.(map Stdint.Uint32.of_int32 int32)
-  | UInt16 -> QCheck2.Gen.(map Stdint.Uint16.of_int (0 -- 0xff_ff))
-  | UInt8 -> QCheck2.Gen.(map Stdint.Uint8.of_int (0 -- 0xff))
-  | String n ->
-    let n = Stdint.Uint32.to_int n in
-    QCheck2.Gen.(string_size (pure n))
-  | Bytes n ->
-    let n = Stdint.Uint32.to_int n in
-    QCheck2.Gen.(map Bytes.unsafe_of_string (string_size (pure n)))
+  | UInt30 ->
+    QCheck2.Gen.(
+      map
+        (fun v -> Option.get @@ Commons.Sizedints.Uint30.of_int v)
+        (0 -- (Commons.Sizedints.Uint30.max_int :> int)))
+  | UInt16 ->
+    QCheck2.Gen.(
+      map
+        (fun v -> Option.get @@ Commons.Sizedints.Uint16.of_int v)
+        (0 -- (Commons.Sizedints.Uint16.max_int :> int)))
+  | UInt8 ->
+    QCheck2.Gen.(
+      map
+        (fun v -> Option.get @@ Commons.Sizedints.Uint8.of_int v)
+        (0 -- (Commons.Sizedints.Uint8.max_int :> int)))
+  | String n -> QCheck2.Gen.(string_size (pure (n :> int)))
+  | Bytes n -> QCheck2.Gen.(map Bytes.unsafe_of_string (string_size (pure (n :> int))))
   | Option t ->
     let t = generator_of_encoding t in
     QCheck2.Gen.option t
@@ -55,11 +62,10 @@ let rec equal_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> t 
   | Unit -> Unit.equal
   | Bool -> Bool.equal
   | Int64 -> Int64.equal
-  | UInt64 -> fun a b -> Stdint.Uint64.compare a b = 0
   | Int32 -> Int32.equal
-  | UInt32 -> fun a b -> Stdint.Uint32.compare a b = 0
-  | UInt16 -> fun a b -> Stdint.Uint16.compare a b = 0
-  | UInt8 -> fun a b -> Stdint.Uint8.compare a b = 0
+  | UInt30 -> fun a b -> Int.equal (a :> int) (b :> int)
+  | UInt16 -> fun a b -> Int.equal (a :> int) (b :> int)
+  | UInt8 -> fun a b -> Int.equal (a :> int) (b :> int)
   | String _ -> String.equal
   | Bytes _ -> Bytes.equal
   | Option t ->
@@ -83,11 +89,10 @@ let rec pp_of_encoding
   | Unit -> Format.fprintf fmt "()"
   | Bool -> Format.fprintf fmt "%b" v
   | Int64 -> Format.fprintf fmt "%Ld" v
-  | UInt64 -> Stdint.Uint64.printer fmt v
   | Int32 -> Format.fprintf fmt "%ld" v
-  | UInt32 -> Stdint.Uint32.printer fmt v
-  | UInt16 -> Stdint.Uint16.printer fmt v
-  | UInt8 -> Stdint.Uint8.printer fmt v
+  | UInt30 -> Format.fprintf fmt "%d" (v :> int)
+  | UInt16 -> Format.fprintf fmt "%d" (v :> int)
+  | UInt8 -> Format.fprintf fmt "%d" (v :> int)
   | String _ -> Format.fprintf fmt "%s" v
   | Bytes _ -> Format.fprintf fmt "%s" (Bytes.unsafe_to_string v)
   | Option t ->

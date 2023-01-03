@@ -5,4 +5,4 @@
  (inline_tests)
  (preprocess
   (pps ppx_expect))
- (libraries data-encoding.commons stdint optint))
+ (libraries data-encoding.commons optint))
