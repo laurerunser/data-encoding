@@ -4,9 +4,23 @@ let () =
     Testable.basics
 ;;
 
+let prng =
+  match Sys.getenv_opt "PBT_ROUNDTRIP_SEED" with
+  | None ->
+    let prng = Random.State.make_self_init () in
+    let seed = Random.State.int prng (1 lsl 29) in
+    Printf.printf "Seed picked randomly: PBT_ROUNDTRIP_SEED=%d\n" seed;
+    Random.State.make [| seed |]
+  | Some s ->
+    (match int_of_string_opt s with
+    | None ->
+      Printf.eprintf "Malformed PBT_ROUNDTRIP_SEED";
+      exit 1
+    | Some seed -> Random.State.make [| seed |])
+;;
+
 let () =
   (* sampling the long long not-so-basic sequence because it's too long *)
-  let prng = Random.State.make [| 111; 1111; 11111 |] in
   let rec skips s () =
     let n = Random.State.int prng 64 in
     let s = Seq.drop n s in
