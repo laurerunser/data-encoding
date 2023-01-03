@@ -49,8 +49,12 @@ let simplish_encodings : any_encoding Seq.t -> any_encoding Seq.t =
         ; AnyE
             ( "headered[unit](" ^ s ^ ")"
             , Binary_data_encoding.Encoding.(
-                with_header unit (fun _ -> Ok ()) (fun () -> Ok e))
-                (Pbtlib.equal_of_encoding e) )
+                with_header
+                  ~headerencoding:unit
+                  ~mkheader:(fun _ -> Ok ())
+                  ~mkencoding:(fun () -> Ok e))
+                ~equal:(Pbtlib.equal_of_encoding e)
+                ~maximum_size:(Binary_data_encoding.Query.maximum_size_of e) )
         ])
     s
 ;;

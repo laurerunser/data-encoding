@@ -16,8 +16,9 @@ type _ t =
   | Headered :
       { mkheader : 'a -> ('header, string) result
       ; headerencoding : 'header t
-      ; encoding : 'header -> ('a t, string) result
+      ; mkencoding : 'header -> ('a t, string) result
       ; equal : 'a -> 'a -> bool
+      ; maximum_size : Optint.Int63.t
       }
       -> 'a t
   | Conv :
@@ -46,10 +47,11 @@ val conv
   -> 'a t
 
 val with_header
-  :  'h t
-  -> ('a -> ('h, string) result)
-  -> ('h -> ('a t, string) result)
-  -> ('a -> 'a -> bool)
+  :  headerencoding:'h t
+  -> mkheader:('a -> ('h, string) result)
+  -> mkencoding:('h -> ('a t, string) result)
+  -> equal:('a -> 'a -> bool)
+  -> maximum_size:Optint.Int63.t
   -> 'a t
 
 val string

@@ -19,10 +19,10 @@ let rec size_of : type t. t Encoding.t -> t -> (Optint.Int63.t, string) result =
     | Some v ->
       let* size = size_of encoding v in
       Ok (Optint.Int63.add Optint.Int63.one size))
-  | Headered { mkheader; headerencoding; encoding; equal = _ } ->
+  | Headered { mkheader; headerencoding; mkencoding; equal = _; maximum_size = _ } ->
     let* header = mkheader v in
     let* headersize = size_of headerencoding header in
-    let* encoding = encoding header in
+    let* encoding = mkencoding header in
     let* payloadsize = size_of encoding v in
     Ok (Optint.Int63.add headersize payloadsize)
   | Conv { serialisation; deserialisation = _; encoding } ->
@@ -82,7 +82,8 @@ let rec maximum_size_of : type t. t Encoding.t -> Optint.Int63.t =
   | String n -> (n :> Optint.Int63.t)
   | Bytes n -> (n :> Optint.Int63.t)
   | Option encoding -> Optint.Int63.add Optint.Int63.one (maximum_size_of encoding)
-  | Headered _ -> failwith "TODO"
+  | Headered { mkheader = _; headerencoding; mkencoding = _; equal = _; maximum_size } ->
+    Optint.Int63.add (maximum_size_of headerencoding) maximum_size
   | Conv { serialisation = _; deserialisation = _; encoding } -> maximum_size_of encoding
   | [] -> Optint.Int63.zero
   | head :: tail -> Optint.Int63.add (maximum_size_of head) (maximum_size_of tail)

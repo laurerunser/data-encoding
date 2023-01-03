@@ -56,10 +56,10 @@ let rec generator_of_encoding
   | Option t ->
     let t = generator_of_encoding t in
     QCheck2.Gen.option t
-  | Headered { mkheader; headerencoding; encoding; equal = _ } ->
+  | Headered { mkheader; headerencoding; mkencoding; equal = _; maximum_size = _ } ->
     let headert = generator_of_encoding headerencoding in
     QCheck2.Gen.bind headert (fun header ->
-        let* payloadencoding = encoding header in
+        let* payloadencoding = mkencoding header in
         QCheck2.Gen.map
           (fun payload ->
             QCheck2.assume (Result.is_ok (mkheader payload));
@@ -95,7 +95,8 @@ let rec equal_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> t 
   | Option t ->
     let t = equal_of_encoding t in
     Option.equal t
-  | Headered { mkheader = _; headerencoding = _; encoding = _; equal } -> equal
+  | Headered { mkheader = _; headerencoding = _; mkencoding = _; equal; maximum_size = _ }
+    -> equal
   | Conv { serialisation; deserialisation = _; encoding } ->
     fun x y -> (equal_of_encoding encoding) (serialisation x) (serialisation y)
   | [] -> fun [] [] -> true
@@ -126,11 +127,11 @@ let rec pp_of_encoding
     | Some v ->
       let pp = pp_of_encoding t in
       Format.fprintf fmt "Some(%a)" pp v)
-  | Headered { mkheader; headerencoding = _; encoding; equal = _ } ->
+  | Headered { mkheader; headerencoding = _; mkencoding; equal = _; maximum_size = _ } ->
     let ( let* ) = Result.bind in
     (match
        let* header = mkheader v in
-       let* encoding = encoding header in
+       let* encoding = mkencoding header in
        Ok encoding
      with
     | Ok encoding ->

@@ -160,14 +160,14 @@ let rec writek : type a. destination -> a Encoding.t -> a -> written =
             Endian.set_uint8 buffer offset Magic.option_some_tag)
       in
       writek destination t v)
-  | Headered { mkheader; headerencoding; encoding; equal = _ } ->
+  | Headered { mkheader; headerencoding; mkencoding; equal = _; maximum_size = _ } ->
     (match mkheader v with
     | Error msg ->
       let error = "error in user-provided mkheader function: " ^ msg in
       Failed { destination; error }
     | Ok header ->
       let* destination = writek destination headerencoding header in
-      (match encoding header with
+      (match mkencoding header with
       | Error msg ->
         let error = "error in user-provided encoding function: " ^ msg in
         Failed { destination; error }
@@ -478,9 +478,9 @@ let rec readk : type a. source -> a Encoding.t -> a readed =
       let* v, source = readk source t in
       Readed { source; value = Some v }
     else Failed { source; error = "Unknown tag for Option" }
-  | Headered { mkheader = _; headerencoding; encoding; equal = _ } ->
+  | Headered { mkheader = _; headerencoding; mkencoding; equal = _; maximum_size = _ } ->
     let* header, source = readk source headerencoding in
-    (match encoding header with
+    (match mkencoding header with
     | Error msg ->
       let error = "error in user-provided encoding function: " ^ msg in
       Failed { source; error }
