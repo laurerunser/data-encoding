@@ -53,6 +53,12 @@ let rec generator_of_encoding
       map
         Bytes.unsafe_of_string
         (string_size (pure (Optint.Int63.to_int (n :> Optint.Int63.t)))))
+  | Seq { encoding; length } ->
+    QCheck2.Gen.map
+      (fun l -> { Binary_data_encoding.Encoding.seq = List.to_seq l; len = None })
+      (QCheck2.Gen.list_repeat
+         (Optint.Int63.to_int (length :> Optint.Int63.t))
+         (generator_of_encoding encoding))
   | Option t ->
     let t = generator_of_encoding t in
     QCheck2.Gen.option t

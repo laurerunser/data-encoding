@@ -17,6 +17,11 @@ type endianness = Descr.endianness =
   | Big_endian
   | Little_endian
 
+type 'a seq_with_length = 'a Descr.seq_with_length =
+  { seq : 'a Seq.t
+  ; mutable len : int option
+  }
+
 (** [α t] is a encoding for values of type [α]. The encoding can be used to
     de/serialise these values—see {!Backend}.
 
@@ -41,6 +46,11 @@ type 'a t = 'a Descr.t =
   | String : Sizedints.Uint62.t -> string t
   | Bytes : Sizedints.Uint62.t -> bytes t
   | Option : 'a t -> 'a option t
+  | Seq :
+      { encoding : 'a t
+      ; length : Sizedints.Uint62.t
+      }
+      -> 'a seq_with_length t
   | Headered :
       { mkheader : 'a -> ('header, string) result
       ; headerencoding : 'header t
@@ -95,6 +105,14 @@ let option t = Option t
 let with_header ~headerencoding ~mkheader ~mkencoding ~equal ~maximum_size =
   Headered { mkheader; headerencoding; mkencoding; equal; maximum_size }
 ;;
+
+type size_spec =
+  [ `Fixed of Sizedints.Uint62.t
+  | `UInt62
+  | `UInt30
+  | `UInt16
+  | `UInt8
+  ]
 
 let with_length_header
     : type a.
@@ -157,6 +175,39 @@ let with_length_header
 
 let conv ~serialisation ~deserialisation encoding =
   Conv { serialisation; deserialisation; encoding }
+;;
+
+let length s =
+  match s.len with
+  | Some len -> len
+  | None ->
+    let len = Seq.length s.seq in
+    s.len <- Some len;
+    len
+;;
+
+let seq_with_length encoding lengthencoding =
+  with_length_header
+    ~lengthencoding
+    ~length
+    ~mkencoding:(fun length ->
+      Ok (Seq { encoding; length }))
+    ~equal:(fun a b -> Seq.equal (Query.equal_of encoding) a.seq b.seq)
+    ~maximum_size:(Query.maximum_size_of encoding)
+;;
+
+let seq encoding size_spec =
+  conv
+    ~serialisation:(fun seq -> { seq; len = None })
+    ~deserialisation:(fun { seq; len = _ } -> Ok seq)
+    (seq_with_length encoding size_spec)
+;;
+
+let list encoding size_spec =
+  conv (* TODO: compute length during conversion list -> seq ? *)
+    ~serialisation:(fun l -> { seq = List.to_seq l; len = None })
+    ~deserialisation:(fun { seq; len = _ } -> Ok (List.of_seq seq))
+    (seq_with_length encoding size_spec)
 ;;
 
 let fold ~chunkencoding ~chunkify ~readinit ~reducer ~equal ~maximum_size =

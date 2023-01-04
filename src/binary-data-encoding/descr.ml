@@ -14,6 +14,11 @@ type endianness =
   | Big_endian
   | Little_endian
 
+type 'a seq_with_length =
+  { seq : 'a Seq.t
+  ; mutable len : int option
+  }
+
 type _ t =
   | Unit : unit t
   | Bool : bool t
@@ -25,6 +30,11 @@ type _ t =
   | String : Commons.Sizedints.Uint62.t -> string t
   | Bytes : Commons.Sizedints.Uint62.t -> bytes t
   | Option : 'a t -> 'a option t
+  | Seq :
+      { encoding : 'a t
+      ; length : Commons.Sizedints.Uint62.t
+      }
+      -> 'a seq_with_length t
   | Headered :
       { mkheader : 'a -> ('header, string) result
       ; headerencoding : 'header t

@@ -164,6 +164,9 @@ let rec writek : type a. destination -> a Encoding.t -> a -> written =
     else (
       let size = Optint.Int63.to_int (n :> Optint.Int63.t) in
       write1 destination size (fun buffer offset -> Bytes.blit v 0 buffer offset size))
+  | Seq { encoding; length } ->
+    let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
+    write_seq destination encoding v.seq length
   | Option t ->
     (match v with
     | None ->
@@ -211,6 +214,18 @@ let rec writek : type a. destination -> a Encoding.t -> a -> written =
     | v :: vs ->
       let* destination = writek destination t v in
       writek destination ts vs)
+
+and write_seq : type a. destination -> a Encoding.t -> a Seq.t -> int -> written =
+ fun destination encoding v length ->
+  match Seq.uncons v with
+  | None ->
+    (* TODO: error instead of assert? *)
+    assert (length = 0);
+    Written { destination }
+  | Some (hd, tl) ->
+    assert (length > 0);
+    let* destination = writek destination encoding hd in
+    write_seq destination encoding tl (length - 1)
 ;;
 
 let write
@@ -545,6 +560,9 @@ let rec readk : type a. source -> a Encoding.t -> a readed =
     let size = Optint.Int63.to_int (n :> Optint.Int63.t) in
     read1 source size (fun blob offset ->
         Bytes.unsafe_of_string (String.sub blob offset size))
+  | Seq { encoding; length } ->
+    let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
+    read_seq source encoding length
   | Option t ->
     let* tag, source = read1 source Size.uint8 Commons.Sizedints.Uint8.get in
     if tag = Magic.option_none_tag
@@ -580,6 +598,18 @@ let rec readk : type a. source -> a Encoding.t -> a readed =
     let* v, source = readk source t in
     let* vs, source = readk source ts in
     Readed { source; value = Encoding.Hlist.( :: ) (v, vs) }
+
+and read_seq : type a. source -> a Encoding.t -> int -> a Encoding.seq_with_length readed =
+ fun source encoding length ->
+  if length < 0
+  then Failed { source; error = "Negative length in read_seq" }
+  else if length = 0
+  then Readed { source; value = { Encoding.seq = Seq.empty; len = Some 0 } }
+  else
+    let* v, source = readk source encoding in
+    let* { seq; len }, source = read_seq source encoding (length - 1) in
+    assert (Option.get len = length - 1);
+    Readed { source; value = { Encoding.seq = Seq.cons v seq; len = Some length } }
 ;;
 
 let readk : type a. source -> a Encoding.t -> a readed =

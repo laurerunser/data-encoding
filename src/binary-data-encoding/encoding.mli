@@ -17,6 +17,11 @@ type endianness = Descr.endianness =
   | Big_endian
   | Little_endian
 
+type 'a seq_with_length = 'a Descr.seq_with_length =
+  { seq : 'a Seq.t
+  ; mutable len : int option
+  }
+
 (** [α t] is a encoding for values of type [α]. The encoding can be used to
     de/serialise these values—see {!Backend}.
 
@@ -41,6 +46,11 @@ type 'a t = 'a Descr.t =
   | String : Sizedints.Uint62.t -> string t
   | Bytes : Sizedints.Uint62.t -> bytes t
   | Option : 'a t -> 'a option t
+  | Seq :
+      { encoding : 'a t
+      ; length : Sizedints.Uint62.t
+      }
+      -> 'a seq_with_length t
   | Headered :
       { mkheader : 'a -> ('header, string) result
       ; headerencoding : 'header t
@@ -96,13 +106,17 @@ end
 
 val option : 'a t -> 'a option t
 
-val string
-  :  [ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
-  -> string t
+type size_spec =
+  [ `Fixed of Sizedints.Uint62.t
+  | `UInt62
+  | `UInt30
+  | `UInt16
+  | `UInt8
+  ]
 
-val bytes
-  :  [ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
-  -> bytes t
+val string :  size_spec -> string t
+
+val bytes :  size_spec -> bytes t
 
 val conv
   :  serialisation:('a -> 'b)
@@ -125,6 +139,14 @@ val with_length_header
   -> equal:('a -> 'a -> bool)
   -> maximum_size:Optint.Int63.t
   -> 'a t
+
+val seq_with_length
+  :  'a t
+  -> size_spec
+  -> 'a seq_with_length t
+
+val seq : 'a t -> size_spec -> 'a Seq.t t
+val list : 'a t -> size_spec -> 'a list t
 
 val fold
   :  chunkencoding:'chunk t
