@@ -5,12 +5,12 @@ let rec size_of : type t. t Encoding.t -> t -> (Optint.Int63.t, string) result =
   match encoding with
   | Unit -> Ok Optint.Int63.zero
   | Bool -> Ok Optint.Int63.one
-  | Int64 -> Ok (Optint.Int63.of_int 8)
-  | Int32 -> Ok (Optint.Int63.of_int 4)
-  | UInt62 -> Ok (Optint.Int63.of_int 8)
-  | UInt30 -> Ok (Optint.Int63.of_int 4)
-  | UInt16 -> Ok (Optint.Int63.of_int 2)
-  | UInt8 -> Ok Optint.Int63.one
+  | Numeral { numeral = Int64; endianness = _ } -> Ok (Optint.Int63.of_int 8)
+  | Numeral { numeral = Int32; endianness = _ } -> Ok (Optint.Int63.of_int 4)
+  | Numeral { numeral = UInt62; endianness = _ } -> Ok (Optint.Int63.of_int 8)
+  | Numeral { numeral = UInt30; endianness = _ } -> Ok (Optint.Int63.of_int 4)
+  | Numeral { numeral = UInt16; endianness = _ } -> Ok (Optint.Int63.of_int 2)
+  | Numeral { numeral = UInt8; endianness = _ } -> Ok Optint.Int63.one
   | String n -> Ok (n :> Optint.Int63.t)
   | Bytes n -> Ok (n :> Optint.Int63.t)
   | Option encoding ->
@@ -88,12 +88,12 @@ let rec maximum_size_of : type t. t Encoding.t -> Optint.Int63.t =
   match encoding with
   | Unit -> Optint.Int63.zero
   | Bool -> Optint.Int63.one
-  | Int64 -> Optint.Int63.of_int 8
-  | Int32 -> Optint.Int63.of_int 4
-  | UInt62 -> Optint.Int63.of_int 8
-  | UInt30 -> Optint.Int63.of_int 4
-  | UInt16 -> Optint.Int63.of_int 2
-  | UInt8 -> Optint.Int63.one
+  | Numeral { numeral = Int64; endianness = _ } -> Optint.Int63.of_int 8
+  | Numeral { numeral = Int32; endianness = _ } -> Optint.Int63.of_int 4
+  | Numeral { numeral = UInt62; endianness = _ } -> Optint.Int63.of_int 8
+  | Numeral { numeral = UInt30; endianness = _ } -> Optint.Int63.of_int 4
+  | Numeral { numeral = UInt16; endianness = _ } -> Optint.Int63.of_int 2
+  | Numeral { numeral = UInt8; endianness = _ } -> Optint.Int63.one
   | String n -> (n :> Optint.Int63.t)
   | Bytes n -> (n :> Optint.Int63.t)
   | Option encoding -> Optint.Int63.add Optint.Int63.one (maximum_size_of encoding)

@@ -5,8 +5,9 @@ module Uint62 : sig
   val max_int : t
   val of_int64 : int64 -> t option
   val set_be : bytes -> int -> t -> unit
-  val get_be : bytes -> int -> t
-  val get_be_string : string -> int -> t
+  val set_le : bytes -> int -> t -> unit
+  val get_be : string -> int -> t
+  val get_le : string -> int -> t
 end
 
 module Uint30 : sig
@@ -17,8 +18,9 @@ module Uint30 : sig
   val of_int : int -> t option
   val to_uint62 : t -> Uint62.t
   val set_be : bytes -> int -> t -> unit
-  val get_be : bytes -> int -> t
-  val get_be_string : string -> int -> t
+  val set_le : bytes -> int -> t -> unit
+  val get_be : string -> int -> t
+  val get_le : string -> int -> t
 end
 
 module Uint16 : sig
@@ -29,8 +31,9 @@ module Uint16 : sig
   val of_int : int -> t option
   val to_uint62 : t -> Uint62.t
   val set_be : bytes -> int -> t -> unit
-  val get_be : bytes -> int -> t
-  val get_be_string : string -> int -> t
+  val set_le : bytes -> int -> t -> unit
+  val get_be : string -> int -> t
+  val get_le : string -> int -> t
 end
 
 module Uint8 : sig
@@ -42,7 +45,5 @@ module Uint8 : sig
   val max_int : t
   val of_int : int -> t option
   val to_uint62 : t -> Uint62.t
-  val set : bytes -> int -> t -> unit
-  val get : bytes -> int -> t
-  val get_string : string -> int -> t
+  val get : string -> int -> t
 end

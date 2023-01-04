@@ -20,9 +20,15 @@ module Uint62 = struct
     Bytes.set_int64_be b o i64
   ;;
 
+  let set_le b o v =
+    (* TODO: optimise based on arch *)
+    let i64 = Optint.Int63.to_int64 v in
+    Bytes.set_int64_le b o i64
+  ;;
+
   let get_be b o =
     (* TODO: optimise based on arch *)
-    let i64 = Bytes.get_int64_be b o in
+    let i64 = String.get_int64_be b o in
     if Int64.compare i64 0L < 0
     then min_int
     else if Int64.compare max_intL i64 < 0
@@ -30,9 +36,9 @@ module Uint62 = struct
     else Optint.Int63.of_int64 i64
   ;;
 
-  let get_be_string b o =
+  let get_le b o =
     (* TODO: optimise based on arch *)
-    let i64 = String.get_int64_be b o in
+    let i64 = String.get_int64_le b o in
     if Int64.compare i64 0L < 0
     then min_int
     else if Int64.compare max_intL i64 < 0
@@ -48,16 +54,17 @@ module Uint30 = struct
   let max_int = 0x3f_ff_ff_ff
   let of_int v = if min_int <= v && v <= max_int then Some v else None
   let to_uint62 v = Optint.Int63.of_int v
-  let set_be b o v = Bytes.set_int32_be b o (Int32.of_int v)
+  let set_be b o v = Bytes.set_int32_be b o (Int32.of_int (v :> int))
+  let set_le b o v = Bytes.set_int32_le b o (Int32.of_int (v :> int))
 
   let get_be b o =
-    let i32 = Bytes.get_int32_be b o in
+    let i32 = String.get_int32_be b o in
     let i = Int32.to_int i32 in
     if i < 0 then 0 else if i > max_int then max_int else i
   ;;
 
-  let get_be_string b o =
-    let i32 = String.get_int32_be b o in
+  let get_le b o =
+    let i32 = String.get_int32_le b o in
     let i = Int32.to_int i32 in
     if i < 0 then 0 else if i > max_int then max_int else i
   ;;
@@ -71,8 +78,9 @@ module Uint16 = struct
   let of_int v = if min_int <= v && v <= max_int then Some v else None
   let to_uint62 v = Optint.Int63.of_int v
   let set_be = Bytes.set_uint16_be
-  let get_be = Bytes.get_uint16_be
-  let get_be_string = String.get_uint16_be
+  let set_le = Bytes.set_uint16_le
+  let get_be = String.get_uint16_be
+  let get_le = String.get_uint16_le
 end
 
 module Uint8 = struct
@@ -84,7 +92,5 @@ module Uint8 = struct
   let max_int = 0xff
   let of_int v = if min_int <= v && v <= max_int then Some v else None
   let to_uint62 v = Optint.Int63.of_int v
-  let set = Bytes.set_uint8
-  let get = Bytes.get_uint8
-  let get_string = String.get_uint8
+  let get = String.get_uint8
 end

@@ -100,23 +100,41 @@ let rec writek : type a. destination -> a Encoding.t -> a -> written =
   | Bool ->
     write1 destination Size.bool (fun buffer offset ->
         if v
-        then Endian.set_uint8 buffer offset Magic.bool_true
-        else Endian.set_uint8 buffer offset Magic.bool_false)
-  | Int64 ->
-    write1 destination Size.int64 (fun buffer offset -> Endian.set_int64 buffer offset v)
-  | Int32 ->
-    write1 destination Size.int32 (fun buffer offset -> Endian.set_int32 buffer offset v)
-  | UInt62 ->
+        then Bytes.set_uint8 buffer offset (Magic.bool_true :> int)
+        else Bytes.set_uint8 buffer offset (Magic.bool_false :> int))
+  | Numeral { numeral = Int64; endianness = Big_endian } ->
+    write1 destination Size.int64 (fun buffer offset ->
+        Bytes.set_int64_be buffer offset v)
+  | Numeral { numeral = Int64; endianness = Little_endian } ->
+    write1 destination Size.int64 (fun buffer offset ->
+        Bytes.set_int64_le buffer offset v)
+  | Numeral { numeral = Int32; endianness = Big_endian } ->
+    write1 destination Size.int32 (fun buffer offset ->
+        Bytes.set_int32_be buffer offset v)
+  | Numeral { numeral = Int32; endianness = Little_endian } ->
+    write1 destination Size.int32 (fun buffer offset ->
+        Bytes.set_int32_le buffer offset v)
+  | Numeral { numeral = UInt62; endianness = Big_endian } ->
     write1 destination Size.uint62 (fun buffer offset ->
-        Endian.set_uint62 buffer offset v)
-  | UInt30 ->
+        Commons.Sizedints.Uint62.set_be buffer offset v)
+  | Numeral { numeral = UInt62; endianness = Little_endian } ->
+    write1 destination Size.uint62 (fun buffer offset ->
+        Commons.Sizedints.Uint62.set_le buffer offset v)
+  | Numeral { numeral = UInt30; endianness = Big_endian } ->
     write1 destination Size.uint30 (fun buffer offset ->
-        Endian.set_uint30 buffer offset v)
-  | UInt16 ->
+        Commons.Sizedints.Uint30.set_be buffer offset v)
+  | Numeral { numeral = UInt30; endianness = Little_endian } ->
+    write1 destination Size.uint30 (fun buffer offset ->
+        Commons.Sizedints.Uint30.set_le buffer offset v)
+  | Numeral { numeral = UInt16; endianness = Big_endian } ->
     write1 destination Size.uint16 (fun buffer offset ->
-        Endian.set_uint16 buffer offset v)
-  | UInt8 ->
-    write1 destination Size.uint8 (fun buffer offset -> Endian.set_uint8 buffer offset v)
+        Bytes.set_uint16_be buffer offset (v :> int))
+  | Numeral { numeral = UInt16; endianness = Little_endian } ->
+    write1 destination Size.uint16 (fun buffer offset ->
+        Bytes.set_uint16_le buffer offset (v :> int))
+  | Numeral { numeral = UInt8; endianness = _ } ->
+    write1 destination Size.uint8 (fun buffer offset ->
+        Bytes.set_uint8 buffer offset (v :> int))
   | String n ->
     (* TODO: support chunk writing of strings so that it's possible to serialise
      a big blob onto several small buffers *)
@@ -151,13 +169,13 @@ let rec writek : type a. destination -> a Encoding.t -> a -> written =
     | None ->
       let* destination =
         write1 destination Size.uint8 (fun buffer offset ->
-            Endian.set_uint8 buffer offset Magic.option_none_tag)
+            Bytes.set_uint8 buffer offset (Magic.option_none_tag :> int))
       in
       Written { destination }
     | Some v ->
       let* destination =
         write1 destination Size.uint8 (fun buffer offset ->
-            Endian.set_uint8 buffer offset Magic.option_some_tag)
+            Bytes.set_uint8 buffer offset (Magic.option_some_tag :> int))
       in
       writek destination t v)
   | Headered { mkheader; headerencoding; mkencoding; equal = _; maximum_size = _ } ->
@@ -237,12 +255,20 @@ let%expect_test _ =
   [%expect {| Ok(8): 004c6f6f6f6f6f6f4c00 |}];
   w Encoding.int64 0xff_ff_ff_ff_ff_ff_ff_ffL;
   [%expect {| Ok(8): 00ffffffffffffffff00 |}];
+  w Encoding.int64 0x4c_6f_6f_6f_6f_4c_4c_4cL;
+  [%expect {| Ok(8): 004c6f6f6f6f4c4c4c00 |}];
+  w Encoding.Little_endian.int64 0x4c_6f_6f_6f_6f_4c_4c_4cL;
+  [%expect {| Ok(8): 004c4c4c6f6f6f6f4c00 |}];
   w Encoding.uint62 (Option.get @@ Commons.Sizedints.Uint62.of_int64 0L);
   [%expect {| Ok(8): 00000000000000000000 |}];
   w
     Encoding.uint62
     (Option.get @@ Commons.Sizedints.Uint62.of_int64 0x3c_6f_6f_6f_6f_6f_6f_4cL);
   [%expect {| Ok(8): 003c6f6f6f6f6f6f4c00 |}];
+  w
+    Encoding.Little_endian.uint62
+    (Option.get @@ Commons.Sizedints.Uint62.of_int64 0x3c_6f_6f_6f_6f_6f_6f_4cL);
+  [%expect {| Ok(8): 004c6f6f6f6f6f6f3c00 |}];
   w Encoding.uint62 Commons.Sizedints.Uint62.max_int;
   [%expect {| Ok(8): 003fffffffffffffff00 |}];
   w
@@ -476,18 +502,34 @@ let rec readk : type a. source -> a Encoding.t -> a readed =
   match encoding with
   | Unit -> Readed { source; value = () }
   | Bool ->
-    let* v, source = read1 source Size.bool Endian.get_uint8_string in
+    let* v, source = read1 source Size.bool Commons.Sizedints.Uint8.get in
     if v = Magic.bool_true
     then Readed { source; value = true }
     else if v = Magic.bool_false
     then Readed { source; value = false }
     else Failed { source; error = "Unknown value for Bool" }
-  | Int64 -> read1 source Size.int64 Endian.get_int64_string
-  | Int32 -> read1 source Size.int32 Endian.get_int32_string
-  | UInt62 -> read1 source Size.uint62 Endian.get_uint62_string
-  | UInt30 -> read1 source Size.uint30 Endian.get_uint30_string
-  | UInt16 -> read1 source Size.uint16 Endian.get_uint16_string
-  | UInt8 -> read1 source Size.uint8 Endian.get_uint8_string
+  | Numeral { numeral = Int64; endianness = Big_endian } ->
+    read1 source Size.int64 String.get_int64_be
+  | Numeral { numeral = Int64; endianness = Little_endian } ->
+    read1 source Size.int64 String.get_int64_le
+  | Numeral { numeral = Int32; endianness = Big_endian } ->
+    read1 source Size.int32 String.get_int32_be
+  | Numeral { numeral = Int32; endianness = Little_endian } ->
+    read1 source Size.int32 String.get_int32_le
+  | Numeral { numeral = UInt62; endianness = Big_endian } ->
+    read1 source Size.uint62 Commons.Sizedints.Uint62.get_be
+  | Numeral { numeral = UInt62; endianness = Little_endian } ->
+    read1 source Size.uint62 Commons.Sizedints.Uint62.get_le
+  | Numeral { numeral = UInt30; endianness = Big_endian } ->
+    read1 source Size.uint30 Commons.Sizedints.Uint30.get_be
+  | Numeral { numeral = UInt30; endianness = Little_endian } ->
+    read1 source Size.uint30 Commons.Sizedints.Uint30.get_le
+  | Numeral { numeral = UInt16; endianness = Big_endian } ->
+    read1 source Size.uint16 Commons.Sizedints.Uint16.get_be
+  | Numeral { numeral = UInt16; endianness = Little_endian } ->
+    read1 source Size.uint16 Commons.Sizedints.Uint16.get_le
+  | Numeral { numeral = UInt8; endianness = _ } ->
+    read1 source Size.uint8 Commons.Sizedints.Uint8.get
   | String n ->
     (* TODO: support chunk reading of string so that it's possible to deserialise
      a big blob from several small blobs *)
@@ -504,7 +546,7 @@ let rec readk : type a. source -> a Encoding.t -> a readed =
     read1 source size (fun blob offset ->
         Bytes.unsafe_of_string (String.sub blob offset size))
   | Option t ->
-    let* tag, source = read1 source Size.uint8 Endian.get_uint8_string in
+    let* tag, source = read1 source Size.uint8 Commons.Sizedints.Uint8.get in
     if tag = Magic.option_none_tag
     then Readed { source; value = None }
     else if tag = Magic.option_some_tag

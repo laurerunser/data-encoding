@@ -5,15 +5,26 @@ type ('step, 'finish) reducer =
   | K of 'step
   | Finish of 'finish
 
+type _ numeral =
+  | UInt8 : Sizedints.Uint8.t numeral
+  | UInt16 : Sizedints.Uint16.t numeral
+  | UInt30 : Sizedints.Uint30.t numeral
+  | UInt62 : Sizedints.Uint62.t numeral
+  | Int32 : int32 numeral
+  | Int64 : int64 numeral
+
+type endianness =
+  | Big_endian
+  | Little_endian
+
 type _ t =
   | Unit : unit t
   | Bool : bool t
-  | UInt8 : Sizedints.Uint8.t t
-  | UInt16 : Sizedints.Uint16.t t
-  | UInt30 : Sizedints.Uint30.t t
-  | UInt62 : Sizedints.Uint62.t t
-  | Int32 : int32 t
-  | Int64 : int64 t
+  | Numeral :
+      { numeral : 'a numeral
+      ; endianness : endianness
+      }
+      -> 'a t
   | String : Sizedints.Uint62.t -> string t
   | Bytes : Sizedints.Uint62.t -> bytes t
   | Option : 'a t -> 'a option t
@@ -45,12 +56,23 @@ type _ t =
 
 let unit = Unit
 let bool = Bool
-let int64 = Int64
-let int32 = Int32
-let uint30 = UInt30
-let uint62 = UInt62
-let uint16 = UInt16
-let uint8 = UInt8
+let int64 = Numeral { numeral = Int64; endianness = Big_endian }
+let int32 = Numeral { numeral = Int32; endianness = Big_endian }
+let uint30 = Numeral { numeral = UInt30; endianness = Big_endian }
+let uint62 = Numeral { numeral = UInt62; endianness = Big_endian }
+let uint16 = Numeral { numeral = UInt16; endianness = Big_endian }
+let uint8 = Numeral { numeral = UInt8; endianness = Big_endian }
+
+module Little_endian = struct
+  let int64 = Numeral { numeral = Int64; endianness = Little_endian }
+  let int32 = Numeral { numeral = Int32; endianness = Little_endian }
+  let uint30 = Numeral { numeral = UInt30; endianness = Little_endian }
+  let uint62 = Numeral { numeral = UInt62; endianness = Little_endian }
+  let uint16 = Numeral { numeral = UInt16; endianness = Little_endian }
+  let uint8 = Numeral { numeral = UInt8; endianness = Little_endian }
+end
+(* TODO: Big_endian module *)
+
 let option t = Option t
 
 let with_header ~headerencoding ~mkheader ~mkencoding ~equal ~maximum_size =
@@ -61,7 +83,7 @@ let string = function
   | `Fixed u -> String u
   | `UInt62 ->
     with_header
-      ~headerencoding:UInt62
+      ~headerencoding:uint62
       ~mkheader:(fun v ->
         let len = String.length v in
         match Sizedints.Uint62.of_int64 (Int64.of_int len) with
@@ -72,7 +94,7 @@ let string = function
       ~maximum_size:(Sizedints.Uint62.max_int :> Optint.Int63.t)
   | `UInt30 ->
     with_header
-      ~headerencoding:UInt30
+      ~headerencoding:uint30
       ~mkheader:(fun v ->
         let len = String.length v in
         match Sizedints.Uint30.of_int len with
@@ -83,7 +105,7 @@ let string = function
       ~maximum_size:(Sizedints.Uint30.(to_uint62 max_int) :> Optint.Int63.t)
   | `UInt16 ->
     with_header
-      ~headerencoding:UInt16
+      ~headerencoding:uint16
       ~mkheader:(fun v ->
         let len = String.length v in
         match Sizedints.Uint16.of_int len with
@@ -94,7 +116,7 @@ let string = function
       ~maximum_size:(Sizedints.Uint16.(to_uint62 max_int) :> Optint.Int63.t)
   | `UInt8 ->
     with_header
-      ~headerencoding:UInt8
+      ~headerencoding:uint8
       ~mkheader:(fun v ->
         let len = String.length v in
         match Sizedints.Uint8.of_int len with
@@ -109,7 +131,7 @@ let bytes = function
   | `Fixed u -> Bytes u
   | `UInt62 ->
     with_header
-      ~headerencoding:UInt62
+      ~headerencoding:uint62
       ~mkheader:(fun v ->
         match Sizedints.Uint62.of_int64 (Int64.of_int (Bytes.length v)) with
         | None -> Error "Bytes larger than header-size can encode"
@@ -119,7 +141,7 @@ let bytes = function
       ~maximum_size:(Sizedints.Uint62.max_int :> Optint.Int63.t)
   | `UInt30 ->
     with_header
-      ~headerencoding:UInt30
+      ~headerencoding:uint30
       ~mkheader:(fun v ->
         match Sizedints.Uint30.of_int (Bytes.length v) with
         | None -> Error "Bytes larger than header-size can encode"
@@ -129,7 +151,7 @@ let bytes = function
       ~maximum_size:(Sizedints.Uint30.(to_uint62 max_int) :> Optint.Int63.t)
   | `UInt16 ->
     with_header
-      ~headerencoding:UInt16
+      ~headerencoding:uint16
       ~mkheader:(fun v ->
         match Sizedints.Uint16.of_int (Bytes.length v) with
         | None -> Error "Bytes larger than header-size can encode"
@@ -139,7 +161,7 @@ let bytes = function
       ~maximum_size:(Sizedints.Uint16.(to_uint62 max_int) :> Optint.Int63.t)
   | `UInt8 ->
     with_header
-      ~headerencoding:UInt8
+      ~headerencoding:uint8
       ~mkheader:(fun v ->
         match Sizedints.Uint8.of_int (Bytes.length v) with
         | None -> Error "Bytes larger than header-size can encode"
@@ -162,7 +184,7 @@ let ellastic_uint30 : Sizedints.Uint30.t t =
   let tag_mask = (* metadata bits of each byte *) 0b1000_0000 in
   let payload_width = (* number of significant bits in each byte of payload *) 7 in
   fold
-    ~chunkencoding:UInt8
+    ~chunkencoding:uint8
     ~chunkify:(fun (u30 : Sizedints.Uint30.t) ->
       let u30 = (u30 :> int) in
       let rec chunkify u30 () =

@@ -11,14 +11,14 @@ let rec generator_of_encoding
   match encoding with
   | Unit -> QCheck2.Gen.unit
   | Bool -> QCheck2.Gen.bool
-  | Int64 -> QCheck2.Gen.int64
-  | Int32 -> QCheck2.Gen.int32
-  | UInt30 ->
+  | Numeral { numeral = Int64; endianness = _ } -> QCheck2.Gen.int64
+  | Numeral { numeral = Int32; endianness = _ } -> QCheck2.Gen.int32
+  | Numeral { numeral = UInt30; endianness = _ } ->
     QCheck2.Gen.(
       map
         (fun v -> Option.get @@ Commons.Sizedints.Uint30.of_int v)
         (0 -- (Commons.Sizedints.Uint30.max_int :> int)))
-  | UInt62 ->
+  | Numeral { numeral = UInt62; endianness = _ } ->
     QCheck2.Gen.(
       map
         (fun v -> Option.get @@ Commons.Sizedints.Uint62.of_int64 v)
@@ -36,12 +36,12 @@ let rec generator_of_encoding
                   else (
                     let shrunk = Int64.shift_right i64 1 in
                     Some (shrunk, shrunk))))))
-  | UInt16 ->
+  | Numeral { numeral = UInt16; endianness = _ } ->
     QCheck2.Gen.(
       map
         (fun v -> Option.get @@ Commons.Sizedints.Uint16.of_int v)
         (0 -- (Commons.Sizedints.Uint16.max_int :> int)))
-  | UInt8 ->
+  | Numeral { numeral = UInt8; endianness = _ } ->
     QCheck2.Gen.(
       map
         (fun v -> Option.get @@ Commons.Sizedints.Uint8.of_int v)
@@ -67,7 +67,7 @@ let rec generator_of_encoding
           (generator_of_encoding payloadencoding))
   | Fold _ ->
     if Obj.magic encoding == Binary_data_encoding.Encoding.ellastic_uint30
-    then Obj.magic (generator_of_encoding UInt30)
+    then Obj.magic (generator_of_encoding Binary_data_encoding.Encoding.uint30)
     else failwith "TODO"
   | Conv { serialisation = _; deserialisation; encoding } ->
     let t = generator_of_encoding encoding in
@@ -88,12 +88,16 @@ let rec equal_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> t 
   match encoding with
   | Unit -> Unit.equal
   | Bool -> Bool.equal
-  | Int64 -> Int64.equal
-  | Int32 -> Int32.equal
-  | UInt62 -> fun a b -> Optint.Int63.equal (a :> Optint.Int63.t) (b :> Optint.Int63.t)
-  | UInt30 -> fun a b -> Int.equal (a :> int) (b :> int)
-  | UInt16 -> fun a b -> Int.equal (a :> int) (b :> int)
-  | UInt8 -> fun a b -> Int.equal (a :> int) (b :> int)
+  | Numeral { numeral = Int64; endianness = _ } -> Int64.equal
+  | Numeral { numeral = Int32; endianness = _ } -> Int32.equal
+  | Numeral { numeral = UInt62; endianness = _ } ->
+    fun a b -> Optint.Int63.equal (a :> Optint.Int63.t) (b :> Optint.Int63.t)
+  | Numeral { numeral = UInt30; endianness = _ } ->
+    fun a b -> Int.equal (a :> int) (b :> int)
+  | Numeral { numeral = UInt16; endianness = _ } ->
+    fun a b -> Int.equal (a :> int) (b :> int)
+  | Numeral { numeral = UInt8; endianness = _ } ->
+    fun a b -> Int.equal (a :> int) (b :> int)
   | String _ -> String.equal
   | Bytes _ -> Bytes.equal
   | Option t ->
@@ -125,12 +129,13 @@ let rec pp_of_encoding
   match encoding with
   | Unit -> Format.fprintf fmt "()"
   | Bool -> Format.fprintf fmt "%b" v
-  | Int64 -> Format.fprintf fmt "%Ld" v
-  | Int32 -> Format.fprintf fmt "%ld" v
-  | UInt62 -> Format.fprintf fmt "%Ld" (Optint.Int63.to_int64 (v :> Optint.Int63.t))
-  | UInt30 -> Format.fprintf fmt "%d" (v :> int)
-  | UInt16 -> Format.fprintf fmt "%d" (v :> int)
-  | UInt8 -> Format.fprintf fmt "%d" (v :> int)
+  | Numeral { numeral = Int64; endianness = _ } -> Format.fprintf fmt "%Ld" v
+  | Numeral { numeral = Int32; endianness = _ } -> Format.fprintf fmt "%ld" v
+  | Numeral { numeral = UInt62; endianness = _ } ->
+    Format.fprintf fmt "%Ld" (Optint.Int63.to_int64 (v :> Optint.Int63.t))
+  | Numeral { numeral = UInt30; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
+  | Numeral { numeral = UInt16; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
+  | Numeral { numeral = UInt8; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
   | String _ -> Format.fprintf fmt "%s" v
   | Bytes _ -> Format.fprintf fmt "%s" (Bytes.unsafe_to_string v)
   | Option t ->
@@ -185,9 +190,19 @@ let ( let* ) x f =
   | Ok v -> f v
 ;;
 
-let to_test : type t. string -> t Binary_data_encoding.Encoding.t -> QCheck2.Test.t =
- fun name encoding ->
-  let generator = generator_of_encoding encoding in
+let to_test
+    : type t.
+      string
+      -> ?gen:t QCheck2.Gen.t
+      -> t Binary_data_encoding.Encoding.t
+      -> QCheck2.Test.t
+  =
+ fun name ?gen encoding ->
+  let generator =
+    match gen with
+    | Some g -> g
+    | None -> generator_of_encoding encoding
+  in
   let equal = equal_of_encoding encoding in
   let print = print_of_encoding encoding in
   let offset = 0 in
