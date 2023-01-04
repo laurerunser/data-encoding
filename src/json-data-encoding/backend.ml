@@ -83,6 +83,12 @@ let%expect_test _ =
   [%expect {| "-1" |}];
   w Encoding.(seq string) (List.to_seq [ "a"; "bc"; "Foo"; "BAR" ]);
   [%expect {| ["a","bc","Foo","BAR"] |}];
+  w Encoding.(list int64) [ 0x4c_6f_6f_4cL; 0xff_ff_ff_ff_ff_ff_ff_ffL; 0x4c_6f_6f_4cL ];
+  [%expect {| ["1282371404","-1","1282371404"] |}];
+  w Encoding.(array int64) [||];
+  [%expect {| [] |}];
+  w Encoding.(array unit) [| () |];
+  [%expect {| [{}] |}];
   w
     Encoding.(tuple [ unit; unit; int64; unit; int64 ])
     [ (); (); 0x4c_6f_6f_4cL; (); 0x4c_6f_6f_4cL ];

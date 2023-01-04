@@ -44,6 +44,8 @@ val bool : bool t
 val int64 : int64 t
 val string : string t
 val seq : 'a t -> 'a Seq.t t
+val list : 'a t -> 'a list t
+val array : 'a t -> 'a array t
 val tuple : 'a tuple -> 'a t
 val obj : 'a obj -> 'a t
 val req : string -> 'a t -> 'a field

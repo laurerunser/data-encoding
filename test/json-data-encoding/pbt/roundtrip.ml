@@ -6,6 +6,8 @@ let testables =
   ; AnyE Json_data_encoding.Encoding.int64
   ; AnyE Json_data_encoding.Encoding.string
   ; AnyE Json_data_encoding.Encoding.(seq int64)
+  ; AnyE Json_data_encoding.Encoding.(list bool)
+  ; AnyE Json_data_encoding.Encoding.(array string)
   ; AnyE Json_data_encoding.Encoding.(tuple [ int64; string; string ])
   ; AnyE Json_data_encoding.Encoding.(obj [ req "foo" int64; opt "bar" string ])
   ; AnyE

@@ -53,6 +53,20 @@ let conv ~serialisation ~deserialisation encoding =
   Conv { serialisation; deserialisation; encoding }
 ;;
 
+let list t =
+  conv
+    ~serialisation:List.to_seq
+    ~deserialisation:(fun s -> Result.ok (List.of_seq s))
+    (seq t)
+;;
+
+let array t =
+  conv
+    ~serialisation:Array.to_seq
+    ~deserialisation:(fun s -> Result.ok (Array.of_seq s))
+    (seq t)
+;;
+
 module Record = struct
   type ('a, 'r) field =
     { name : string
