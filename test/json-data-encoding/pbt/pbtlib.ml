@@ -6,6 +6,7 @@ let rec generator_of_encoding : type t. t Json_data_encoding.Encoding.t -> t QCh
   | Bool -> QCheck2.Gen.bool
   | Int64 -> QCheck2.Gen.int64
   | String -> QCheck2.Gen.(string_size (0 -- 10))
+  | Seq t -> QCheck2.Gen.map List.to_seq (QCheck2.Gen.list (generator_of_encoding t))
   | Tuple t -> generator_of_encoding_tuple t
   | Object t -> generator_of_encoding_object t
   | Conv { serialisation = _; deserialisation; encoding } ->
@@ -49,6 +50,7 @@ let rec equal_of_encoding : type t. t Json_data_encoding.Encoding.t -> t -> t ->
   | Bool -> Bool.equal
   | Int64 -> Int64.equal
   | String -> String.equal
+  | Seq t -> Seq.for_all2 (equal_of_encoding t)
   | Tuple t -> equal_of_encoding_tuple t
   | Object t -> equal_of_encoding_object t
   | Conv { serialisation; deserialisation = _; encoding } ->

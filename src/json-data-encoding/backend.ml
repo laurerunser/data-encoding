@@ -1,3 +1,14 @@
+let ( let* ) = Result.bind
+
+let rec map_e f seq =
+  match Seq.uncons seq with
+  | None -> Ok Seq.empty
+  | Some (x, next) ->
+    let* y = f x in
+    let* next = map_e f next in
+    Ok (Seq.cons y next)
+;;
+
 let rec construct : type a. a Encoding.t -> a -> (JSON.t, string) result =
  fun encoding v ->
   match encoding with
@@ -7,6 +18,9 @@ let rec construct : type a. a Encoding.t -> a -> (JSON.t, string) result =
   | Bool -> Ok (`Bool v)
   | Int64 -> Ok (`String (Int64.to_string v))
   | String -> Ok (`String v) (* TODO check utf8 *)
+  | Seq t ->
+    let* seq = map_e (construct t) v in
+    Ok (`A seq)
   | Tuple t -> construct_tuple t v
   | Object o -> construct_obj o v
   | Conv { serialisation; deserialisation = _; encoding } ->
@@ -67,6 +81,8 @@ let%expect_test _ =
   [%expect {| "5507743393699032908" |}];
   w Encoding.int64 0xff_ff_ff_ff_ff_ff_ff_ffL;
   [%expect {| "-1" |}];
+  w Encoding.(seq string) (List.to_seq [ "a"; "bc"; "Foo"; "BAR" ]);
+  [%expect {| ["a","bc","Foo","BAR"] |}];
   w
     Encoding.(tuple [ unit; unit; int64; unit; int64 ])
     [ (); (); 0x4c_6f_6f_4cL; (); 0x4c_6f_6f_4cL ];
@@ -95,6 +111,11 @@ let%expect_test _ =
   ()
 ;;
 
+let error_unexpected_shape : type a. expected:string -> JSON.t -> (a, string) result =
+ fun ~expected json ->
+  Error (Format.asprintf "Expected %s, got %a" expected PP.shape json)
+;;
+
 let rec destruct : type a. a Encoding.t -> JSON.t -> (a, string) result =
  fun encoding json ->
   match encoding with
@@ -117,12 +138,19 @@ let rec destruct : type a. a Encoding.t -> JSON.t -> (a, string) result =
     (match json with
     | `String s -> Ok s
     | other -> Error (Format.asprintf "Expected \"…\", got %a" PP.shape other))
+  | Seq t -> destruct_seq t json
   | Tuple t -> destruct_tuple t json
   | Object t -> destruct_obj t json
   | Conv { serialisation = _; deserialisation; encoding } ->
     (match destruct encoding json with
     | Error _ as err -> err
     | Ok w -> deserialisation w (* TODO: wrap error message *))
+
+and destruct_seq : type a. a Encoding.t -> JSON.t -> (a Seq.t, string) result =
+ fun t json ->
+  match json with
+  | `A seq -> map_e (destruct t) seq
+  | _ -> error_unexpected_shape ~expected:"[.]" json
 
 and destruct_tuple : type a. a Encoding.tuple -> JSON.t -> (a, string) result =
  fun encoding json ->

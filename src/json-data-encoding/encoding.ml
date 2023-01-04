@@ -7,6 +7,7 @@ type _ t =
   | Bool : bool t
   | Int64 : int64 t
   | String : string t
+  | Seq : 'a t -> 'a Seq.t t
   | Tuple : 'a tuple -> 'a t
   | Object : 'a obj -> 'a t
   | Conv :
@@ -42,6 +43,7 @@ let unit = Unit
 let bool = Bool
 let int64 = Int64
 let string = String
+let seq t = Seq t
 let tuple t = Tuple t
 let obj t = Object t
 let req name encoding = Req { encoding; name }
