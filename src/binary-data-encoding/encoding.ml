@@ -96,96 +96,63 @@ let with_header ~headerencoding ~mkheader ~mkencoding ~equal ~maximum_size =
   Headered { mkheader; headerencoding; mkencoding; equal; maximum_size }
 ;;
 
-let string = function
-  | `Fixed u -> String u
+let with_length_header
+    : type a.
+      lengthencoding:
+        [ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
+      -> length:(a -> int)
+      -> mkencoding:(Sizedints.Uint62.t -> (a t, string) result)
+      -> equal:(a -> a -> bool)
+      -> maximum_size:Optint.Int63.t
+      -> a t
+  =
+ fun ~lengthencoding ~length ~mkencoding ~equal ~maximum_size ->
+  match lengthencoding with
+  | `Fixed length ->
+    (match mkencoding length with
+    | Ok encoding -> encoding
+    | Error msg ->
+      raise (Invalid_argument ("data-encoding.binary.with_length_header: " ^ msg)))
   | `UInt62 ->
     with_header
       ~headerencoding:uint62
       ~mkheader:(fun v ->
-        let len = String.length v in
-        match Sizedints.Uint62.of_int64 (Int64.of_int len) with
-        | None -> Error "String larger than header-size can encode"
+        match Sizedints.Uint62.of_int64 (Int64.of_int (length v)) with
+        | None -> Error "Length larger than header-size (62 bits) can encode"
         | Some n -> Ok n)
-      ~mkencoding:(fun n -> Ok (String n))
-      ~equal:String.equal
-      ~maximum_size:(Sizedints.Uint62.max_int :> Optint.Int63.t)
+      ~mkencoding
+      ~equal
+      ~maximum_size
   | `UInt30 ->
     with_header
       ~headerencoding:uint30
       ~mkheader:(fun v ->
-        let len = String.length v in
-        match Sizedints.Uint30.of_int len with
-        | None -> Error "String larger than header-size can encode"
+        match Sizedints.Uint30.of_int (length v) with
+        | None -> Error "Length larger than header-size (30 bits) can encode"
         | Some n -> Ok n)
-      ~mkencoding:(fun n -> Ok (String (Sizedints.Uint30.to_uint62 n)))
-      ~equal:String.equal
-      ~maximum_size:(Sizedints.Uint30.(to_uint62 max_int) :> Optint.Int63.t)
+      ~mkencoding:(fun n -> mkencoding (Sizedints.Uint30.to_uint62 n))
+      ~equal
+      ~maximum_size
   | `UInt16 ->
     with_header
       ~headerencoding:uint16
       ~mkheader:(fun v ->
-        let len = String.length v in
-        match Sizedints.Uint16.of_int len with
-        | None -> Error "String larger than header-size can encode"
+        match Sizedints.Uint16.of_int (length v) with
+        | None -> Error "Length larger than header-size (16 bits) can encode"
         | Some n -> Ok n)
-      ~mkencoding:(fun n -> Ok (String (Sizedints.Uint16.to_uint62 n)))
-      ~equal:String.equal
-      ~maximum_size:(Sizedints.Uint16.(to_uint62 max_int) :> Optint.Int63.t)
+      ~mkencoding:(fun n -> mkencoding (Sizedints.Uint16.to_uint62 n))
+      ~equal
+      ~maximum_size
   | `UInt8 ->
     with_header
       ~headerencoding:uint8
       ~mkheader:(fun v ->
-        let len = String.length v in
-        match Sizedints.Uint8.of_int len with
-        | None -> Error "String larger than header-size can encode"
+        match Sizedints.Uint8.of_int (length v) with
+        | None -> Error "Length larger than header-size (8 bits) can encode"
         | Some n -> Ok n)
-      ~mkencoding:(fun n -> Ok (String (Sizedints.Uint8.to_uint62 n)))
-      ~equal:String.equal
-      ~maximum_size:(Sizedints.Uint8.(to_uint62 max_int) :> Optint.Int63.t)
-;;
-
-let bytes = function
-  | `Fixed u -> Bytes u
-  | `UInt62 ->
-    with_header
-      ~headerencoding:uint62
-      ~mkheader:(fun v ->
-        match Sizedints.Uint62.of_int64 (Int64.of_int (Bytes.length v)) with
-        | None -> Error "Bytes larger than header-size can encode"
-        | Some n -> Ok n)
-      ~mkencoding:(fun n -> Ok (Bytes n))
-      ~equal:Bytes.equal
-      ~maximum_size:(Sizedints.Uint62.max_int :> Optint.Int63.t)
-  | `UInt30 ->
-    with_header
-      ~headerencoding:uint30
-      ~mkheader:(fun v ->
-        match Sizedints.Uint30.of_int (Bytes.length v) with
-        | None -> Error "Bytes larger than header-size can encode"
-        | Some n -> Ok n)
-      ~mkencoding:(fun n -> Ok (Bytes (Sizedints.Uint30.to_uint62 n)))
-      ~equal:Bytes.equal
-      ~maximum_size:(Sizedints.Uint30.(to_uint62 max_int) :> Optint.Int63.t)
-  | `UInt16 ->
-    with_header
-      ~headerencoding:uint16
-      ~mkheader:(fun v ->
-        match Sizedints.Uint16.of_int (Bytes.length v) with
-        | None -> Error "Bytes larger than header-size can encode"
-        | Some n -> Ok n)
-      ~mkencoding:(fun n -> Ok (Bytes (Sizedints.Uint16.to_uint62 n)))
-      ~equal:Bytes.equal
-      ~maximum_size:(Sizedints.Uint16.(to_uint62 max_int) :> Optint.Int63.t)
-  | `UInt8 ->
-    with_header
-      ~headerencoding:uint8
-      ~mkheader:(fun v ->
-        match Sizedints.Uint8.of_int (Bytes.length v) with
-        | None -> Error "Bytes larger than header-size can encode"
-        | Some n -> Ok n)
-      ~mkencoding:(fun n -> Ok (Bytes (Sizedints.Uint8.to_uint62 n)))
-      ~equal:Bytes.equal
-      ~maximum_size:(Sizedints.Uint8.(to_uint62 max_int) :> Optint.Int63.t)
+      ~mkencoding:(fun n -> mkencoding (Sizedints.Uint8.to_uint62 n))
+      ~equal
+      ~maximum_size
 ;;
 
 let conv ~serialisation ~deserialisation encoding =
@@ -194,6 +161,36 @@ let conv ~serialisation ~deserialisation encoding =
 
 let fold ~chunkencoding ~chunkify ~readinit ~reducer ~equal ~maximum_size =
   Fold { chunkencoding; chunkify; readinit; reducer; equal; maximum_size }
+;;
+
+let string lengthencoding =
+  with_length_header
+    ~lengthencoding
+    ~length:String.length
+    ~mkencoding:(fun n -> Ok (String n))
+    ~equal:String.equal
+    ~maximum_size:
+      (match lengthencoding with
+      | `Fixed n -> (n :> Optint.Int63.t)
+      | `UInt8 -> (Sizedints.Uint8.(to_uint62 max_int) :> Optint.Int63.t)
+      | `UInt16 -> (Sizedints.Uint16.(to_uint62 max_int) :> Optint.Int63.t)
+      | `UInt30 -> (Sizedints.Uint30.(to_uint62 max_int) :> Optint.Int63.t)
+      | `UInt62 -> (Sizedints.Uint62.max_int :> Optint.Int63.t))
+;;
+
+let bytes lengthencoding =
+  with_length_header
+    ~lengthencoding
+    ~length:Bytes.length
+    ~mkencoding:(fun n -> Ok (Bytes n))
+    ~equal:Bytes.equal
+    ~maximum_size:
+      (match lengthencoding with
+      | `Fixed n -> (n :> Optint.Int63.t)
+      | `UInt8 -> (Sizedints.Uint8.(to_uint62 max_int) :> Optint.Int63.t)
+      | `UInt16 -> (Sizedints.Uint16.(to_uint62 max_int) :> Optint.Int63.t)
+      | `UInt30 -> (Sizedints.Uint30.(to_uint62 max_int) :> Optint.Int63.t)
+      | `UInt62 -> (Sizedints.Uint62.max_int :> Optint.Int63.t))
 ;;
 
 let ellastic_uint30 : Sizedints.Uint30.t t =

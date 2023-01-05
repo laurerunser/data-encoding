@@ -96,6 +96,14 @@ end
 
 val option : 'a t -> 'a option t
 
+val string
+  :  [ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
+  -> string t
+
+val bytes
+  :  [ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
+  -> bytes t
+
 val conv
   :  serialisation:('a -> 'b)
   -> deserialisation:('b -> ('a, string) result)
@@ -110,13 +118,13 @@ val with_header
   -> maximum_size:Optint.Int63.t
   -> 'a t
 
-val string
-  :  [ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
-  -> string t
-
-val bytes
-  :  [ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
-  -> bytes t
+val with_length_header
+  :  lengthencoding:[ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
+  -> length:('a -> int)
+  -> mkencoding:(Sizedints.Uint62.t -> ('a t, string) result)
+  -> equal:('a -> 'a -> bool)
+  -> maximum_size:Optint.Int63.t
+  -> 'a t
 
 val fold
   :  chunkencoding:'chunk t
