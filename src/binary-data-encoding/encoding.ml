@@ -45,12 +45,17 @@ type 'a t = 'a Descr.t =
       -> 'a t
   | String : Sizedints.Uint62.t -> string t
   | Bytes : Sizedints.Uint62.t -> bytes t
-  | Option : 'a t -> 'a option t
+  | Array :
+      { length : Sizedints.Uint62.t
+      ; elementencoding : 'a t
+      }
+      -> 'a array t
   | Seq :
       { encoding : 'a t
       ; length : Sizedints.Uint62.t
       }
       -> 'a seq_with_length t
+  | Option : 'a t -> 'a option t
   | Headered :
       { mkheader : 'a -> ('header, string) result
       ; headerencoding : 'header t
@@ -190,8 +195,7 @@ let seq_with_length encoding lengthencoding =
   with_length_header
     ~lengthencoding
     ~length
-    ~mkencoding:(fun length ->
-      Ok (Seq { encoding; length }))
+    ~mkencoding:(fun length -> Ok (Seq { encoding; length }))
     ~equal:(fun a b -> Seq.equal (Query.equal_of encoding) a.seq b.seq)
     ~maximum_size:(Query.maximum_size_of encoding)
 ;;
@@ -212,6 +216,34 @@ let list encoding size_spec =
 
 let fold ~chunkencoding ~chunkify ~readinit ~reducer ~equal ~maximum_size =
   Fold { chunkencoding; chunkify; readinit; reducer; equal; maximum_size }
+;;
+
+let array
+    : type a.
+      [ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
+      -> a t
+      -> a array t
+  =
+ fun lengthencoding elementencoding ->
+  with_length_header
+    ~lengthencoding
+    ~length:Array.length
+    ~mkencoding:(fun length -> Ok (Array { length; elementencoding }))
+    ~equal:(fun xs ys ->
+      Array.length xs = Array.length ys
+      && Array.for_all2 (Query.equal_of elementencoding) xs ys)
+    ~maximum_size:
+      (let maximum_length =
+         match lengthencoding with
+         | `Fixed n -> n
+         | `UInt8 -> Sizedints.Uint8.(to_uint62 max_int)
+         | `UInt16 -> Sizedints.Uint16.(to_uint62 max_int)
+         | `UInt30 -> Sizedints.Uint30.(to_uint62 max_int)
+         | `UInt62 -> Sizedints.Uint62.max_int
+       in
+       Optint.Int63.mul
+         (maximum_length :> Optint.Int63.t)
+         (Query.maximum_size_of elementencoding))
 ;;
 
 let string lengthencoding =

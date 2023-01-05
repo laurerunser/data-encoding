@@ -59,6 +59,11 @@ let rec generator_of_encoding
       (QCheck2.Gen.list_repeat
          (Optint.Int63.to_int (length :> Optint.Int63.t))
          (generator_of_encoding encoding))
+  | Array { length; elementencoding } ->
+    let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
+    QCheck2.Gen.array_size
+      (QCheck2.Gen.pure length)
+      (generator_of_encoding elementencoding)
   | Option t ->
     let t = generator_of_encoding t in
     QCheck2.Gen.option t
@@ -116,7 +121,7 @@ let to_test
   let print = print_of_encoding encoding in
   let offset = 0 in
   (* TODO: adapt length to encoding *)
-  let length = 1024 in
+  let length = 4096 in
   let dst = Bytes.make length '\x00' in
   QCheck2.Test.make ~name ~print generator (fun v ->
       let* written_length =

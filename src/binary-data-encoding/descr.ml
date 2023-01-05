@@ -29,12 +29,17 @@ type _ t =
       -> 'a t
   | String : Commons.Sizedints.Uint62.t -> string t
   | Bytes : Commons.Sizedints.Uint62.t -> bytes t
-  | Option : 'a t -> 'a option t
+  | Array :
+      { length : Commons.Sizedints.Uint62.t
+      ; elementencoding : 'a t
+      }
+      -> 'a array t
   | Seq :
       { encoding : 'a t
       ; length : Commons.Sizedints.Uint62.t
       }
       -> 'a seq_with_length t
+  | Option : 'a t -> 'a option t
   | Headered :
       { mkheader : 'a -> ('header, string) result
       ; headerencoding : 'header t

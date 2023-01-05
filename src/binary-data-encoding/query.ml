@@ -21,6 +21,25 @@ let rec size_of : type t. t Descr.t -> t -> (Optint.Int63.t, string) result =
       let* hdsize = size_of encoding hd in
       let* tlsize = size_of seq_encoding { seq = tl; len = None } in
       Ok (Optint.Int63.add hdsize tlsize))
+  | Array { length; elementencoding } ->
+    if Option.get @@ Commons.Sizedints.Uint62.of_int64 (Int64.of_int (Array.length v))
+       <> length
+    then
+      raise
+        (Invalid_argument "data-encoding.binary.query.size_of: inconsistent Array length");
+    let length =
+      (* TODO: catch overflow. Can overflow happen? Wouldn't that prevent the Array to even exist in the first place? *)
+      Optint.Int63.to_int (length :> Optint.Int63.t)
+    in
+    let rec fold acc index =
+      if index >= length
+      then Ok acc
+      else
+        let* size = size_of elementencoding (Array.get v index) in
+        let acc = Optint.Int63.add acc size in
+        fold acc (index + 1)
+    in
+    fold Optint.Int63.zero 0
   | Option encoding ->
     (match v with
     | None -> Ok Optint.Int63.one
@@ -94,6 +113,8 @@ let rec maximum_size_of : type t. t Descr.t -> Optint.Int63.t =
   | Bytes n -> (n :> Optint.Int63.t)
   | Seq { encoding; length } ->
     Optint.Int63.mul (length :> Optint.Int63.t) (maximum_size_of encoding)
+  | Array { length; elementencoding } ->
+    Optint.Int63.mul (length :> Optint.Int63.t) (maximum_size_of elementencoding)
   | Option encoding -> Optint.Int63.add Optint.Int63.one (maximum_size_of encoding)
   | Headered { mkheader = _; headerencoding; mkencoding = _; equal = _; maximum_size } ->
     Optint.Int63.add (maximum_size_of headerencoding) maximum_size
@@ -142,6 +163,26 @@ let rec equal_of : type t. t Descr.t -> t -> t -> bool =
     fun a b -> Int.equal (a :> int) (b :> int)
   | String _ -> String.equal
   | Bytes _ -> Bytes.equal
+  | Array { length; elementencoding } ->
+    fun a b ->
+      let lengtha =
+        Option.get @@ Commons.Sizedints.Uint62.of_int64 (Int64.of_int (Array.length a))
+      in
+      if Optint.Int63.compare (lengtha :> Optint.Int63.t) (length :> Optint.Int63.t) <> 0
+      then
+        raise
+          (Invalid_argument
+             "data-encoding.binary.query.equal_of[array]: Inconsistent array length");
+      let lengthb =
+        Option.get @@ Commons.Sizedints.Uint62.of_int64 (Int64.of_int (Array.length b))
+      in
+      if Optint.Int63.compare (lengthb :> Optint.Int63.t) (length :> Optint.Int63.t) <> 0
+      then
+        raise
+          (Invalid_argument
+             "data-encoding.binary.query.equal_of[array]: Inconsistent array length");
+      let eq = equal_of elementencoding in
+      Array.for_all2 eq a b
   | Option t ->
     let t = equal_of t in
     Option.equal t
@@ -180,18 +221,27 @@ let rec pp_of : type t. t Descr.t -> Format.formatter -> t -> unit =
   | Numeral { numeral = UInt8; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
   | String _ -> Format.fprintf fmt "%s" v
   | Bytes _ -> Format.fprintf fmt "%s" (Bytes.unsafe_to_string v)
+  | Array { length = _; elementencoding } ->
+    Format.(
+      fprintf
+        fmt
+        "[|%a|]"
+        (pp_print_seq
+           ~pp_sep:(fun fmt () -> pp_print_char fmt ';')
+           (pp_of elementencoding))
+        (Array.to_seq v))
   | Option t ->
     (match v with
     | None -> Format.fprintf fmt "None"
     | Some v ->
       let pp = pp_of t in
       Format.fprintf fmt "Some(%a)" pp v)
-  | Seq { length=_; encoding } ->
-      let { Descr.seq; len=_} = v in
-      Format.fprintf fmt "seq(%a)"
-      Format.(pp_print_seq
-       ~pp_sep:(fun fmt () -> pp_print_char fmt ',')
-       (pp_of encoding))
+  | Seq { length = _; encoding } ->
+    let { Descr.seq; len = _ } = v in
+    Format.fprintf
+      fmt
+      "seq(%a)"
+      Format.(pp_print_seq ~pp_sep:(fun fmt () -> pp_print_char fmt ',') (pp_of encoding))
       seq
   | Headered { mkheader; headerencoding = _; mkencoding; equal = _; maximum_size = _ } ->
     let ( let* ) = Result.bind in

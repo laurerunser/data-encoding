@@ -18,8 +18,11 @@ let all_ground_encodings : any_encoding Seq.t =
     ; AnyE ("ui30le", Little_endian.uint30)
     ; AnyE ("ui16le", Little_endian.uint16)
     ; AnyE ("ui8le", Little_endian.uint8)
-    ; AnyE ("str[ui8]", Binary_data_encoding.Encoding.string `UInt8)
-      (* TODO: support bigger strings *)
+    ; AnyE ("str[ui8]", string `UInt8) (* TODO: support bigger strings *)
+    ; AnyE ("array[ui8](ui8)", array `UInt8 uint8)
+    ; AnyE
+        ( "array[8](ui16)"
+        , array (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 8L)) uint16 )
     ]
 ;;
 
@@ -62,6 +65,11 @@ let simplish_encodings : any_encoding Seq.t -> any_encoding Seq.t =
                   ~mkencoding:(fun () -> Ok e))
                 ~equal:(Binary_data_encoding.Query.equal_of e)
                 ~maximum_size:(Binary_data_encoding.Query.maximum_size_of e) )
+        ; AnyE
+            ( "array[2](" ^ s ^ ")"
+            , Binary_data_encoding.Encoding.array
+                (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 2L))
+                e )
         ])
     s
 ;;

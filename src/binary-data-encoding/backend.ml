@@ -167,6 +167,20 @@ let rec writek : type a. destination -> a Encoding.t -> a -> written =
   | Seq { encoding; length } ->
     let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
     write_seq destination encoding v.seq length
+  | Array { length; elementencoding } ->
+    if Option.get @@ Commons.Sizedints.Uint62.of_int64 (Int64.of_int (Array.length v))
+       <> length
+    then Failed { destination; error = "inconsistent array length" }
+    else (
+      let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
+      let rec fold destination index =
+        if index >= length
+        then Written { destination }
+        else
+          let* destination = writek destination elementencoding (Array.get v index) in
+          fold destination (index + 1)
+      in
+      fold destination 0)
   | Option t ->
     (match v with
     | None ->
@@ -312,6 +326,28 @@ let%expect_test _ =
     Encoding.ellastic_uint30
     (Option.get @@ Commons.Sizedints.Uint30.of_int 0b1010_1010_1010_1010);
   [%expect {| Ok(3): 00aad502000000000000 |}];
+  w
+    Encoding.(array (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 2L)) uint8)
+    [| Option.get @@ Commons.Sizedints.Uint8.of_int 127
+     ; Option.get @@ Commons.Sizedints.Uint8.of_int 255
+    |];
+  [%expect {| Ok(2): 007fff00000000000000 |}];
+  w
+    Encoding.(array (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 3L)) uint8)
+    [| Option.get @@ Commons.Sizedints.Uint8.of_int 127
+     ; Option.get @@ Commons.Sizedints.Uint8.of_int 255
+     ; Option.get @@ Commons.Sizedints.Uint8.of_int 1
+    |];
+  [%expect {| Ok(3): 007fff01000000000000 |}];
+  w Encoding.(array `UInt8 uint8) [||];
+  [%expect {| Ok(1): 00000000000000000000 |}];
+  w
+    Encoding.(array `UInt8 uint8)
+    [| Option.get @@ Commons.Sizedints.Uint8.of_int 127
+     ; Option.get @@ Commons.Sizedints.Uint8.of_int 255
+     ; Option.get @@ Commons.Sizedints.Uint8.of_int 1
+    |];
+  [%expect {| Ok(4): 00037fff010000000000 |}];
   ()
 ;;
 
@@ -563,6 +599,25 @@ let rec readk : type a. source -> a Encoding.t -> a readed =
   | Seq { encoding; length } ->
     let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
     read_seq source encoding length
+  | Array { length; elementencoding } ->
+    if Optint.Int63.equal (length :> Optint.Int63.t) Optint.Int63.zero
+    then Readed { source; value = [||] }
+    else (
+      let length =
+        (* TODO: check for overflow *)
+        Optint.Int63.to_int (length :> Optint.Int63.t)
+      in
+      let* v, source = readk source elementencoding in
+      let array = Array.make length v in
+      let rec fold source index =
+        if index >= length
+        then Readed { source; value = array }
+        else
+          let* v, source = readk source elementencoding in
+          Array.set array index v;
+          fold source (index + 1)
+      in
+      fold source 1)
   | Option t ->
     let* tag, source = read1 source Size.uint8 Commons.Sizedints.Uint8.get in
     if tag = Magic.option_none_tag
@@ -730,52 +785,54 @@ let read
 ;;
 
 let%expect_test _ =
-  let w : type a. string -> a Encoding.t -> (Format.formatter -> a -> unit) -> unit =
-   fun blob e f ->
+  let w : type a. ?pp:(Format.formatter -> a -> unit) -> string -> a Encoding.t -> unit =
+   fun ?pp blob e ->
     match read ~src:blob ~offset:0 ~length:(String.length blob) e with
-    | Ok d -> Format.printf "Ok: %a\n" f d
+    | Ok d ->
+      let pp =
+        match pp with
+        | Some pp -> pp
+        | None -> Query.pp_of e
+      in
+      Format.printf "Ok: %a\n" pp d
     | Error s -> Format.printf "Error: %s" s
   in
-  w "LooooooL" Encoding.int64 (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
+  w ~pp:(fun fmt i64 -> Format.fprintf fmt "%Lx" i64) "LooooooL" Encoding.int64;
   [%expect {| Ok: 4c6f6f6f6f6f6f4c |}];
-  w
-    "LooLLooL"
-    Encoding.[ unit; int32; int32; unit ]
-    (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx" l r);
-  [%expect {| Ok: 4c6f6f4c_4c6f6f4c |}];
-  w
-    "FOO"
-    Encoding.(String (Option.get @@ Commons.Sizedints.Uint62.of_int64 3L))
-    Format.pp_print_string;
+  w "LooLLooL" Encoding.[ unit; int32; int32; unit ];
+  [%expect {| Ok: ();1282371404;1282371404;() |}];
+  w "FOO" Encoding.(String (Option.get @@ Commons.Sizedints.Uint62.of_int64 3L));
   [%expect {| Ok: FOO |}];
   w
     "\000\000\000\000\000\000\000\000\001\000\000\000\000"
-    Encoding.[ int64; option int32 ]
-    (fun fmt [ i64; oi32 ] ->
-      Format.fprintf
-        fmt
-        "%Ld;%a"
-        i64
-        (fun fmt oi32 ->
-          match oi32 with
-          | None -> Format.fprintf fmt "None"
-          | Some i32 -> Format.fprintf fmt "Some(%ld)" i32)
-        oi32);
+    Encoding.[ int64; option int32 ];
   [%expect {| Ok: 0;Some(0) |}];
-  w "\x00" Encoding.ellastic_uint30 (fun fmt u30 -> Format.fprintf fmt "%x" (u30 :> int));
+  let pp_ui30 fmt (u30 : Commons.Sizedints.Uint30.t) =
+    Format.fprintf fmt "%x" (u30 :> int)
+  in
+  w ~pp:pp_ui30 "\x00" Encoding.ellastic_uint30;
   [%expect {| Ok: 0 |}];
-  w "\x01" Encoding.ellastic_uint30 (fun fmt u30 -> Format.fprintf fmt "%x" (u30 :> int));
+  w ~pp:pp_ui30 "\x01" Encoding.ellastic_uint30;
   [%expect {| Ok: 1 |}];
-  w "\x7f" Encoding.ellastic_uint30 (fun fmt u30 -> Format.fprintf fmt "%x" (u30 :> int));
+  w ~pp:pp_ui30 "\x7f" Encoding.ellastic_uint30;
   [%expect {| Ok: 7f |}];
-  w "\x80\x01" Encoding.ellastic_uint30 (fun fmt u30 ->
-      Format.fprintf fmt "%x" (u30 :> int));
+  w ~pp:pp_ui30 "\x80\x01" Encoding.ellastic_uint30;
   [%expect {| Ok: 80 |}];
-  w "\x81\x01" Encoding.ellastic_uint30 (fun fmt u30 ->
-      Format.fprintf fmt "%x" (u30 :> int));
+  w ~pp:pp_ui30 "\x81\x01" Encoding.ellastic_uint30;
   [%expect {| Ok: 81 |}];
-  w "\xaa\xd5\x02" Encoding.ellastic_uint30 (fun fmt u30 ->
-      Format.fprintf fmt "%x" (u30 :> int));
+  w ~pp:pp_ui30 "\xaa\xd5\x02" Encoding.ellastic_uint30;
   [%expect {| Ok: aaaa |}];
+  w
+    "\x7f\xff"
+    Encoding.(array (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 2L)) uint8);
+  [%expect {| Ok: [|127;255|] |}];
+  w
+    "\x7f\xff\x01"
+    Encoding.(array (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 3L)) uint8);
+  [%expect {| Ok: [|127;255;1|] |}];
+  w "\x00" Encoding.(array `UInt8 uint8);
+  [%expect {| Ok: [||] |}];
+  w "\x03\x7f\xff\x01" Encoding.(array `UInt8 uint8);
+  [%expect {| Ok: [|127;255;1|] |}];
   ()
 ;;

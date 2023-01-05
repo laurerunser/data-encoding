@@ -45,12 +45,17 @@ type 'a t = 'a Descr.t =
       -> 'a t
   | String : Sizedints.Uint62.t -> string t
   | Bytes : Sizedints.Uint62.t -> bytes t
-  | Option : 'a t -> 'a option t
+  | Array :
+      { length : Sizedints.Uint62.t
+      ; elementencoding : 'a t
+      }
+      -> 'a array t
   | Seq :
       { encoding : 'a t
       ; length : Sizedints.Uint62.t
       }
       -> 'a seq_with_length t
+  | Option : 'a t -> 'a option t
   | Headered :
       { mkheader : 'a -> ('header, string) result
       ; headerencoding : 'header t
@@ -104,6 +109,11 @@ module Little_endian : sig
   val uint8 : Sizedints.Uint8.t t
 end
 
+val array
+  :  [ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
+  -> 'a t
+  -> 'a array t
+
 val option : 'a t -> 'a option t
 
 type size_spec =
@@ -114,9 +124,8 @@ type size_spec =
   | `UInt8
   ]
 
-val string :  size_spec -> string t
-
-val bytes :  size_spec -> bytes t
+val string : size_spec -> string t
+val bytes : size_spec -> bytes t
 
 val conv
   :  serialisation:('a -> 'b)
@@ -140,11 +149,7 @@ val with_length_header
   -> maximum_size:Optint.Int63.t
   -> 'a t
 
-val seq_with_length
-  :  'a t
-  -> size_spec
-  -> 'a seq_with_length t
-
+val seq_with_length : 'a t -> size_spec -> 'a seq_with_length t
 val seq : 'a t -> size_spec -> 'a Seq.t t
 val list : 'a t -> size_spec -> 'a list t
 
