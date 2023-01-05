@@ -83,105 +83,8 @@ let rec generator_of_encoding
     QCheck2.Gen.map2 (fun h t -> Commons.Hlist.( :: ) (h, t)) head tail
 ;;
 
-let rec equal_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> t -> bool =
- fun encoding ->
-  match encoding with
-  | Unit -> Unit.equal
-  | Bool -> Bool.equal
-  | Numeral { numeral = Int64; endianness = _ } -> Int64.equal
-  | Numeral { numeral = Int32; endianness = _ } -> Int32.equal
-  | Numeral { numeral = UInt62; endianness = _ } ->
-    fun a b -> Optint.Int63.equal (a :> Optint.Int63.t) (b :> Optint.Int63.t)
-  | Numeral { numeral = UInt30; endianness = _ } ->
-    fun a b -> Int.equal (a :> int) (b :> int)
-  | Numeral { numeral = UInt16; endianness = _ } ->
-    fun a b -> Int.equal (a :> int) (b :> int)
-  | Numeral { numeral = UInt8; endianness = _ } ->
-    fun a b -> Int.equal (a :> int) (b :> int)
-  | String _ -> String.equal
-  | Bytes _ -> Bytes.equal
-  | Option t ->
-    let t = equal_of_encoding t in
-    Option.equal t
-  | Headered { mkheader = _; headerencoding = _; mkencoding = _; equal; maximum_size = _ }
-    -> equal
-  | Fold
-      { chunkencoding = _
-      ; chunkify = _
-      ; readinit = _
-      ; reducer = _
-      ; equal
-      ; maximum_size = _
-      } -> equal
-  | Conv { serialisation; deserialisation = _; encoding } ->
-    fun x y -> (equal_of_encoding encoding) (serialisation x) (serialisation y)
-  | [] -> fun [] [] -> true
-  | head :: tail ->
-    let head = equal_of_encoding head in
-    let tail = equal_of_encoding tail in
-    fun (ah :: at) (bh :: bt) -> head ah bh && tail at bt
-;;
-
-let rec pp_of_encoding
-    : type t. t Binary_data_encoding.Encoding.t -> Format.formatter -> t -> unit
-  =
- fun encoding fmt v ->
-  match encoding with
-  | Unit -> Format.fprintf fmt "()"
-  | Bool -> Format.fprintf fmt "%b" v
-  | Numeral { numeral = Int64; endianness = _ } -> Format.fprintf fmt "%Ld" v
-  | Numeral { numeral = Int32; endianness = _ } -> Format.fprintf fmt "%ld" v
-  | Numeral { numeral = UInt62; endianness = _ } ->
-    Format.fprintf fmt "%Ld" (Optint.Int63.to_int64 (v :> Optint.Int63.t))
-  | Numeral { numeral = UInt30; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
-  | Numeral { numeral = UInt16; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
-  | Numeral { numeral = UInt8; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
-  | String _ -> Format.fprintf fmt "%s" v
-  | Bytes _ -> Format.fprintf fmt "%s" (Bytes.unsafe_to_string v)
-  | Option t ->
-    (match v with
-    | None -> Format.fprintf fmt "None"
-    | Some v ->
-      let pp = pp_of_encoding t in
-      Format.fprintf fmt "Some(%a)" pp v)
-  | Headered { mkheader; headerencoding = _; mkencoding; equal = _; maximum_size = _ } ->
-    let ( let* ) = Result.bind in
-    (match
-       let* header = mkheader v in
-       let* encoding = mkencoding header in
-       Ok encoding
-     with
-    | Ok encoding ->
-      let pp = pp_of_encoding encoding in
-      Format.fprintf fmt "%a" pp v
-    | Error msg -> Format.fprintf fmt "Error: %s" msg)
-  | Fold
-      { chunkencoding; chunkify; readinit = _; reducer = _; equal = _; maximum_size = _ }
-    ->
-    Format.fprintf
-      fmt
-      "chunked(%a)"
-      (Format.pp_print_seq
-         ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
-         (pp_of_encoding chunkencoding))
-      (chunkify v)
-  | Conv { serialisation; deserialisation = _; encoding } ->
-    let pp fmt v = pp_of_encoding encoding fmt (serialisation v) in
-    Format.fprintf fmt "conved(%a)" pp v
-  | [] -> ()
-  | [ head ] ->
-    let [ v ] = v in
-    let pp = pp_of_encoding head in
-    Format.fprintf fmt "%a" pp v
-  | head :: tail ->
-    let (v :: vs) = v in
-    let pph = pp_of_encoding head in
-    let ppt = pp_of_encoding tail in
-    Format.fprintf fmt "%a;%a" pph v ppt vs
-;;
-
 let print_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> string =
- fun encoding v -> Format.asprintf "%a" (fun fmt v -> pp_of_encoding encoding fmt v) v
+ fun encoding v -> Format.asprintf "%a" (Binary_data_encoding.Query.pp_of encoding) v
 ;;
 
 let ( let* ) x f =
@@ -203,7 +106,7 @@ let to_test
     | Some g -> g
     | None -> generator_of_encoding encoding
   in
-  let equal = equal_of_encoding encoding in
+  let equal = Binary_data_encoding.Query.equal_of encoding in
   let print = print_of_encoding encoding in
   let offset = 0 in
   (* TODO: adapt length to encoding *)

@@ -1,0 +1,6 @@
+(library
+ (name binary_data_encoding_expect_tests)
+ (inline_tests)
+ (libraries binary_data_encoding)
+ (preprocess
+  (pps ppx_expect)))

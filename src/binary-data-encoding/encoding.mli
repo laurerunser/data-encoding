@@ -1,11 +1,11 @@
 module Hlist = Commons.Hlist
 module Sizedints = Commons.Sizedints
 
-type ('step, 'finish) reducer =
+type ('step, 'finish) reducer = ('step, 'finish) Descr.reducer =
   | K of 'step
   | Finish of 'finish
 
-type _ numeral =
+type 'a numeral = 'a Descr.numeral =
   | UInt8 : Sizedints.Uint8.t numeral
   | UInt16 : Sizedints.Uint16.t numeral
   | UInt30 : Sizedints.Uint30.t numeral
@@ -13,7 +13,7 @@ type _ numeral =
   | Int32 : int32 numeral
   | Int64 : int64 numeral
 
-type endianness =
+type endianness = Descr.endianness =
   | Big_endian
   | Little_endian
 
@@ -30,7 +30,7 @@ type endianness =
     supported natively by the library; these examples just demonstrate the kind
     of expressive power that [Headered] and [Fold] give to the library user.
 *)
-type _ t =
+type 'a t = 'a Descr.t =
   | Unit : unit t
   | Bool : bool t
   | Numeral :

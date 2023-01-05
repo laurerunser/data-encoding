@@ -60,7 +60,7 @@ let simplish_encodings : any_encoding Seq.t -> any_encoding Seq.t =
                   ~headerencoding:unit
                   ~mkheader:(fun _ -> Ok ())
                   ~mkencoding:(fun () -> Ok e))
-                ~equal:(Pbtlib.equal_of_encoding e)
+                ~equal:(Binary_data_encoding.Query.equal_of e)
                 ~maximum_size:(Binary_data_encoding.Query.maximum_size_of e) )
         ])
     s
