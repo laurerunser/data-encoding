@@ -69,12 +69,17 @@ type 'a t = 'a Descr.t =
 
 let unit = Unit
 let bool = Bool
-let int64 = Numeral { numeral = Int64; endianness = Big_endian }
-let int32 = Numeral { numeral = Int32; endianness = Big_endian }
-let uint30 = Numeral { numeral = UInt30; endianness = Big_endian }
-let uint62 = Numeral { numeral = UInt62; endianness = Big_endian }
-let uint16 = Numeral { numeral = UInt16; endianness = Big_endian }
-let uint8 = Numeral { numeral = UInt8; endianness = Big_endian }
+
+module Big_endian = struct
+  let int64 = Numeral { numeral = Int64; endianness = Big_endian }
+  let int32 = Numeral { numeral = Int32; endianness = Big_endian }
+  let uint30 = Numeral { numeral = UInt30; endianness = Big_endian }
+  let uint62 = Numeral { numeral = UInt62; endianness = Big_endian }
+  let uint16 = Numeral { numeral = UInt16; endianness = Big_endian }
+  let uint8 = Numeral { numeral = UInt8; endianness = Big_endian }
+end
+
+include Big_endian (* default *)
 
 module Little_endian = struct
   let int64 = Numeral { numeral = Int64; endianness = Little_endian }
@@ -84,7 +89,6 @@ module Little_endian = struct
   let uint16 = Numeral { numeral = UInt16; endianness = Little_endian }
   let uint8 = Numeral { numeral = UInt8; endianness = Little_endian }
 end
-(* TODO: Big_endian module *)
 
 let option t = Option t
 

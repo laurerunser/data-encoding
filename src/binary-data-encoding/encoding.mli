@@ -76,6 +76,15 @@ val uint62 : Sizedints.Uint62.t t
 val uint16 : Sizedints.Uint16.t t
 val uint8 : Sizedints.Uint8.t t
 
+module Big_endian : sig
+  val int64 : int64 t
+  val int32 : int32 t
+  val uint30 : Sizedints.Uint30.t t
+  val uint62 : Sizedints.Uint62.t t
+  val uint16 : Sizedints.Uint16.t t
+  val uint8 : Sizedints.Uint8.t t
+end
+
 module Little_endian : sig
   val int64 : int64 t
   val int32 : int32 t
