@@ -19,7 +19,7 @@ type endianness = Descr.endianness =
 
 type 'a seq_with_length = 'a Descr.seq_with_length =
   { seq : 'a Seq.t
-  ; mutable len : int option
+  ; length : Commons.Sizedints.Uint62.t Lazy.t
   }
 
 (** [α t] is a encoding for values of type [α]. The encoding can be used to
@@ -51,8 +51,8 @@ type 'a t = 'a Descr.t =
       }
       -> 'a array t
   | Seq :
-      { encoding : 'a t
-      ; length : Sizedints.Uint62.t
+      { length : Sizedints.Uint62.t
+      ; elementencoding : 'a t
       }
       -> 'a seq_with_length t
   | Option : 'a t -> 'a option t
@@ -121,9 +121,8 @@ type size_spec =
 
 let with_length_header
     : type a.
-      lengthencoding:
-        [ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
-      -> length:(a -> int)
+      lengthencoding:size_spec
+      -> length:(a -> Sizedints.Uint62.t)
       -> mkencoding:(Sizedints.Uint62.t -> (a t, string) result)
       -> equal:(a -> a -> bool)
       -> maximum_size:Optint.Int63.t
@@ -139,10 +138,7 @@ let with_length_header
   | `UInt62 ->
     with_header
       ~headerencoding:uint62
-      ~mkheader:(fun v ->
-        match Sizedints.Uint62.of_int64 (Int64.of_int (length v)) with
-        | None -> Error "Length larger than header-size (62 bits) can encode"
-        | Some n -> Ok n)
+      ~mkheader:(fun v -> Ok (length v))
       ~mkencoding
       ~equal
       ~maximum_size
@@ -150,9 +146,13 @@ let with_length_header
     with_header
       ~headerencoding:uint30
       ~mkheader:(fun v ->
-        match Sizedints.Uint30.of_int (length v) with
-        | None -> Error "Length larger than header-size (30 bits) can encode"
-        | Some n -> Ok n)
+        let length = length v in
+        if Sizedints.Uint30.(to_uint62 max_int) < length
+        then Error "Length larger than header-size (30 bits) can encode"
+        else
+          Ok
+            (Option.get
+               (Sizedints.Uint30.of_int (Optint.Int63.to_int (length :> Optint.Int63.t)))))
       ~mkencoding:(fun n -> mkencoding (Sizedints.Uint30.to_uint62 n))
       ~equal
       ~maximum_size
@@ -160,9 +160,13 @@ let with_length_header
     with_header
       ~headerencoding:uint16
       ~mkheader:(fun v ->
-        match Sizedints.Uint16.of_int (length v) with
-        | None -> Error "Length larger than header-size (16 bits) can encode"
-        | Some n -> Ok n)
+        let length = length v in
+        if Sizedints.Uint16.(to_uint62 max_int) < length
+        then Error "Length larger than header-size (16 bits) can encode"
+        else
+          Ok
+            (Option.get
+               (Sizedints.Uint16.of_int (Optint.Int63.to_int (length :> Optint.Int63.t)))))
       ~mkencoding:(fun n -> mkencoding (Sizedints.Uint16.to_uint62 n))
       ~equal
       ~maximum_size
@@ -170,9 +174,13 @@ let with_length_header
     with_header
       ~headerencoding:uint8
       ~mkheader:(fun v ->
-        match Sizedints.Uint8.of_int (length v) with
-        | None -> Error "Length larger than header-size (8 bits) can encode"
-        | Some n -> Ok n)
+        let length = length v in
+        if Sizedints.Uint8.(to_uint62 max_int) < length
+        then Error "Length larger than header-size (16 bits) can encode"
+        else
+          Ok
+            (Option.get
+               (Sizedints.Uint8.of_int (Optint.Int63.to_int (length :> Optint.Int63.t)))))
       ~mkencoding:(fun n -> mkencoding (Sizedints.Uint8.to_uint62 n))
       ~equal
       ~maximum_size
@@ -182,52 +190,47 @@ let conv ~serialisation ~deserialisation encoding =
   Conv { serialisation; deserialisation; encoding }
 ;;
 
-let length s =
-  match s.len with
-  | Some len -> len
-  | None ->
-    let len = Seq.length s.seq in
-    s.len <- Some len;
-    len
-;;
-
-let seq_with_length encoding lengthencoding =
+let seq_with_length lengthencoding elementencoding =
   with_length_header
     ~lengthencoding
-    ~length
-    ~mkencoding:(fun length -> Ok (Seq { encoding; length }))
-    ~equal:(fun a b -> Seq.equal (Query.equal_of encoding) a.seq b.seq)
-    ~maximum_size:(Query.maximum_size_of encoding)
+    ~length:(fun (s : 'f seq_with_length) -> Lazy.force s.length)
+    ~mkencoding:(fun length -> Ok (Seq { length; elementencoding }))
+    ~equal:(fun a b -> Seq.equal (Query.equal_of elementencoding) a.seq b.seq)
+    ~maximum_size:(Query.maximum_size_of elementencoding)
 ;;
 
-let seq encoding size_spec =
+let seq size_spec encoding =
   conv
-    ~serialisation:(fun seq -> { seq; len = None })
-    ~deserialisation:(fun { seq; len = _ } -> Ok seq)
-    (seq_with_length encoding size_spec)
+    ~serialisation:(fun seq ->
+      let length =
+        lazy (Option.get (Sizedints.Uint62.of_int64 (Int64.of_int (Seq.length seq))))
+      in
+      { seq; length })
+    ~deserialisation:(fun { seq; length = _ } -> Ok seq)
+    (seq_with_length size_spec encoding)
 ;;
 
-let list encoding size_spec =
-  conv (* TODO: compute length during conversion list -> seq ? *)
-    ~serialisation:(fun l -> { seq = List.to_seq l; len = None })
-    ~deserialisation:(fun { seq; len = _ } -> Ok (List.of_seq seq))
-    (seq_with_length encoding size_spec)
+let list size_spec encoding =
+  conv
+    ~serialisation:(fun l ->
+      let length =
+        lazy (Option.get (Sizedints.Uint62.of_int64 (Int64.of_int (List.length l))))
+      in
+      { seq = List.to_seq l; length })
+    ~deserialisation:(fun { seq; length = _ } -> Ok (List.of_seq seq))
+    (seq_with_length size_spec encoding)
 ;;
 
 let fold ~chunkencoding ~chunkify ~readinit ~reducer ~equal ~maximum_size =
   Fold { chunkencoding; chunkify; readinit; reducer; equal; maximum_size }
 ;;
 
-let array
-    : type a.
-      [ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
-      -> a t
-      -> a array t
-  =
+let array : type a. size_spec -> a t -> a array t =
  fun lengthencoding elementencoding ->
   with_length_header
     ~lengthencoding
-    ~length:Array.length
+    ~length:(fun a ->
+      Option.get (Sizedints.Uint62.of_int64 (Int64.of_int (Array.length a))))
     ~mkencoding:(fun length -> Ok (Array { length; elementencoding }))
     ~equal:(fun xs ys ->
       Array.length xs = Array.length ys
@@ -249,7 +252,8 @@ let array
 let string lengthencoding =
   with_length_header
     ~lengthencoding
-    ~length:String.length
+    ~length:(fun s ->
+      Option.get (Sizedints.Uint62.of_int64 (Int64.of_int (String.length s))))
     ~mkencoding:(fun n -> Ok (String n))
     ~equal:String.equal
     ~maximum_size:
@@ -264,7 +268,8 @@ let string lengthencoding =
 let bytes lengthencoding =
   with_length_header
     ~lengthencoding
-    ~length:Bytes.length
+    ~length:(fun b ->
+      Option.get (Sizedints.Uint62.of_int64 (Int64.of_int (Bytes.length b))))
     ~mkencoding:(fun n -> Ok (Bytes n))
     ~equal:Bytes.equal
     ~maximum_size:

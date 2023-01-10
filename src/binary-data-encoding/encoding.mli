@@ -19,7 +19,7 @@ type endianness = Descr.endianness =
 
 type 'a seq_with_length = 'a Descr.seq_with_length =
   { seq : 'a Seq.t
-  ; mutable len : int option
+  ; length : Sizedints.Uint62.t Lazy.t
   }
 
 (** [α t] is a encoding for values of type [α]. The encoding can be used to
@@ -51,8 +51,8 @@ type 'a t = 'a Descr.t =
       }
       -> 'a array t
   | Seq :
-      { encoding : 'a t
-      ; length : Sizedints.Uint62.t
+      { length : Sizedints.Uint62.t
+      ; elementencoding : 'a t
       }
       -> 'a seq_with_length t
   | Option : 'a t -> 'a option t
@@ -109,13 +109,6 @@ module Little_endian : sig
   val uint8 : Sizedints.Uint8.t t
 end
 
-val array
-  :  [ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
-  -> 'a t
-  -> 'a array t
-
-val option : 'a t -> 'a option t
-
 type size_spec =
   [ `Fixed of Sizedints.Uint62.t
   | `UInt62
@@ -124,6 +117,8 @@ type size_spec =
   | `UInt8
   ]
 
+val array : size_spec -> 'a t -> 'a array t
+val option : 'a t -> 'a option t
 val string : size_spec -> string t
 val bytes : size_spec -> bytes t
 
@@ -142,16 +137,16 @@ val with_header
   -> 'a t
 
 val with_length_header
-  :  lengthencoding:[ `Fixed of Sizedints.Uint62.t | `UInt62 | `UInt30 | `UInt16 | `UInt8 ]
-  -> length:('a -> int)
+  :  lengthencoding:size_spec
+  -> length:('a -> Sizedints.Uint62.t)
   -> mkencoding:(Sizedints.Uint62.t -> ('a t, string) result)
   -> equal:('a -> 'a -> bool)
   -> maximum_size:Optint.Int63.t
   -> 'a t
 
-val seq_with_length : 'a t -> size_spec -> 'a seq_with_length t
-val seq : 'a t -> size_spec -> 'a Seq.t t
-val list : 'a t -> size_spec -> 'a list t
+val seq_with_length : size_spec -> 'a t -> 'a seq_with_length t
+val seq : size_spec -> 'a t -> 'a Seq.t t
+val list : size_spec -> 'a t -> 'a list t
 
 val fold
   :  chunkencoding:'chunk t

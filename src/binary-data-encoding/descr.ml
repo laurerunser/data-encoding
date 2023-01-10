@@ -16,7 +16,7 @@ type endianness =
 
 type 'a seq_with_length =
   { seq : 'a Seq.t
-  ; mutable len : int option
+  ; length : Commons.Sizedints.Uint62.t Lazy.t
   }
 
 type _ t =
@@ -35,8 +35,8 @@ type _ t =
       }
       -> 'a array t
   | Seq :
-      { encoding : 'a t
-      ; length : Commons.Sizedints.Uint62.t
+      { length : Commons.Sizedints.Uint62.t
+      ; elementencoding : 'a t
       }
       -> 'a seq_with_length t
   | Option : 'a t -> 'a option t
