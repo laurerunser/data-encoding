@@ -78,6 +78,43 @@ let write1 destination writing write =
     Written { destination })
 ;;
 
+type chunkwriter = bytes -> int -> int -> chunkwritten
+
+and chunkwritten =
+  | K of int * chunkwriter
+  | Finish of int
+
+(* similar to [write1] but writes the data in chunks, this allows to write data
+   which is larger than the current buffer can accomodate, this is intended for
+   writing string and other such potentially big blobs. *)
+let rec writechunked destination write =
+  let writing =
+    min
+      (destination.maximum_length - destination.written)
+      (destination.length - destination.written)
+  in
+  assert (writing >= 0);
+  match write destination.buffer (destination.offset + destination.written) writing with
+  | Finish written ->
+    let destination = bump_written destination written in
+    Written { destination }
+  | K (written, write) ->
+    let destination = bump_written destination written in
+    Suspended
+      { destination
+      ; cont =
+          (fun buffer offset length ->
+            let destination =
+              mk_destination
+                ~maximum_length:(destination.maximum_length - destination.written)
+                buffer
+                offset
+                length
+            in
+            writechunked destination write)
+      }
+;;
+
 let rec ( let* ) x f =
   match x with
   | Written { destination } -> f destination
@@ -116,8 +153,19 @@ let rec writek : type a. destination -> a Descr.t -> a -> written =
     then Failed { destination; error = "inconsistent length of string" }
     else (
       let size = Optint.Int63.to_int (n :> Optint.Int63.t) in
-      write1 destination size (fun buffer offset ->
-          Bytes.blit_string v 0 buffer offset size))
+      let rec chunkwriter source_offset buffer offset maxwritesize =
+        let needswriting = size - source_offset in
+        if needswriting = 0
+        then Finish 0
+        else if needswriting <= maxwritesize
+        then (
+          Bytes.blit_string v source_offset buffer offset needswriting;
+          Finish needswriting)
+        else (
+          Bytes.blit_string v source_offset buffer offset maxwritesize;
+          K (maxwritesize, chunkwriter (source_offset + maxwritesize)))
+      in
+      writechunked destination (chunkwriter 0))
   | Bytes n ->
     (* TODO: support chunk writing of bytes so that it's possible to serialise
      a big blob onto several small buffers *)
@@ -131,7 +179,19 @@ let rec writek : type a. destination -> a Descr.t -> a -> written =
     then Failed { destination; error = "inconsistent length of bytes" }
     else (
       let size = Optint.Int63.to_int (n :> Optint.Int63.t) in
-      write1 destination size (fun buffer offset -> Bytes.blit v 0 buffer offset size))
+      let rec chunkwriter source_offset buffer offset maxwritesize =
+        let needswriting = size - source_offset in
+        if needswriting = 0
+        then Finish 0
+        else if needswriting <= maxwritesize
+        then (
+          Bytes.blit v source_offset buffer offset needswriting;
+          Finish needswriting)
+        else (
+          Bytes.blit v source_offset buffer offset maxwritesize;
+          K (maxwritesize, chunkwriter (source_offset + maxwritesize)))
+      in
+      writechunked destination (chunkwriter 0))
   | LSeq { length; elementencoding } ->
     let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
     let rec fold destination s length =
