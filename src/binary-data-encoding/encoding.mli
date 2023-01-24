@@ -109,12 +109,18 @@ module Little_endian : sig
   val uint8 : Sizedints.Uint8.t t
 end
 
-type size_spec =
-  [ `Fixed of Sizedints.Uint62.t
-  | `UInt62
+val default_endianness : endianness
+
+type variable_size_spec =
+  [ `UInt62
   | `UInt30
   | `UInt16
   | `UInt8
+  ]
+
+type size_spec =
+  [ `Fixed of Sizedints.Uint62.t
+  | variable_size_spec
   ]
 
 val array : size_spec -> 'a t -> 'a array t

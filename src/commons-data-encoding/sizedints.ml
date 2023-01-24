@@ -2,6 +2,7 @@ module Uint62 = struct
   type t = Optint.Int63.t
 
   let min_int = Optint.Int63.zero
+  let zero = Optint.Int63.zero
   let max_int = Optint.Int63.max_int
   let max_intL = Optint.Int63.(to_int64 max_int)
 
@@ -10,6 +11,8 @@ module Uint62 = struct
     then Some (Optint.Int63.of_int64 v)
     else None
   ;;
+
+  let of_int v = if 0 <= v then Some (Optint.Int63.of_int v) else None
 
   (* TODO: [of_int] but make it 32-bit architecture compatible (no literals that
    are too big) *)
@@ -51,6 +54,7 @@ module Uint30 = struct
   type t = int
 
   let min_int = 0
+  let zero = 0
   let max_int = 0x3f_ff_ff_ff
   let of_int v = if min_int <= v && v <= max_int then Some v else None
   let to_uint62 v = Optint.Int63.of_int v
@@ -74,6 +78,7 @@ module Uint16 = struct
   type t = int
 
   let min_int = 0
+  let zero = 0
   let max_int = 0xff_ff
   let of_int v = if min_int <= v && v <= max_int then Some v else None
   let to_uint62 v = Optint.Int63.of_int v

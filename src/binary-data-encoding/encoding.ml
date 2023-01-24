@@ -94,7 +94,9 @@ module Big_endian = struct
   let uint8 = Numeral { numeral = UInt8; endianness = Big_endian }
 end
 
-include Big_endian (* default *)
+include Big_endian
+
+let default_endianness = Big_endian
 
 module Little_endian = struct
   let int64 = Numeral { numeral = Int64; endianness = Little_endian }
@@ -111,12 +113,16 @@ let with_header ~headerencoding ~mkheader ~mkencoding ~equal ~maximum_size =
   Headered { mkheader; headerencoding; mkencoding; equal; maximum_size }
 ;;
 
-type size_spec =
-  [ `Fixed of Sizedints.Uint62.t
-  | `UInt62
+type variable_size_spec =
+  [ `UInt62
   | `UInt30
   | `UInt16
   | `UInt8
+  ]
+
+type size_spec =
+  [ `Fixed of Sizedints.Uint62.t
+  | variable_size_spec
   ]
 
 let with_length_header

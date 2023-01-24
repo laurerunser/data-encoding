@@ -1,3 +1,56 @@
+let zero_of_numeral : type n. n Descr.numeral -> n = function
+  | UInt8 -> Commons.Sizedints.Uint8.zero
+  | UInt16 -> Commons.Sizedints.Uint16.zero
+  | UInt30 -> Commons.Sizedints.Uint30.zero
+  | UInt62 -> Commons.Sizedints.Uint62.zero
+  | Int32 -> Int32.zero
+  | Int64 -> Int64.zero
+;;
+
+let max_int_of : type n. n Descr.numeral -> Commons.Sizedints.Uint62.t = function
+  | UInt8 -> Commons.Sizedints.Uint8.(to_uint62 max_int)
+  | UInt16 -> Commons.Sizedints.Uint16.(to_uint62 max_int)
+  | UInt30 -> Commons.Sizedints.Uint30.(to_uint62 max_int)
+  | UInt62 -> Commons.Sizedints.Uint62.max_int
+  | Int32 ->
+    Option.get @@ Commons.Sizedints.Uint62.of_int64 (Int64.of_int32 Int32.max_int)
+  | Int64 -> Option.get @@ Commons.Sizedints.Uint62.of_int64 Int64.max_int
+;;
+
+let size_of_numeral : type n. n Descr.numeral -> Optint.Int63.t = function
+  | UInt8 -> Optint.Int63.of_int Size.uint8
+  | UInt16 -> Optint.Int63.of_int Size.uint16
+  | UInt30 -> Optint.Int63.of_int Size.uint30
+  | UInt62 -> Optint.Int63.of_int Size.uint62
+  | Int32 -> Optint.Int63.of_int Size.int32
+  | Int64 -> Optint.Int63.of_int Size.int64
+;;
+
+let numeral_of_int : type n. n Descr.numeral -> int -> n =
+ fun n i ->
+  (* TODO: handle overflow uniformly accross all numerals, possibly returning
+     option *)
+  match n with
+  | UInt8 -> Option.get @@ Commons.Sizedints.Uint8.of_int i
+  | UInt16 -> Option.get @@ Commons.Sizedints.Uint16.of_int i
+  | UInt30 -> Option.get @@ Commons.Sizedints.Uint30.of_int i
+  | UInt62 -> Option.get @@ Commons.Sizedints.Uint62.of_int i
+  | Int32 -> Int32.of_int i
+  | Int64 -> Int64.of_int i
+;;
+
+let int_of_numeral : type n. n Descr.numeral -> n -> int =
+ fun n i ->
+  (* TODO: handle 32 bit arch *)
+  match n with
+  | UInt8 -> (i :> int)
+  | UInt16 -> (i :> int)
+  | UInt30 -> (i :> int)
+  | UInt62 -> Optint.Int63.to_int (i :> Optint.Int63.t)
+  | Int32 -> Int32.to_int i
+  | Int64 -> Int64.to_int i
+;;
+
 let ( let* ) = Result.bind
 
 let rec size_of : type t. t Descr.t -> t -> (Optint.Int63.t, string) result =
@@ -5,12 +58,7 @@ let rec size_of : type t. t Descr.t -> t -> (Optint.Int63.t, string) result =
   match encoding with
   | Unit -> Ok Optint.Int63.zero
   | Bool -> Ok Optint.Int63.one
-  | Numeral { numeral = Int64; endianness = _ } -> Ok (Optint.Int63.of_int 8)
-  | Numeral { numeral = Int32; endianness = _ } -> Ok (Optint.Int63.of_int 4)
-  | Numeral { numeral = UInt62; endianness = _ } -> Ok (Optint.Int63.of_int 8)
-  | Numeral { numeral = UInt30; endianness = _ } -> Ok (Optint.Int63.of_int 4)
-  | Numeral { numeral = UInt16; endianness = _ } -> Ok (Optint.Int63.of_int 2)
-  | Numeral { numeral = UInt8; endianness = _ } -> Ok Optint.Int63.one
+  | Numeral { numeral; endianness = _ } -> Ok (size_of_numeral numeral)
   | String n -> Ok (n :> Optint.Int63.t)
   | Bytes n -> Ok (n :> Optint.Int63.t)
   | Seq { length; elementencoding } ->

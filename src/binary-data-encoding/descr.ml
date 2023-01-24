@@ -1,12 +1,15 @@
+module Hlist = Commons.Hlist
+module Sizedints = Commons.Sizedints
+
 type ('step, 'finish) reducer =
   | K of 'step
   | Finish of 'finish
 
 type _ numeral =
-  | UInt8 : Commons.Sizedints.Uint8.t numeral
-  | UInt16 : Commons.Sizedints.Uint16.t numeral
-  | UInt30 : Commons.Sizedints.Uint30.t numeral
-  | UInt62 : Commons.Sizedints.Uint62.t numeral
+  | UInt8 : Sizedints.Uint8.t numeral
+  | UInt16 : Sizedints.Uint16.t numeral
+  | UInt30 : Sizedints.Uint30.t numeral
+  | UInt62 : Sizedints.Uint62.t numeral
   | Int32 : int32 numeral
   | Int64 : int64 numeral
 
@@ -16,7 +19,7 @@ type endianness =
 
 type 'a seq_with_length =
   { seq : 'a Seq.t
-  ; length : Commons.Sizedints.Uint62.t Lazy.t
+  ; length : Sizedints.Uint62.t Lazy.t
   }
 
 type _ t =
@@ -27,15 +30,15 @@ type _ t =
       ; endianness : endianness
       }
       -> 'a t
-  | String : Commons.Sizedints.Uint62.t -> string t
-  | Bytes : Commons.Sizedints.Uint62.t -> bytes t
+  | String : Sizedints.Uint62.t -> string t
+  | Bytes : Sizedints.Uint62.t -> bytes t
   | Array :
-      { length : Commons.Sizedints.Uint62.t
+      { length : Sizedints.Uint62.t
       ; elementencoding : 'a t
       }
       -> 'a array t
   | Seq :
-      { length : Commons.Sizedints.Uint62.t
+      { length : Sizedints.Uint62.t
       ; elementencoding : 'a t
       }
       -> 'a seq_with_length t
@@ -63,8 +66,8 @@ type _ t =
       ; encoding : 'b t
       }
       -> 'a t
-  | [] : unit Commons.Hlist.t t
-  | ( :: ) : 'a t * 'b Commons.Hlist.t t -> ('a * 'b) Commons.Hlist.t t
+  | [] : unit Hlist.t t
+  | ( :: ) : 'a t * 'b Hlist.t t -> ('a * 'b) Hlist.t t
 
 (* In order to avoid some complications w.r.t. inter-module dependencies and in
    order to allow the (local) opening of the [Encoding] module (necessary to get

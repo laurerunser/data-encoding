@@ -90,7 +90,7 @@ let rec ( let* ) x f =
     Suspended { destination; cont }
 ;;
 
-let rec writek : type a. destination -> a Encoding.t -> a -> written =
+let rec writek : type a. destination -> a Descr.t -> a -> written =
  fun destination encoding v ->
   assert (destination.offset >= 0);
   assert (destination.length >= 0);
@@ -102,39 +102,7 @@ let rec writek : type a. destination -> a Encoding.t -> a -> written =
         if v
         then Bytes.set_uint8 buffer offset (Magic.bool_true :> int)
         else Bytes.set_uint8 buffer offset (Magic.bool_false :> int))
-  | Numeral { numeral = Int64; endianness = Big_endian } ->
-    write1 destination Size.int64 (fun buffer offset ->
-        Bytes.set_int64_be buffer offset v)
-  | Numeral { numeral = Int64; endianness = Little_endian } ->
-    write1 destination Size.int64 (fun buffer offset ->
-        Bytes.set_int64_le buffer offset v)
-  | Numeral { numeral = Int32; endianness = Big_endian } ->
-    write1 destination Size.int32 (fun buffer offset ->
-        Bytes.set_int32_be buffer offset v)
-  | Numeral { numeral = Int32; endianness = Little_endian } ->
-    write1 destination Size.int32 (fun buffer offset ->
-        Bytes.set_int32_le buffer offset v)
-  | Numeral { numeral = UInt62; endianness = Big_endian } ->
-    write1 destination Size.uint62 (fun buffer offset ->
-        Commons.Sizedints.Uint62.set_be buffer offset v)
-  | Numeral { numeral = UInt62; endianness = Little_endian } ->
-    write1 destination Size.uint62 (fun buffer offset ->
-        Commons.Sizedints.Uint62.set_le buffer offset v)
-  | Numeral { numeral = UInt30; endianness = Big_endian } ->
-    write1 destination Size.uint30 (fun buffer offset ->
-        Commons.Sizedints.Uint30.set_be buffer offset v)
-  | Numeral { numeral = UInt30; endianness = Little_endian } ->
-    write1 destination Size.uint30 (fun buffer offset ->
-        Commons.Sizedints.Uint30.set_le buffer offset v)
-  | Numeral { numeral = UInt16; endianness = Big_endian } ->
-    write1 destination Size.uint16 (fun buffer offset ->
-        Bytes.set_uint16_be buffer offset (v :> int))
-  | Numeral { numeral = UInt16; endianness = Little_endian } ->
-    write1 destination Size.uint16 (fun buffer offset ->
-        Bytes.set_uint16_le buffer offset (v :> int))
-  | Numeral { numeral = UInt8; endianness = _ } ->
-    write1 destination Size.uint8 (fun buffer offset ->
-        Bytes.set_uint8 buffer offset (v :> int))
+  | Numeral { numeral; endianness } -> write_numeral destination numeral endianness v
   | String n ->
     (* TODO: support chunk writing of strings so that it's possible to serialise
      a big blob onto several small buffers *)
@@ -241,6 +209,45 @@ let rec writek : type a. destination -> a Encoding.t -> a -> written =
     | v :: vs ->
       let* destination = writek destination t v in
       writek destination ts vs)
+
+and write_numeral
+    : type a. destination -> a Descr.numeral -> Descr.endianness -> a -> written
+  =
+ fun destination numeral endianness v ->
+  match numeral, endianness with
+  | Int64, Big_endian ->
+    write1 destination Size.int64 (fun buffer offset ->
+        Bytes.set_int64_be buffer offset v)
+  | Int64, Little_endian ->
+    write1 destination Size.int64 (fun buffer offset ->
+        Bytes.set_int64_le buffer offset v)
+  | Int32, Big_endian ->
+    write1 destination Size.int32 (fun buffer offset ->
+        Bytes.set_int32_be buffer offset v)
+  | Int32, Little_endian ->
+    write1 destination Size.int32 (fun buffer offset ->
+        Bytes.set_int32_le buffer offset v)
+  | UInt62, Big_endian ->
+    write1 destination Size.uint62 (fun buffer offset ->
+        Commons.Sizedints.Uint62.set_be buffer offset v)
+  | UInt62, Little_endian ->
+    write1 destination Size.uint62 (fun buffer offset ->
+        Commons.Sizedints.Uint62.set_le buffer offset v)
+  | UInt30, Big_endian ->
+    write1 destination Size.uint30 (fun buffer offset ->
+        Commons.Sizedints.Uint30.set_be buffer offset v)
+  | UInt30, Little_endian ->
+    write1 destination Size.uint30 (fun buffer offset ->
+        Commons.Sizedints.Uint30.set_le buffer offset v)
+  | UInt16, Big_endian ->
+    write1 destination Size.uint16 (fun buffer offset ->
+        Bytes.set_uint16_be buffer offset (v :> int))
+  | UInt16, Little_endian ->
+    write1 destination Size.uint16 (fun buffer offset ->
+        Bytes.set_uint16_le buffer offset (v :> int))
+  | UInt8, _ ->
+    write1 destination Size.uint8 (fun buffer offset ->
+        Bytes.set_uint8 buffer offset (v :> int))
 ;;
 
 let write
@@ -248,7 +255,7 @@ let write
       dst:bytes
       -> offset:int
       -> length:int
-      -> a Encoding.t
+      -> a Descr.t
       -> a
       -> (int, int * string) result
   =
@@ -352,7 +359,7 @@ let%expect_test _ =
   ()
 ;;
 
-let string_of : type a. ?buffer_size:int -> a Encoding.t -> a -> (string, string) result =
+let string_of : type a. ?buffer_size:int -> a Descr.t -> a -> (string, string) result =
  fun ?(buffer_size = 1024) encoding v ->
   let rec chunk buffer acc k =
     match k buffer 0 (Bytes.length buffer) with
@@ -547,7 +554,7 @@ let rec ( let* ) x f =
     Suspended { source; cont }
 ;;
 
-let rec readk : type a. source -> a Encoding.t -> a readed =
+let rec readk : type a. source -> a Descr.t -> a readed =
  fun source encoding ->
   assert (source.offset >= 0);
   assert (source.offset < String.length source.blob);
@@ -560,28 +567,7 @@ let rec readk : type a. source -> a Encoding.t -> a readed =
     else if v = Magic.bool_false
     then Readed { source; value = false }
     else Failed { source; error = "Unknown value for Bool" }
-  | Numeral { numeral = Int64; endianness = Big_endian } ->
-    read1 source Size.int64 String.get_int64_be
-  | Numeral { numeral = Int64; endianness = Little_endian } ->
-    read1 source Size.int64 String.get_int64_le
-  | Numeral { numeral = Int32; endianness = Big_endian } ->
-    read1 source Size.int32 String.get_int32_be
-  | Numeral { numeral = Int32; endianness = Little_endian } ->
-    read1 source Size.int32 String.get_int32_le
-  | Numeral { numeral = UInt62; endianness = Big_endian } ->
-    read1 source Size.uint62 Commons.Sizedints.Uint62.get_be
-  | Numeral { numeral = UInt62; endianness = Little_endian } ->
-    read1 source Size.uint62 Commons.Sizedints.Uint62.get_le
-  | Numeral { numeral = UInt30; endianness = Big_endian } ->
-    read1 source Size.uint30 Commons.Sizedints.Uint30.get_be
-  | Numeral { numeral = UInt30; endianness = Little_endian } ->
-    read1 source Size.uint30 Commons.Sizedints.Uint30.get_le
-  | Numeral { numeral = UInt16; endianness = Big_endian } ->
-    read1 source Size.uint16 Commons.Sizedints.Uint16.get_be
-  | Numeral { numeral = UInt16; endianness = Little_endian } ->
-    read1 source Size.uint16 Commons.Sizedints.Uint16.get_le
-  | Numeral { numeral = UInt8; endianness = _ } ->
-    read1 source Size.uint8 Commons.Sizedints.Uint8.get
+  | Numeral { numeral; endianness } -> read_numeral source numeral endianness
   | String n ->
     (* TODO: support chunk reading of string so that it's possible to deserialise
      a big blob from several small blobs *)
@@ -663,10 +649,25 @@ let rec readk : type a. source -> a Encoding.t -> a readed =
   | t :: ts ->
     let* v, source = readk source t in
     let* vs, source = readk source ts in
-    Readed { source; value = Encoding.Hlist.( :: ) (v, vs) }
+    Readed { source; value = Descr.Hlist.( :: ) (v, vs) }
+
+and read_numeral : type n. source -> n Descr.numeral -> Descr.endianness -> n readed =
+ fun source numeral endianness ->
+  match numeral, endianness with
+  | Int64, Big_endian -> read1 source Size.int64 String.get_int64_be
+  | Int64, Little_endian -> read1 source Size.int64 String.get_int64_le
+  | Int32, Big_endian -> read1 source Size.int32 String.get_int32_be
+  | Int32, Little_endian -> read1 source Size.int32 String.get_int32_le
+  | UInt62, Big_endian -> read1 source Size.uint62 Commons.Sizedints.Uint62.get_be
+  | UInt62, Little_endian -> read1 source Size.uint62 Commons.Sizedints.Uint62.get_le
+  | UInt30, Big_endian -> read1 source Size.uint30 Commons.Sizedints.Uint30.get_be
+  | UInt30, Little_endian -> read1 source Size.uint30 Commons.Sizedints.Uint30.get_le
+  | UInt16, Big_endian -> read1 source Size.uint16 Commons.Sizedints.Uint16.get_be
+  | UInt16, Little_endian -> read1 source Size.uint16 Commons.Sizedints.Uint16.get_le
+  | UInt8, _ -> read1 source Size.uint8 Commons.Sizedints.Uint8.get
 ;;
 
-let readk : type a. source -> a Encoding.t -> a readed =
+let readk : type a. source -> a Descr.t -> a readed =
  fun source encoding ->
   if source.offset < 0
   then Failed { source; error = "offset is negative" }
@@ -675,9 +676,7 @@ let readk : type a. source -> a Encoding.t -> a readed =
   else readk source encoding
 ;;
 
-let read_strings
-    : type a. (string * int * int) Seq.t -> a Encoding.t -> (a, string) result
-  =
+let read_strings : type a. (string * int * int) Seq.t -> a Descr.t -> (a, string) result =
  fun sources e ->
   let rec loop (blob, offset, length) sources k =
     match k blob offset length with
@@ -773,7 +772,7 @@ let%expect_test _ =
 ;;
 
 let read
-    : type a. src:string -> offset:int -> length:int -> a Encoding.t -> (a, string) result
+    : type a. src:string -> offset:int -> length:int -> a Descr.t -> (a, string) result
   =
  fun ~src ~offset ~length encoding ->
   let source = mk_source ~maximum_length:length src offset length in
