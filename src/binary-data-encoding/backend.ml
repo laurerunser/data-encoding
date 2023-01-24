@@ -201,6 +201,60 @@ let rec writek : type a. destination -> a Descr.t -> a -> written =
     fold destination (chunkify v)
   | Conv { serialisation; deserialisation = _; encoding } ->
     writek destination encoding (serialisation v)
+  | Size_headered { size; encoding } ->
+    let original_destination = destination in
+    let size0 = Query.zero_of_numeral size in
+    (* TODO: make tests that covers the Written and the Suspended cases *)
+    (match write_numeral destination size Encoding.default_endianness size0 with
+    | Written { destination } ->
+      let written_before_write = destination.written in
+      (* TODO: set a maximum-length so that it always accomodates the size
+           header limit (e.g., 256 if uint8) *)
+      (match writek destination encoding v with
+      | Written { destination } as written_destination ->
+        let written_after_write = destination.written in
+        let actual_size =
+          Query.numeral_of_int size (written_after_write - written_before_write)
+        in
+        let* (_ : destination) =
+          write_numeral original_destination size Encoding.default_endianness actual_size
+        in
+        written_destination
+      | Failed _ as failed -> failed
+      | Suspended _ as suspend_written ->
+        (* slow-path: we compute the whole size and we write it before
+               returning the suspension. This causes to traverse [v] which is
+               the price to pay for chunked writing *)
+        (* TODO: make a whole lot of tests that [size_of] and [writek] agree
+               on size *)
+        (* TODO: make a [size_of] variant which stops early when exceeding
+               [maximum_length] *)
+        (match Query.size_of encoding v with
+        | Error s ->
+          (* TODO: wrap error message *)
+          Failed { destination; error = s }
+        | Ok actual_size ->
+          let actual_size = Query.numeral_of_int size (Optint.Int63.to_int actual_size) in
+          let* (_ : destination) =
+            write_numeral
+              original_destination
+              size
+              Encoding.default_endianness
+              actual_size
+          in
+          suspend_written))
+    | Failed _ as failed -> failed
+    | Suspended _ as suspended ->
+      (* we happen onto this case if we are so close to the end of the
+               buffer that even the size header cannot be written *)
+      suspended)
+  | Size_limit { at_most; encoding } ->
+    let maximum_length =
+      (* TODO: handle overflow *)
+      min destination.maximum_length (Optint.Int63.to_int (at_most :> Optint.Int63.t))
+    in
+    let destination = { destination with maximum_length } in
+    writek destination encoding v
   | [] ->
     assert (v = []);
     Written { destination }
@@ -356,6 +410,20 @@ let%expect_test _ =
      ; Option.get @@ Commons.Sizedints.Uint8.of_int 1
     |];
   [%expect {| Ok(4): 00037fff010000000000 |}];
+  w
+    Encoding.(with_size_header ~sizeencoding:`UInt8 ~encoding:(array `UInt8 uint8))
+    [| Option.get @@ Commons.Sizedints.Uint8.of_int 127
+     ; Option.get @@ Commons.Sizedints.Uint8.of_int 255
+     ; Option.get @@ Commons.Sizedints.Uint8.of_int 1
+    |];
+  [%expect {| Ok(5): 0004037fff0100000000 |}];
+  w
+    Encoding.(
+      with_size_header
+        ~sizeencoding:`UInt8
+        ~encoding:(string (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int 3))))
+    "LOl";
+  [%expect {| Ok(4): 00034c4f6c0000000000 |}];
   ()
 ;;
 
@@ -439,6 +507,33 @@ let%expect_test _ =
   [%expect {| Ok: "FOOLOLLOLOL" |}];
   w ~buffer_size:10 Encoding.[ int64; option int32 ] [ 0L; Some 0l ];
   [%expect {| Ok: "\000\000\000\000\000\000\000\000\001\000\000\000\000" |}];
+  w
+    ~buffer_size:10
+    Encoding.(with_size_header ~sizeencoding:`UInt8 ~encoding:[ int64; option int32 ])
+    [ 0L; Some 0l ];
+  [%expect {| Ok: "\r\000\000\000\000\000\000\000\000\001\000\000\000\000" |}];
+  w
+    ~buffer_size:10
+    Encoding.(with_size_header ~sizeencoding:`UInt16 ~encoding:(string `UInt16))
+    "THERE";
+  [%expect {| Ok: "\000\007\000\005THERE" |}];
+  w
+    ~buffer_size:10
+    Encoding.(
+      with_size_header
+        ~sizeencoding:`UInt8
+        ~encoding:
+          (with_size_header
+             ~sizeencoding:`UInt8
+             ~encoding:
+               (with_size_header
+                  ~sizeencoding:`UInt8
+                  ~encoding:
+                    (with_size_header
+                       ~sizeencoding:`UInt8
+                       ~encoding:(with_size_header ~sizeencoding:`UInt8 ~encoding:unit)))))
+    ();
+  [%expect {| Ok: "\004\003\002\001\000" |}];
   ()
 ;;
 
@@ -447,18 +542,41 @@ type source =
   ; offset : int
   ; length : int
   ; readed : int (* [read] is ambiguous so we make it unambiguously past as [readed] *)
+  ; stop_at_readed : int list
+        (* this list is grown when there is a size-header in the encoded binary data *)
   ; maximum_length : int
   }
 
-let mk_source ?(maximum_length = max_int) blob offset length =
+let mk_source ?(maximum_length = max_int) ?(stop_at_readed = []) blob offset length =
   if offset < 0 then failwith "Binary_data_encoding.Backend.mk_source: negative offset";
   if length < 0 then failwith "Binary_data_encoding.Backend.mk_source: negative length";
   if offset + length > String.length blob
   then failwith "Binary_data_encoding.Backend.mk_source: offset+length overflow";
-  { blob; offset; length; readed = 0; maximum_length }
+  { blob; offset; length; readed = 0; stop_at_readed; maximum_length }
 ;;
 
 let bump_readed source reading = { source with readed = source.readed + reading }
+
+let push_stop source length =
+  assert (length >= 0);
+  if source.readed + length > source.maximum_length
+  then Error "expected-stop exceeds maximum-length"
+  else (
+    let requested_stop = source.readed + length in
+    match source.stop_at_readed with
+    | [] -> Ok { source with stop_at_readed = [ requested_stop ] }
+    | previously_requested_stop :: _ ->
+      if requested_stop > previously_requested_stop
+      then Error "expected-stop exceeds previously requested stop"
+      else Ok { source with stop_at_readed = requested_stop :: source.stop_at_readed })
+;;
+
+let pop_stop source =
+  assert (source.stop_at_readed <> []);
+  match source.stop_at_readed with
+  | [] -> assert false
+  | stop :: stop_at_readed -> stop, { source with stop_at_readed }
+;;
 
 type 'a readed =
   | Readed of
@@ -480,6 +598,10 @@ let read1 source reading read =
   assert (reading >= 0);
   if source.readed + reading > source.maximum_length
   then Failed { source; error = "maximum-length exceeded" }
+  else if match source.stop_at_readed with
+          | [] -> false
+          | stop :: _ -> source.readed + reading > stop
+  then Failed { source; error = "expected-stop point exceeded" }
   else if source.readed + reading > source.length
   then
     Suspended
@@ -490,7 +612,12 @@ let read1 source reading read =
             if source.readed = source.length
             then (
               let source =
-                mk_source ~maximum_length:source.maximum_length blob offset length
+                mk_source
+                  ~maximum_length:source.maximum_length
+                  ~stop_at_readed:source.stop_at_readed
+                  blob
+                  offset
+                  length
               in
               if reading > source.length
                  (* TODO: instead of failing here (and below), allow to continue
@@ -519,7 +646,12 @@ let read1 source reading read =
                   in
                   let offset = 0 in
                   let length = reading in
-                  mk_source ~maximum_length:source.maximum_length blob offset length
+                  mk_source
+                    ~maximum_length:source.maximum_length
+                    ~stop_at_readed:source.stop_at_readed
+                    blob
+                    offset
+                    length
                 in
                 (* actually do this small here read *)
                 let value = read source.blob source.offset in
@@ -527,7 +659,12 @@ let read1 source reading read =
                 assert (source.readed = source.length);
                 (* Second prepare the source for giving back *)
                 let source =
-                  mk_source ~maximum_length:source.maximum_length blob offset length
+                  mk_source
+                    ~maximum_length:source.maximum_length
+                    ~stop_at_readed:source.stop_at_readed
+                    blob
+                    offset
+                    length
                 in
                 (* delta is the part of the new blob that has already been
                          read by the actual small read above *)
@@ -645,6 +782,27 @@ let rec readk : type a. source -> a Descr.t -> a readed =
     (match deserialisation v with
     | Ok value -> Readed { source; value }
     | Error error -> Failed { source; error })
+  | Size_headered { size; encoding } ->
+    let* readed_size, source = read_numeral source size Encoding.default_endianness in
+    let readed_size = Query.int_of_numeral size readed_size in
+    assert (readed_size >= 0);
+    (match push_stop source readed_size with
+    | Ok source ->
+      let* v, source = readk source encoding in
+      let expected_stop, source = pop_stop source in
+      if source.readed = expected_stop
+      then Readed { source; value = v }
+      else Failed { source; error = "read fewer bytes than expected-length" }
+    | Error msg ->
+      (* TODO: context of error message*)
+      Failed { source; error = msg })
+  | Size_limit { at_most; encoding } ->
+    let maximum_length =
+      (* TODO: handle overflow *)
+      min source.maximum_length (Optint.Int63.to_int (at_most :> Optint.Int63.t))
+    in
+    let source = { source with maximum_length } in
+    readk source encoding
   | [] -> Readed { source; value = [] }
   | t :: ts ->
     let* v, source = readk source t in
@@ -832,5 +990,29 @@ let%expect_test _ =
   [%expect {| Ok: [||] |}];
   w "\x03\x7f\xff\x01" Encoding.(array `UInt8 uint8);
   [%expect {| Ok: [|127;255;1|] |}];
+  w
+    "\r\000\000\000\000\000\000\000\000\001\000\000\000\000"
+    Encoding.(with_size_header ~sizeencoding:`UInt8 ~encoding:[ int64; option int32 ]);
+  [%expect {| Ok: 0;Some(0) |}];
+  w
+    "\000\007\000\005THERE"
+    Encoding.(with_size_header ~sizeencoding:`UInt16 ~encoding:(string `UInt16));
+  [%expect {| Ok: THERE |}];
+  w
+    "\004\003\002\001\000"
+    Encoding.(
+      with_size_header
+        ~sizeencoding:`UInt8
+        ~encoding:
+          (with_size_header
+             ~sizeencoding:`UInt8
+             ~encoding:
+               (with_size_header
+                  ~sizeencoding:`UInt8
+                  ~encoding:
+                    (with_size_header
+                       ~sizeencoding:`UInt8
+                       ~encoding:(with_size_header ~sizeencoding:`UInt8 ~encoding:unit)))));
+  [%expect {| Ok: () |}];
   ()
 ;;

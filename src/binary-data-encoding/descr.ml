@@ -66,6 +66,16 @@ type _ t =
       ; encoding : 'b t
       }
       -> 'a t
+  | Size_headered :
+      { size : _ numeral
+      ; encoding : 'a t
+      }
+      -> 'a t
+  | Size_limit :
+      { at_most : Sizedints.Uint62.t
+      ; encoding : 'a t
+      }
+      -> 'a t
   | [] : unit Hlist.t t
   | ( :: ) : 'a t * 'b Hlist.t t -> ('a * 'b) Hlist.t t
 

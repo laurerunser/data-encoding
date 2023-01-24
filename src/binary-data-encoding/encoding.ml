@@ -79,6 +79,16 @@ type 'a t = 'a Descr.t =
       ; encoding : 'b t
       }
       -> 'a t
+  | Size_headered :
+      { size : _ numeral
+      ; encoding : 'a t
+      }
+      -> 'a t
+  | Size_limit :
+      { at_most : Sizedints.Uint62.t
+      ; encoding : 'a t
+      }
+      -> 'a t
   | [] : unit Hlist.t t
   | ( :: ) : 'a t * 'b Hlist.t t -> ('a * 'b) Hlist.t t
 
@@ -190,6 +200,15 @@ let with_length_header
       ~mkencoding:(fun n -> mkencoding (Sizedints.Uint8.to_uint62 n))
       ~equal
       ~maximum_size
+;;
+
+let with_size_header : type a. sizeencoding:variable_size_spec -> encoding:a t -> a t =
+ fun ~sizeencoding ~encoding ->
+  match sizeencoding with
+  | `UInt62 -> Size_headered { size = UInt62; encoding }
+  | `UInt30 -> Size_headered { size = UInt30; encoding }
+  | `UInt16 -> Size_headered { size = UInt16; encoding }
+  | `UInt8 -> Size_headered { size = UInt8; encoding }
 ;;
 
 let conv ~serialisation ~deserialisation encoding =

@@ -133,6 +133,14 @@ let rec size_of : type t. t Descr.t -> t -> (Optint.Int63.t, string) result =
     fold Optint.Int63.zero chunks
   | Conv { serialisation; deserialisation = _; encoding } ->
     size_of encoding (serialisation v)
+  | Size_headered { size; encoding } ->
+    let sizesize = size_of_numeral size in
+    let* size = size_of encoding v in
+    Ok (Optint.Int63.add sizesize size)
+  | Size_limit { at_most; encoding } ->
+    let* size = size_of encoding v in
+    (* TODO: earlier failing ? *)
+    if size > (at_most :> Optint.Int63.t) then Error "size exceeds limit" else Ok size
   | [] -> Ok Optint.Int63.zero
   | ehead :: etail ->
     (match v with
@@ -191,6 +199,11 @@ let rec maximum_size_of : type t. t Descr.t -> Optint.Int63.t =
       ; maximum_size
       } -> maximum_size
   | Conv { serialisation = _; deserialisation = _; encoding } -> maximum_size_of encoding
+  | Size_headered { size; encoding } ->
+    let maxsize :> Optint.Int63.t = max_int_of size in
+    let maxencodingsize = maximum_size_of encoding in
+    if Optint.Int63.compare maxsize maxencodingsize < 0 then maxsize else maxencodingsize
+  | Size_limit { at_most; encoding = _ } -> (at_most :> Optint.Int63.t)
   | [] -> Optint.Int63.zero
   | head :: tail -> Optint.Int63.add (maximum_size_of head) (maximum_size_of tail)
 ;;
@@ -264,6 +277,8 @@ let rec equal_of : type t. t Descr.t -> t -> t -> bool =
       } -> equal
   | Conv { serialisation; deserialisation = _; encoding } ->
     fun x y -> (equal_of encoding) (serialisation x) (serialisation y)
+  | Size_headered { size = _; encoding } -> equal_of encoding
+  | Size_limit { at_most = _; encoding } -> equal_of encoding
   | [] -> fun [] [] -> true
   | head :: tail ->
     let head = equal_of head in
@@ -332,6 +347,8 @@ let rec pp_of : type t. t Descr.t -> Format.formatter -> t -> unit =
   | Conv { serialisation; deserialisation = _; encoding } ->
     let pp fmt v = pp_of encoding fmt (serialisation v) in
     Format.fprintf fmt "conved(%a)" pp v
+  | Size_headered { size = _; encoding } -> pp_of encoding fmt v
+  | Size_limit { at_most = _; encoding } -> pp_of encoding fmt v
   | [] -> ()
   | [ head ] ->
     let [ v ] = v in

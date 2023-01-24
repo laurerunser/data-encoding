@@ -90,6 +90,13 @@ let rec generator_of_encoding
         let* v = deserialisation v in
         v)
       t
+  | Size_headered { size = _; encoding } ->
+    (* TODO: check for overflow against size *)
+    generator_of_encoding encoding
+  | Size_limit { at_most; encoding } ->
+    ignore at_most;
+    ignore encoding;
+    failwith "TODO"
   | [] -> QCheck2.Gen.pure Commons.Hlist.[]
   | head :: tail ->
     let head = generator_of_encoding head in

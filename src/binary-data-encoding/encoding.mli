@@ -79,6 +79,16 @@ type 'a t = 'a Descr.t =
       ; encoding : 'b t
       }
       -> 'a t
+  | Size_headered :
+      { size : _ numeral
+      ; encoding : 'a t
+      }
+      -> 'a t
+  | Size_limit :
+      { at_most : Sizedints.Uint62.t
+      ; encoding : 'a t
+      }
+      -> 'a t
   | [] : unit Hlist.t t
   | ( :: ) : 'a t * 'b Hlist.t t -> ('a * 'b) Hlist.t t
 
@@ -150,6 +160,7 @@ val with_length_header
   -> maximum_size:Optint.Int63.t
   -> 'a t
 
+val with_size_header : sizeencoding:variable_size_spec -> encoding:'a t -> 'a t
 val seq_with_length : size_spec -> 'a t -> 'a seq_with_length t
 val seq : size_spec -> 'a t -> 'a Seq.t t
 val list : size_spec -> 'a t -> 'a list t

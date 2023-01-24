@@ -97,7 +97,13 @@ type source
     @raise Failure if [offset] and [length] do not form a valid slice of
     [blob]. Specifically if
     [ offset<0 || length<0 || offset+length>String.length blob ]. *)
-val mk_source : ?maximum_length:int -> string -> int -> int -> source
+val mk_source
+  :  ?maximum_length:int
+  -> ?stop_at_readed:int list
+  -> string
+  -> int
+  -> int
+  -> source
 
 (** A [readed] is a value returned by [readk] in order to indicate the status of
     the deserialisation operation.

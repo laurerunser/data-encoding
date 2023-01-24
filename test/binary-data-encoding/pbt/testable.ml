@@ -72,6 +72,11 @@ let simplish_encodings : any_encoding Seq.t -> any_encoding Seq.t =
                 ~equal:(Binary_data_encoding.Query.equal_of e)
                 ~maximum_size:(Binary_data_encoding.Query.maximum_size_of e) )
         ; AnyE
+            ( "sized(" ^ s ^ ")"
+            , Binary_data_encoding.Encoding.with_size_header
+                ~sizeencoding:`UInt16
+                ~encoding:e )
+        ; AnyE
             ( "array[2](" ^ s ^ ")"
             , Binary_data_encoding.Encoding.array
                 (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 2L))
