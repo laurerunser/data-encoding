@@ -132,7 +132,7 @@ let rec writek : type a. destination -> a Descr.t -> a -> written =
     else (
       let size = Optint.Int63.to_int (n :> Optint.Int63.t) in
       write1 destination size (fun buffer offset -> Bytes.blit v 0 buffer offset size))
-  | Seq { length; elementencoding } ->
+  | LSeq { length; elementencoding } ->
     let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
     let rec fold destination s length =
       match s () with
@@ -148,6 +148,15 @@ let rec writek : type a. destination -> a Descr.t -> a -> written =
           fold destination s (length - 1)
     in
     fold destination v.seq length
+  | USeq { elementencoding } ->
+    let rec fold destination s =
+      match s () with
+      | Seq.Nil -> Written { destination }
+      | Seq.Cons (elt, s) ->
+        let* destination = writek destination elementencoding elt in
+        fold destination s
+    in
+    fold destination v
   | Array { length; elementencoding } ->
     if Option.get @@ Commons.Sizedints.Uint62.of_int64 (Int64.of_int (Array.length v))
        <> length
@@ -424,6 +433,16 @@ let%expect_test _ =
         ~encoding:(string (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int 3))))
     "LOl";
   [%expect {| Ok(4): 00034c4f6c0000000000 |}];
+  w Encoding.(seq_with_size `UInt8 uint8) Seq.empty;
+  [%expect {| Ok(1): 00000000000000000000 |}];
+  w
+    Encoding.(seq_with_size `UInt8 uint8)
+    (Seq.return (Option.get @@ Commons.Sizedints.Uint8.of_int 0));
+  [%expect {| Ok(2): 00010000000000000000 |}];
+  w
+    Encoding.(seq_with_size `UInt8 (option uint8))
+    (Seq.map Commons.Sizedints.Uint8.of_int (List.to_seq [ 0; 1; 2 ]));
+  [%expect {| Ok(7): 00060100010101020000 |}];
   ()
 ;;
 
@@ -534,6 +553,18 @@ let%expect_test _ =
                        ~encoding:(with_size_header ~sizeencoding:`UInt8 ~encoding:unit)))))
     ();
   [%expect {| Ok: "\004\003\002\001\000" |}];
+  w ~buffer_size:10 Encoding.(seq_with_size `UInt8 uint8) Seq.empty;
+  [%expect {| Ok: "\000" |}];
+  w
+    ~buffer_size:10
+    Encoding.(seq_with_size `UInt8 uint8)
+    (Seq.return (Option.get @@ Commons.Sizedints.Uint8.of_int 0));
+  [%expect {| Ok: "\001\000" |}];
+  w
+    ~buffer_size:10
+    Encoding.(seq_with_size `UInt8 (option uint8))
+    (Seq.map Commons.Sizedints.Uint8.of_int (List.to_seq [ 0; 1; 2 ]));
+  [%expect {| Ok: "\006\001\000\001\001\001\002" |}];
   ()
 ;;
 
@@ -720,7 +751,7 @@ let rec readk : type a. source -> a Descr.t -> a readed =
     let size = Optint.Int63.to_int (n :> Optint.Int63.t) in
     read1 source size (fun blob offset ->
         Bytes.unsafe_of_string (String.sub blob offset size))
-  | Seq { length; elementencoding } ->
+  | LSeq { length; elementencoding } ->
     let intlength = Optint.Int63.to_int (length :> Optint.Int63.t) in
     let rec fold source reversed_list remaining_length =
       if remaining_length = 0
@@ -733,6 +764,20 @@ let rec readk : type a. source -> a Descr.t -> a readed =
         fold source (v :: reversed_list) (remaining_length - 1)
     in
     fold source [] intlength
+  | USeq { elementencoding } ->
+    (match source.stop_at_readed with
+    | [] ->
+      (* TODO: support unsized USeq once we support lazy useq *)
+      Failed { source; error = "unlengthed-seq without a size" }
+    | expected_stop :: _ ->
+      let rec fold source reversed_list =
+        if expected_stop = source.readed
+        then Readed { source; value = List.to_seq (List.rev reversed_list) }
+        else
+          let* v, source = readk source elementencoding in
+          fold source (v :: reversed_list)
+      in
+      fold source [])
   | Array { length; elementencoding } ->
     if Optint.Int63.equal (length :> Optint.Int63.t) Optint.Int63.zero
     then Readed { source; value = [||] }
@@ -1014,5 +1059,11 @@ let%expect_test _ =
                        ~sizeencoding:`UInt8
                        ~encoding:(with_size_header ~sizeencoding:`UInt8 ~encoding:unit)))));
   [%expect {| Ok: () |}];
+  w "\000" Encoding.(seq_with_size `UInt8 uint8);
+  [%expect {| Ok: seq() |}];
+  w "\001\000" Encoding.(seq_with_size `UInt8 uint8);
+  [%expect {| Ok: seq(0) |}];
+  w "\006\001\000\001\001\001\002" Encoding.(seq_with_size `UInt8 (option uint8));
+  [%expect {| Ok: seq(Some(0),Some(1),Some(2)) |}];
   ()
 ;;

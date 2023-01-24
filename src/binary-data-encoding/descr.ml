@@ -37,11 +37,12 @@ type _ t =
       ; elementencoding : 'a t
       }
       -> 'a array t
-  | Seq :
+  | LSeq :
       { length : Sizedints.Uint62.t
       ; elementencoding : 'a t
       }
       -> 'a seq_with_length t
+  | USeq : { elementencoding : 'a t } -> 'a Seq.t t
   | Option : 'a t -> 'a option t
   | Headered :
       { mkheader : 'a -> ('header, string) result

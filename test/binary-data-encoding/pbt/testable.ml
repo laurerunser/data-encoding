@@ -23,12 +23,14 @@ let all_ground_encodings : any_encoding Seq.t =
     ; AnyE
         ( "array[8](ui16)"
         , array (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 8L)) uint16 )
-    ; AnyE ("seq[ui8](ui8)", seq_with_length `UInt8 uint8)
+    ; AnyE ("seql[ui8](ui8)", seq_with_length `UInt8 uint8)
     ; AnyE
-        ( "seq[8](ui16)"
+        ( "seql[8](ui16)"
         , seq_with_length
             (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 8L))
             uint16 )
+    ; AnyE ("sequ[ui8](ui8)", seq_with_size `UInt8 uint8)
+    ; AnyE ("sequ[ui8](ui16)", seq_with_size `UInt8 uint16)
     ]
 ;;
 

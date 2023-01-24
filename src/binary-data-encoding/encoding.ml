@@ -50,11 +50,12 @@ type 'a t = 'a Descr.t =
       ; elementencoding : 'a t
       }
       -> 'a array t
-  | Seq :
+  | LSeq :
       { length : Sizedints.Uint62.t
       ; elementencoding : 'a t
       }
       -> 'a seq_with_length t
+  | USeq : { elementencoding : 'a t } -> 'a Seq.t t
   | Option : 'a t -> 'a option t
   | Headered :
       { mkheader : 'a -> ('header, string) result
@@ -219,7 +220,7 @@ let seq_with_length lengthencoding elementencoding =
   with_length_header
     ~lengthencoding
     ~length:(fun (s : 'f seq_with_length) -> Lazy.force s.length)
-    ~mkencoding:(fun length -> Ok (Seq { length; elementencoding }))
+    ~mkencoding:(fun length -> Ok (LSeq { length; elementencoding }))
     ~equal:(fun a b -> Seq.equal (Query.equal_of elementencoding) a.seq b.seq)
     ~maximum_size:(Query.maximum_size_of elementencoding)
 ;;
@@ -233,6 +234,10 @@ let seq size_spec encoding =
       { seq; length })
     ~deserialisation:(fun { seq; length = _ } -> Ok seq)
     (seq_with_length size_spec encoding)
+;;
+
+let seq_with_size sizeencoding elementencoding =
+  with_size_header ~sizeencoding ~encoding:(USeq { elementencoding })
 ;;
 
 let list size_spec encoding =

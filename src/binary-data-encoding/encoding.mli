@@ -50,11 +50,12 @@ type 'a t = 'a Descr.t =
       ; elementencoding : 'a t
       }
       -> 'a array t
-  | Seq :
+  | LSeq :
       { length : Sizedints.Uint62.t
       ; elementencoding : 'a t
       }
       -> 'a seq_with_length t
+  | USeq : { elementencoding : 'a t } -> 'a Seq.t t
   | Option : 'a t -> 'a option t
   | Headered :
       { mkheader : 'a -> ('header, string) result
@@ -164,6 +165,7 @@ val with_size_header : sizeencoding:variable_size_spec -> encoding:'a t -> 'a t
 val seq_with_length : size_spec -> 'a t -> 'a seq_with_length t
 val seq : size_spec -> 'a t -> 'a Seq.t t
 val list : size_spec -> 'a t -> 'a list t
+val seq_with_size : variable_size_spec -> 'a t -> 'a Seq.t t
 
 val fold
   :  chunkencoding:'chunk t

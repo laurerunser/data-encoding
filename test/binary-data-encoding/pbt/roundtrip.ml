@@ -22,8 +22,8 @@ let prng =
 let () =
   (* sampling the long long not-so-basic sequence because it's too long *)
   let rec skips s () =
-    let n = Random.State.int prng 64 in
-    let s = Seq.drop n s in
+    let n = Random.State.int prng 128 in
+    let s = Seq.drop (n + 1) s in
     match s () with
     | Seq.Nil -> Seq.Nil
     | Seq.Cons (v, s) -> Seq.Cons (v, skips s)

@@ -61,7 +61,7 @@ let rec size_of : type t. t Descr.t -> t -> (Optint.Int63.t, string) result =
   | Numeral { numeral; endianness = _ } -> Ok (size_of_numeral numeral)
   | String n -> Ok (n :> Optint.Int63.t)
   | Bytes n -> Ok (n :> Optint.Int63.t)
-  | Seq { length; elementencoding } ->
+  | LSeq { length; elementencoding } ->
     let length =
       (* TODO: catch overflow. *)
       Optint.Int63.to_int (length :> Optint.Int63.t)
@@ -85,6 +85,15 @@ let rec size_of : type t. t Descr.t -> t -> (Optint.Int63.t, string) result =
         fold (len + 1) (Optint.Int63.add size elt_size) s
     in
     fold 0 Optint.Int63.zero v.seq
+  | USeq { elementencoding } ->
+    let rec fold size s =
+      match s () with
+      | Seq.Nil -> Ok size
+      | Seq.Cons (elt, s) ->
+        let* elt_size = size_of elementencoding elt in
+        fold (Optint.Int63.add size elt_size) s
+    in
+    fold Optint.Int63.zero v
   | Array { length; elementencoding } ->
     if Option.get @@ Commons.Sizedints.Uint62.of_int64 (Int64.of_int (Array.length v))
        <> length
@@ -183,8 +192,9 @@ let rec maximum_size_of : type t. t Descr.t -> Optint.Int63.t =
   | Numeral { numeral = UInt8; endianness = _ } -> Optint.Int63.one
   | String n -> (n :> Optint.Int63.t)
   | Bytes n -> (n :> Optint.Int63.t)
-  | Seq { length; elementencoding } ->
+  | LSeq { length; elementencoding } ->
     Optint.Int63.mul (length :> Optint.Int63.t) (maximum_size_of elementencoding)
+  | USeq { elementencoding = _ } -> Optint.Int63.max_int
   | Array { length; elementencoding } ->
     Optint.Int63.mul (length :> Optint.Int63.t) (maximum_size_of elementencoding)
   | Option encoding -> Optint.Int63.add Optint.Int63.one (maximum_size_of encoding)
@@ -263,8 +273,9 @@ let rec equal_of : type t. t Descr.t -> t -> t -> bool =
   | Option t ->
     let t = equal_of t in
     Option.equal t
-  | Seq { elementencoding; length = _ } ->
+  | LSeq { elementencoding; length = _ } ->
     fun s1 s2 -> Seq.equal (equal_of elementencoding) s1.seq s2.seq
+  | USeq { elementencoding } -> fun s1 s2 -> Seq.equal (equal_of elementencoding) s1 s2
   | Headered { mkheader = _; headerencoding = _; mkencoding = _; equal; maximum_size = _ }
     -> equal
   | Fold
@@ -315,7 +326,7 @@ let rec pp_of : type t. t Descr.t -> Format.formatter -> t -> unit =
     | Some v ->
       let pp = pp_of t in
       Format.fprintf fmt "Some(%a)" pp v)
-  | Seq { length = _; elementencoding } ->
+  | LSeq { length = _; elementencoding } ->
     let { Descr.seq; length = _ } = v in
     Format.fprintf
       fmt
@@ -323,6 +334,13 @@ let rec pp_of : type t. t Descr.t -> Format.formatter -> t -> unit =
       Format.(
         pp_print_seq ~pp_sep:(fun fmt () -> pp_print_char fmt ',') (pp_of elementencoding))
       seq
+  | USeq { elementencoding } ->
+    Format.fprintf
+      fmt
+      "seq(%a)"
+      Format.(
+        pp_print_seq ~pp_sep:(fun fmt () -> pp_print_char fmt ',') (pp_of elementencoding))
+      v
   | Headered { mkheader; headerencoding = _; mkencoding; equal = _; maximum_size = _ } ->
     let ( let* ) = Result.bind in
     (match
