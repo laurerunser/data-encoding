@@ -1,3 +1,4 @@
 module Encoding = Encoding
-module Backend = Backend
 module Query = Query
+module Writer = Writer
+module Reader = Reader

@@ -19,19 +19,19 @@ let dst = Bytes.make length 'x'
 
 let twople ij =
   Core_bench.Bench.Test.create ~name:"twople" (fun () ->
-      let _ = Binary_data_encoding.Backend.write ~dst ~offset ~length int64_twople ij in
+      let _ = Binary_data_encoding.Writer.write ~dst ~offset ~length int64_twople ij in
       ())
 ;;
 
 let triple ijk =
   Core_bench.Bench.Test.create ~name:"triple" (fun () ->
-      let _ = Binary_data_encoding.Backend.write ~dst ~offset ~length int64_triple ijk in
+      let _ = Binary_data_encoding.Writer.write ~dst ~offset ~length int64_triple ijk in
       ())
 ;;
 
 let quadle ijkl =
   Core_bench.Bench.Test.create ~name:"quadle" (fun () ->
-      let _ = Binary_data_encoding.Backend.write ~dst ~offset ~length int64_quadle ijkl in
+      let _ = Binary_data_encoding.Writer.write ~dst ~offset ~length int64_quadle ijkl in
       ())
 ;;
 

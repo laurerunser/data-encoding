@@ -140,11 +140,11 @@ let to_test
   let dst = Bytes.make length '\x00' in
   QCheck2.Test.make ~name ~print generator (fun v ->
       let* written_length =
-        Binary_data_encoding.Backend.write ~dst ~offset ~length encoding v
+        Binary_data_encoding.Writer.write ~dst ~offset ~length encoding v
       in
       let src = Bytes.to_string dst in
       let* vv =
-        Binary_data_encoding.Backend.read ~src ~offset ~length:written_length encoding
+        Binary_data_encoding.Reader.read ~src ~offset ~length:written_length encoding
       in
       equal v vv)
 ;;
