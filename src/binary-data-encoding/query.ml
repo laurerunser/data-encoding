@@ -135,7 +135,7 @@ let rec size_of : type t. t Descr.t -> t -> (Optint.Int63.t, string) result =
       | Seq.Cons (chunk, s) ->
         (match size_of chunkencoding chunk with
         | Ok chunksize ->
-          let acc = Optint.Int63.add chunksize chunksize in
+          let acc = Optint.Int63.add acc chunksize in
           fold acc s
         | Error e -> Error e)
     in

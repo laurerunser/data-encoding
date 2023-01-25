@@ -136,15 +136,20 @@ let to_test
   let print = print_of_encoding encoding in
   let offset = 0 in
   (* TODO: adapt length to encoding *)
-  let length = 4096 in
-  let dst = Bytes.make length '\x00' in
+  let buffer_size = 4096 in
+  let dst = Bytes.make buffer_size '\x00' in
   QCheck2.Test.make ~name ~print generator (fun v ->
-      let* written_length =
-        Binary_data_encoding.Writer.write ~dst ~offset ~length encoding v
+      let* written_size =
+        Binary_data_encoding.Writer.write ~dst ~offset ~length:buffer_size encoding v
       in
+      let* queried_size = Binary_data_encoding.Query.size_of encoding v in
+      let queried_size = Optint.Int63.to_int queried_size in
+      if written_size <> queried_size
+      then failwith "Computed size inconsistent with written size";
       let src = Bytes.to_string dst in
       let* vv =
-        Binary_data_encoding.Reader.read ~src ~offset ~length:written_length encoding
+        Binary_data_encoding.Reader.read ~src ~offset ~length:written_size encoding
       in
-      equal v vv)
+      if not (equal v vv) then failwith "roundtrip roken";
+      true)
 ;;
