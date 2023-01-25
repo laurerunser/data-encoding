@@ -19,7 +19,7 @@ type endianness = Descr.endianness =
 
 type 'a seq_with_length = 'a Descr.seq_with_length =
   { seq : 'a Seq.t
-  ; length : Commons.Sizedints.Uint62.t Lazy.t
+  ; length : Sizedints.Uint62.t Lazy.t
   }
 
 (** [α t] is a encoding for values of type [α]. The encoding can be used to
