@@ -27,9 +27,6 @@
    (json-data-encoding (= :version))
    (binary-data-encoding (= :version))
    optint
-   (qcheck (and :with-test (>= 0.19)))
-   (qcheck-alcotest :with-test)
-   (alcotest (and :with-test (>= 1.5.0)))
    (ppx_expect :with-test)
  )
 )
@@ -43,8 +40,7 @@
    dune
    optint
    (qcheck (and :with-test (>= 0.19)))
-   (qcheck-alcotest :with-test)
-   (alcotest (and :with-test (>= 1.5.0)))
+   (qcheck-core :with-test)
    (ppx_expect :with-test)
  )
 )
@@ -58,8 +54,7 @@
    dune
    optint
    (qcheck (and :with-test (>= 0.19)))
-   (qcheck-alcotest :with-test)
-   (alcotest (and :with-test (>= 1.5.0)))
+   (qcheck-core :with-test)
    (ppx_expect :with-test)
  )
 )

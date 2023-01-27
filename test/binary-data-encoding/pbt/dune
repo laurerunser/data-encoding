@@ -1,4 +1,4 @@
 (tests
  (names roundtrip)
  (package binary-data-encoding)
- (libraries qcheck data-encoding.commons binary-data-encoding))
+ (libraries qcheck qcheck-core data-encoding.commons binary-data-encoding))

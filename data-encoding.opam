@@ -15,9 +15,6 @@ depends: [
   "json-data-encoding" {= version}
   "binary-data-encoding" {= version}
   "optint"
-  "qcheck" {with-test & >= "0.19"}
-  "qcheck-alcotest" {with-test}
-  "alcotest" {with-test & >= "1.5.0"}
   "ppx_expect" {with-test}
   "odoc" {with-doc}
 ]
