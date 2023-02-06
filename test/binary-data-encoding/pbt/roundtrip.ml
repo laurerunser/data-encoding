@@ -26,16 +26,19 @@ let run tests =
 
 let () = run Testable.basics
 
+let rec skips rate s () =
+  let s = Seq.drop rate s in
+  match s () with
+  | Seq.Nil -> Seq.Nil
+  | Seq.Cons (v, s) -> Seq.Cons (v, skips rate s)
+;;
+
 let not_so_basic =
   (* sampling the long long not-so-basic sequence because it's too long *)
-  let rec skips s () =
-    let n = Random.State.int seed_gen 128 in
-    let s = Seq.drop (n + 1) s in
-    match s () with
-    | Seq.Nil -> Seq.Nil
-    | Seq.Cons (v, s) -> Seq.Cons (v, skips s)
-  in
-  skips Testable.not_so_basic
+  let offset = Random.State.int seed_gen 16 in
+  let not_so_basic = Seq.drop offset Testable.not_so_basic in
+  let rate = 200 in
+  skips rate not_so_basic
 ;;
 
 let () = run not_so_basic
