@@ -28,6 +28,7 @@
    (binary-data-encoding (= :version))
    optint
    (ppx_expect :with-test)
+   (ocamlformat (and :with-test (= 0.20.1)))
  )
 )
 
@@ -42,6 +43,7 @@
    (qcheck (and :with-test (>= 0.19)))
    (qcheck-core :with-test)
    (ppx_expect :with-test)
+   (ocamlformat (and :with-test (= 0.20.1)))
  )
 )
 
@@ -56,5 +58,6 @@
    (qcheck (and :with-test (>= 0.19)))
    (qcheck-core :with-test)
    (ppx_expect :with-test)
+   (ocamlformat (and :with-test (= 0.20.1)))
  )
 )

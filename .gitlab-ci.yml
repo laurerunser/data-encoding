@@ -16,7 +16,7 @@ include: 'https://gitlab.com/nomadic-labs/gitlab-ocaml-ci-example/-/raw/main/.gi
 .build-matrix:
   parallel:
     matrix:
-    - OCAML_COMPILER: ["4.10.2", "4.11.2", "4.12.1", "4.13.1", "4.14.0"]
+    - OCAML_COMPILER: ["4.14.0"]
       DUNE_BUILD_TARGETS: "@src/all"
       DUNE_TEST_TARGETS: "@runtest"
       DUNE_DOC_TARGETS: [""]
