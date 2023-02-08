@@ -9,6 +9,7 @@
 val shape : Format.formatter -> JSON.t -> unit
 
 val mini : Format.formatter -> JSON.t -> unit
+val mini_lexemes : Format.formatter -> JSON.lexeme Seq.t -> unit
 
 (* TODO
 val pretty : Format.formatter -> JSON.t -> unit
