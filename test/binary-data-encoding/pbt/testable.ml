@@ -11,7 +11,6 @@ let all_ground_encodings : any_encoding Seq.t =
     ; AnyE ("ui30", uint30)
     ; AnyE ("ellastic_ui30", ellastic_uint30)
     ; AnyE ("ui16", uint16)
-    ; AnyE ("ui8le", Little_endian.uint8)
     ; AnyE ("i64le", Little_endian.int64)
     ; AnyE ("i32le", Little_endian.int32)
     ; AnyE ("ui62le", Little_endian.uint62)
