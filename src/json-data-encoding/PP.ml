@@ -162,8 +162,9 @@ let rec mini_lexemes depth first fmt (lxms : JSON.lexeme Seq.t) =
       Format.pp_print_string fmt "}";
       mini_lexemes (depth - 1) false fmt lxms
     | `Name s ->
+      if depth > 0 && not first then Format.pp_print_char fmt ',';
       Format.fprintf fmt "\"%s\":" s;
-      mini_lexemes depth first fmt lxms)
+      mini_lexemes depth true fmt lxms)
 ;;
 
 let mini_lexemes fmt s = mini_lexemes 0 false fmt s
@@ -173,6 +174,11 @@ let%expect_test _ =
   [%expect {| {} |}];
   Format.printf "%a\n" mini_lexemes (JSON.lexemify @@ `O (List.to_seq [ "this", `Null ]));
   [%expect {| {"this":null} |}];
+  Format.printf
+    "%a\n"
+    mini_lexemes
+    (JSON.lexemify @@ `O (List.to_seq [ "this", `Null; "that", `Null ]));
+  [%expect {| {"this":null,"that":null} |}];
   Format.printf "%a\n" mini_lexemes (JSON.lexemify @@ `A Seq.empty);
   [%expect {| [] |}];
   Format.printf
