@@ -1,0 +1,7 @@
+(library
+ (name suspendable_buffers)
+ (public_name suspendable-buffers)
+ (js_of_ocaml)
+ (inline_tests)
+ (preprocess
+  (pps ppx_expect)))
