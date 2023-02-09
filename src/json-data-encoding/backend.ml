@@ -230,3 +230,109 @@ and destruct_obj : type a. a Encoding.obj -> JSON.t -> (a, string) result =
             | Ok vs -> Ok (Some v :: vs))))
     | other -> Error (Format.asprintf "Expected {..}, got %a" PP.shape other))
 ;;
+
+let empty_obj : JSON.lexeme Seq.node = Seq.Cons (`Os, fun () -> Seq.Cons (`Oe, Seq.empty))
+
+(* TODO: avoid duplication with JSON.ml, move to commons? *)
+let rec append1 seq stop () =
+  match seq () with
+  | Seq.Nil -> Seq.Cons (stop, Seq.empty)
+  | Seq.Cons (x, seq) -> Seq.Cons (x, append1 seq stop)
+;;
+
+(* TODO: avoid duplication with JSON.ml, move to commons? *)
+let bracket start seq stop () = Seq.Cons (start, append1 seq stop)
+
+let rec construct_lexeme : type a. a Encoding.t -> a -> JSON.lexeme Seq.t =
+ fun encoding v () ->
+  match encoding with
+  | Unit ->
+    assert (v = ());
+    empty_obj
+  | Bool -> Seq.Cons (`Bool v, Seq.empty)
+  | Int64 -> Seq.Cons (`String (Int64.to_string v), Seq.empty)
+  | String -> Seq.Cons (`String v (* TODO check utf8 *), Seq.empty)
+  | Seq t -> bracket `As (Seq.flat_map (construct_lexeme t) v) `Ae ()
+  | Tuple t -> bracket `As (construct_tuple_lexeme t v) `Ae ()
+  | Object o -> bracket `Os (construct_obj_lexeme o v) `Oe ()
+  | Conv { serialisation; deserialisation = _; encoding } ->
+    construct_lexeme encoding (serialisation v) ()
+(* TODO exception handling?? *)
+
+and construct_tuple_lexeme : type a. a Encoding.tuple -> a -> JSON.lexeme Seq.t =
+ fun encoding v () ->
+  match encoding with
+  | [] -> Seq.Nil
+  | t :: ts ->
+    let (v :: vs) = v in
+    Seq.append (construct_lexeme t v) (construct_tuple_lexeme ts vs) ()
+
+and construct_obj_lexeme : type a. a Encoding.obj -> a -> JSON.lexeme Seq.t =
+ fun encoding v () ->
+  match encoding with
+  | [] -> Seq.Nil
+  | Req { encoding = t; name } :: ts ->
+    let (v :: vs) = v in
+    Seq.append
+      (Seq.cons (`Name name) (construct_lexeme t v))
+      (construct_obj_lexeme ts vs)
+      ()
+  | Opt { encoding = t; name } :: ts ->
+    let (v :: vs) = v in
+    (match v with
+    | None -> construct_obj_lexeme ts vs ()
+    | Some v ->
+      Seq.append
+        (Seq.cons (`Name name) (construct_lexeme t v))
+        (construct_obj_lexeme ts vs)
+        ())
+;;
+
+let%expect_test _ =
+  let w : type a. a Encoding.t -> a -> unit =
+   fun e v ->
+    match construct_lexeme e v with
+    | j -> Format.printf "%a\n" PP.mini_lexemes j
+    | exception exc -> Format.printf "Error: %s\n" (Printexc.to_string exc)
+  in
+  w Encoding.unit ();
+  [%expect {| {} |}];
+  w Encoding.int64 0x4c_6f_6f_6f_6f_6f_6f_4cL;
+  [%expect {| "5507743393699032908" |}];
+  w Encoding.int64 0xff_ff_ff_ff_ff_ff_ff_ffL;
+  [%expect {| "-1" |}];
+  w Encoding.(seq string) (List.to_seq [ "a"; "bc"; "Foo"; "BAR" ]);
+  [%expect {| ["a","bc","Foo","BAR"] |}];
+  w Encoding.(list int64) [ 0x4c_6f_6f_4cL; 0xff_ff_ff_ff_ff_ff_ff_ffL; 0x4c_6f_6f_4cL ];
+  [%expect {| ["1282371404","-1","1282371404"] |}];
+  w Encoding.(array int64) [||];
+  [%expect {| [] |}];
+  w Encoding.(array unit) [| () |];
+  [%expect {| [{}] |}];
+  w
+    Encoding.(tuple [ unit; unit; int64; unit; int64 ])
+    [ (); (); 0x4c_6f_6f_4cL; (); 0x4c_6f_6f_4cL ];
+  [%expect {| [{},{},"1282371404",{},"1282371404"] |}];
+  w Encoding.(tuple [ string; unit ]) [ "FOO"; () ];
+  [%expect {| ["FOO",{}] |}];
+  w Encoding.(obj [ req "foo" string; req "bar" unit ]) [ "FOO"; () ];
+  [%expect {| {"foo":"FOO","bar":{}} |}];
+  w Encoding.(obj [ req "foo" string; opt "bar" unit ]) [ "FOO"; None ];
+  [%expect {| {"foo":"FOO"} |}];
+  let module R = struct
+    type t =
+      { foo : string
+      ; bar : int64
+      }
+  end
+  in
+  w
+    Encoding.(
+      Record.(
+        record
+          (fun foo bar -> R.{ foo; bar })
+          [ field "foo" (fun r -> r.R.foo) string; field "bar" (fun r -> r.R.bar) int64 ]))
+    R.{ foo = "FOO"; bar = 0xff_ff_ff_ff_ff_ff_ff_ffL };
+  [%expect {| {"foo":"FOO","bar":"-1"} |}];
+  ()
+;;
