@@ -12,3 +12,8 @@ val destruct : 'a Encoding.t -> JSON.t -> ('a, string) result
     [Seq.t], and unlike [construct], this function cannot return a clean
     [result]. Instead, traversing the sequence can raise exceptions. *)
 val construct_lexeme : 'a Encoding.t -> 'a -> JSON.lexeme Seq.t
+
+val write_lexemes
+  :  Suspendable_buffers.Writing.destination
+  -> JSON.lexeme Seq.t
+  -> Suspendable_buffers.Writing.written

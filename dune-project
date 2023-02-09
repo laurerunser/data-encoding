@@ -40,6 +40,7 @@
    (ocaml (>= 4.14))
    dune
    optint
+   suspendable-buffers
    (qcheck (and :with-test (>= 0.19)))
    (qcheck-core :with-test)
    (ppx_expect :with-test)

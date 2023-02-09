@@ -336,3 +336,191 @@ let%expect_test _ =
   [%expect {| {"foo":"FOO","bar":"-1"} |}];
   ()
 ;;
+
+open Suspendable_buffers.Writing
+
+(* TODO: investigate if `blit` is the fastest for tiny strings (e.g.,
+   one-character strings) or whether `Bytes.set` (or other?) is faster. *)
+(* TODO: pbt tests *)
+let rec write_lexemes depth first destination (lxms : JSON.lexeme Seq.t) =
+  match lxms () with
+  | exception exc ->
+    let error = "Error whilst serialising: " ^ Printexc.to_string exc in
+    Failed { destination; error }
+  | Seq.Nil -> Written { destination }
+  | Seq.Cons (lxm, lxms) ->
+    (match lxm with
+    | `Bool true ->
+      let* destination =
+        if depth > 0 && not first
+        then
+          write1 destination 5 (fun bytes offset ->
+              Bytes.blit_string ",true" 0 bytes offset 5)
+        else
+          write1 destination 4 (fun bytes offset ->
+              Bytes.blit_string "true" 0 bytes offset 4)
+      in
+      write_lexemes depth false destination lxms
+    | `Bool false ->
+      let* destination =
+        if depth > 0 && not first
+        then
+          write1 destination 6 (fun bytes offset ->
+              Bytes.blit_string ",false" 0 bytes offset 6)
+        else
+          write1 destination 5 (fun bytes offset ->
+              Bytes.blit_string "false" 0 bytes offset 5)
+      in
+      write_lexemes depth false destination lxms
+    | `Float f ->
+      (* TODO: more tractable representation of float *)
+      let literal = Float.to_string f in
+      let literal = if depth > 0 && not first then "," ^ literal else literal in
+      let len = String.length literal in
+      let* destination =
+        write1 destination len (fun bytes offset ->
+            Bytes.blit_string literal 0 bytes offset len)
+      in
+      write_lexemes depth false destination lxms
+    | `String s ->
+      (* TODO: check for UTF8 validity *)
+      let* destination =
+        if depth > 0 && not first
+        then
+          write1 destination 2 (fun bytes offset ->
+              Bytes.blit_string ",\"" 0 bytes offset 2)
+        else
+          write1 destination 1 (fun bytes offset ->
+              Bytes.blit_string "\"" 0 bytes offset 1)
+      in
+      let size = String.length s in
+      (* TODO: avoid duplication with binary writer, provide string-chunked-writer in suspendable? *)
+      let rec chunkwriter source_offset buffer offset maxwritesize =
+        let needswriting = size - source_offset in
+        if needswriting = 0
+        then Finish 0
+        else if needswriting <= maxwritesize
+        then (
+          Bytes.blit_string s source_offset buffer offset needswriting;
+          Finish needswriting)
+        else (
+          Bytes.blit_string s source_offset buffer offset maxwritesize;
+          K (maxwritesize, chunkwriter (source_offset + maxwritesize)))
+      in
+      let* destination = writechunked destination (chunkwriter 0) in
+      let* destination =
+        write1 destination 1 (fun bytes offset -> Bytes.blit_string "\"" 0 bytes offset 1)
+      in
+      write_lexemes depth false destination lxms
+    | `Null ->
+      let* destination =
+        if depth > 0 && not first
+        then
+          write1 destination 5 (fun bytes offset ->
+              Bytes.blit_string ",null" 0 bytes offset 5)
+        else
+          write1 destination 4 (fun bytes offset ->
+              Bytes.blit_string "null" 0 bytes offset 4)
+      in
+      write_lexemes depth false destination lxms
+    | `As ->
+      let* destination =
+        if depth > 0 && not first
+        then
+          write1 destination 2 (fun bytes offset ->
+              Bytes.blit_string ",[" 0 bytes offset 2)
+        else
+          write1 destination 1 (fun bytes offset ->
+              Bytes.blit_string "[" 0 bytes offset 1)
+      in
+      write_lexemes (depth + 1) true destination lxms
+    | `Ae ->
+      let* destination =
+        write1 destination 1 (fun bytes offset -> Bytes.blit_string "]" 0 bytes offset 1)
+      in
+      write_lexemes (depth - 1) false destination lxms
+    | `Os ->
+      let* destination =
+        if depth > 0 && not first
+        then
+          write1 destination 2 (fun bytes offset ->
+              Bytes.blit_string ",{" 0 bytes offset 2)
+        else
+          write1 destination 1 (fun bytes offset ->
+              Bytes.blit_string "{" 0 bytes offset 1)
+      in
+      write_lexemes (depth + 1) true destination lxms
+    | `Oe ->
+      let* destination =
+        write1 destination 1 (fun bytes offset -> Bytes.blit_string "}" 0 bytes offset 1)
+      in
+      write_lexemes (depth - 1) false destination lxms
+    | `Name s ->
+      let* destination =
+        if depth > 0 && not first
+        then
+          write1 destination 2 (fun bytes offset ->
+              Bytes.blit_string ",\"" 0 bytes offset 2)
+        else
+          write1 destination 1 (fun bytes offset ->
+              Bytes.blit_string "\"" 0 bytes offset 1)
+      in
+      let size = String.length s in
+      (* TODO: avoid duplication with binary writer, provide string-chunked-writer in suspendable? *)
+      let rec chunkwriter source_offset buffer offset maxwritesize =
+        let needswriting = size - source_offset in
+        if needswriting = 0
+        then Finish 0
+        else if needswriting <= maxwritesize
+        then (
+          Bytes.blit_string s source_offset buffer offset needswriting;
+          Finish needswriting)
+        else (
+          Bytes.blit_string s source_offset buffer offset maxwritesize;
+          K (maxwritesize, chunkwriter (source_offset + maxwritesize)))
+      in
+      let* destination = writechunked destination (chunkwriter 0) in
+      let* destination =
+        write1 destination 2 (fun bytes offset ->
+            Bytes.blit_string "\":" 0 bytes offset 2)
+      in
+      write_lexemes (depth + 1) true destination lxms)
+;;
+
+let write_lexemes destination lxms = write_lexemes 0 true destination lxms
+
+let%expect_test _ =
+  let scratch = String.make 20 ' ' in
+  let w : JSON.lexeme Seq.t -> unit =
+   fun lxms ->
+    let destination =
+      Suspendable_buffers.Writing.mk_destination (Bytes.of_string scratch) 1 18
+    in
+    match write_lexemes destination lxms with
+    | Written { destination } ->
+      Format.printf "Ok: %s\n" (Bytes.unsafe_to_string destination.buffer)
+    | Failed { destination; error } ->
+      Format.printf "Error: %s (%S)" error (Bytes.unsafe_to_string destination.buffer)
+    | Suspended _ -> assert false
+   (* not possible in these small tests *)
+  in
+  w Seq.empty;
+  [%expect {| Ok: |}];
+  w (JSON.lexemify (`O Seq.empty));
+  [%expect {| Ok:  {} |}];
+  w (JSON.lexemify (`O (List.to_seq [ "x", `Null ])));
+  [%expect {| Ok:  {"x":null} |}];
+  w (JSON.lexemify (`O (List.to_seq [ "x", `String "x"; "y", `String "y" ])));
+  [%expect {| Ok:  {"x":"x","y":"y"} |}];
+  w (JSON.lexemify (`A Seq.empty));
+  [%expect {| Ok:  [] |}];
+  w (JSON.lexemify (`A (List.to_seq [ `Null ])));
+  [%expect {| Ok:  [null] |}];
+  w (JSON.lexemify (`A (List.to_seq [ `A Seq.empty ])));
+  [%expect {| Ok:  [[]] |}];
+  w (JSON.lexemify (`A (List.to_seq [ `O (List.to_seq [ "x", `A Seq.empty ]) ])));
+  [%expect {| Ok:  [{"x":[]}] |}];
+  w (JSON.lexemify (`A (List.to_seq [ `O Seq.empty; `A Seq.empty; `O Seq.empty ])));
+  [%expect {| Ok:  [{},[],{}] |}];
+  ()
+;;
