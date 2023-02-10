@@ -17,7 +17,7 @@ let rec readk : type a. source -> a Descr.t -> a readed =
   | String n ->
     (* TODO: support chunk reading of string so that it's possible to deserialise
      a big blob from several small blobs *)
-    (* TODO: support for 32-bit machines: don't use `Int63.to_int`, maybe write1
+    (* TODO: support for 32-bit machines: don't use `Int63.to_int`, maybe writef
        should take an int63? *)
     let size = Optint.Int63.to_int (n :> Optint.Int63.t) in
     let dest = Bytes.make size '\000' in
@@ -37,7 +37,7 @@ let rec readk : type a. source -> a Descr.t -> a readed =
   | Bytes n ->
     (* TODO: support chunk reading of bytes so that it's possible to deserialise
      a big blob from several small blobs *)
-    (* TODO: support for 32-bit machines: don't use `Int63.to_int`, maybe write1
+    (* TODO: support for 32-bit machines: don't use `Int63.to_int`, maybe writef
        should take an int63? *)
     let size = Optint.Int63.to_int (n :> Optint.Int63.t) in
     let dest = Bytes.make size '\000' in

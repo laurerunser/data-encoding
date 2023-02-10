@@ -12,7 +12,7 @@ let rec writek : type a. destination -> a Descr.t -> a -> written =
   match encoding with
   | Unit -> Written { destination }
   | Bool ->
-    write1 destination Size.bool (fun buffer offset ->
+    writef destination Size.bool (fun buffer offset ->
         if v
         then Bytes.set_uint8 buffer offset (Magic.bool_true :> int)
         else Bytes.set_uint8 buffer offset (Magic.bool_false :> int))
@@ -23,52 +23,24 @@ let rec writek : type a. destination -> a Descr.t -> a -> written =
     (* TODO: encoding-specific failure modes could be defined in the Encoding
        module maybe? They are related to encodings more than the serialisation
        process. *)
-    (* TODO: support for 32-bit machines: don't use `Int63.to_int`, maybe write1
+    (* TODO: support for 32-bit machines: don't use `Int63.to_int`, maybe writef
        should take an int63? *)
     if Optint.Int63.compare (Optint.Int63.of_int (String.length v)) (n :> Optint.Int63.t)
        <> 0
     then Failed { destination; error = "inconsistent length of string" }
-    else (
-      let size = Optint.Int63.to_int (n :> Optint.Int63.t) in
-      let rec chunkwriter source_offset buffer offset maxwritesize =
-        let needswriting = size - source_offset in
-        if needswriting = 0
-        then Finish 0
-        else if needswriting <= maxwritesize
-        then (
-          Bytes.blit_string v source_offset buffer offset needswriting;
-          Finish needswriting)
-        else (
-          Bytes.blit_string v source_offset buffer offset maxwritesize;
-          K (maxwritesize, chunkwriter (source_offset + maxwritesize)))
-      in
-      writechunked destination (chunkwriter 0))
+    else write_large_string destination v
   | Bytes n ->
     (* TODO: support chunk writing of bytes so that it's possible to serialise
      a big blob onto several small buffers *)
     (* TODO: encoding-specific failure modes could be defined in the Encoding
        module maybe? They are related to encodings more than the serialisation
        process. *)
-    (* TODO: support for 32-bit machines: don't use `Int63.to_int`, maybe write1
+    (* TODO: support for 32-bit machines: don't use `Int63.to_int`, maybe writef
        should take an int63? *)
     if Optint.Int63.compare (Optint.Int63.of_int (Bytes.length v)) (n :> Optint.Int63.t)
        <> 0
     then Failed { destination; error = "inconsistent length of bytes" }
-    else (
-      let size = Optint.Int63.to_int (n :> Optint.Int63.t) in
-      let rec chunkwriter source_offset buffer offset maxwritesize =
-        let needswriting = size - source_offset in
-        if needswriting = 0
-        then Finish 0
-        else if needswriting <= maxwritesize
-        then (
-          Bytes.blit v source_offset buffer offset needswriting;
-          Finish needswriting)
-        else (
-          Bytes.blit v source_offset buffer offset maxwritesize;
-          K (maxwritesize, chunkwriter (source_offset + maxwritesize)))
-      in
-      writechunked destination (chunkwriter 0))
+    else write_large_bytes destination v
   | LSeq { length; elementencoding } ->
     let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
     let rec fold destination s length =
@@ -112,13 +84,13 @@ let rec writek : type a. destination -> a Descr.t -> a -> written =
     (match v with
     | None ->
       let* destination =
-        write1 destination Size.uint8 (fun buffer offset ->
+        writef destination Size.uint8 (fun buffer offset ->
             Bytes.set_uint8 buffer offset (Magic.option_none_tag :> int))
       in
       Written { destination }
     | Some v ->
       let* destination =
-        write1 destination Size.uint8 (fun buffer offset ->
+        writef destination Size.uint8 (fun buffer offset ->
             Bytes.set_uint8 buffer offset (Magic.option_some_tag :> int))
       in
       writek destination t v)
@@ -216,37 +188,37 @@ and write_numeral
  fun destination numeral endianness v ->
   match numeral, endianness with
   | Int64, Big_endian ->
-    write1 destination Size.int64 (fun buffer offset ->
+    writef destination Size.int64 (fun buffer offset ->
         Bytes.set_int64_be buffer offset v)
   | Int64, Little_endian ->
-    write1 destination Size.int64 (fun buffer offset ->
+    writef destination Size.int64 (fun buffer offset ->
         Bytes.set_int64_le buffer offset v)
   | Int32, Big_endian ->
-    write1 destination Size.int32 (fun buffer offset ->
+    writef destination Size.int32 (fun buffer offset ->
         Bytes.set_int32_be buffer offset v)
   | Int32, Little_endian ->
-    write1 destination Size.int32 (fun buffer offset ->
+    writef destination Size.int32 (fun buffer offset ->
         Bytes.set_int32_le buffer offset v)
   | UInt62, Big_endian ->
-    write1 destination Size.uint62 (fun buffer offset ->
+    writef destination Size.uint62 (fun buffer offset ->
         Commons.Sizedints.Uint62.set_be buffer offset v)
   | UInt62, Little_endian ->
-    write1 destination Size.uint62 (fun buffer offset ->
+    writef destination Size.uint62 (fun buffer offset ->
         Commons.Sizedints.Uint62.set_le buffer offset v)
   | UInt30, Big_endian ->
-    write1 destination Size.uint30 (fun buffer offset ->
+    writef destination Size.uint30 (fun buffer offset ->
         Commons.Sizedints.Uint30.set_be buffer offset v)
   | UInt30, Little_endian ->
-    write1 destination Size.uint30 (fun buffer offset ->
+    writef destination Size.uint30 (fun buffer offset ->
         Commons.Sizedints.Uint30.set_le buffer offset v)
   | UInt16, Big_endian ->
-    write1 destination Size.uint16 (fun buffer offset ->
+    writef destination Size.uint16 (fun buffer offset ->
         Bytes.set_uint16_be buffer offset (v :> int))
   | UInt16, Little_endian ->
-    write1 destination Size.uint16 (fun buffer offset ->
+    writef destination Size.uint16 (fun buffer offset ->
         Bytes.set_uint16_le buffer offset (v :> int))
   | UInt8, _ ->
-    write1 destination Size.uint8 (fun buffer offset ->
+    writef destination Size.uint8 (fun buffer offset ->
         Bytes.set_uint8 buffer offset (v :> int))
 ;;
 
@@ -384,35 +356,8 @@ let%expect_test _ =
 ;;
 
 let string_of : type a. ?buffer_size:int -> a Descr.t -> a -> (string, string) result =
- fun ?(buffer_size = 1024) encoding v ->
-  let rec chunk buffer acc k =
-    match k buffer 0 (Bytes.length buffer) with
-    | Written { destination } ->
-      Ok (Bytes.sub_string destination.buffer 0 destination.written :: acc)
-    | Failed { destination; error } when error = destination_too_small_to_continue_message
-      ->
-      assert (destination.written = 0);
-      let buffer_size = 2 * (1 + Bytes.length buffer) in
-      let buffer = Bytes.make buffer_size '\x00' in
-      chunk buffer acc k
-    | Failed { destination = _; error } -> Error error
-    | Suspended { destination; cont } ->
-      if destination.written = 0
-      then chunk buffer acc cont
-      else (
-        let acc = Bytes.sub_string destination.buffer 0 destination.written :: acc in
-        chunk buffer acc cont)
-  in
-  let buffer = Bytes.make buffer_size '\x00' in
-  match
-    chunk buffer [] (fun buffer offset length ->
-        let destination = mk_destination ~maximum_length:max_int buffer offset length in
-        writek destination encoding v)
-  with
-  | Ok rev_chunks ->
-    let chunks = List.rev rev_chunks in
-    Ok (String.concat "" chunks)
-  | Error _ as err -> err
+ fun ?buffer_size encoding v ->
+   to_string ?buffer_size (fun destination -> writek destination encoding v)
 ;;
 
 let%expect_test _ =

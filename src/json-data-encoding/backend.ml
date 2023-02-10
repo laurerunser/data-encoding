@@ -353,137 +353,68 @@ let rec write_lexemes depth first destination (lxms : JSON.lexeme Seq.t) =
     | `Bool true ->
       let* destination =
         if depth > 0 && not first
-        then
-          write1 destination 5 (fun bytes offset ->
-              Bytes.blit_string ",true" 0 bytes offset 5)
-        else
-          write1 destination 4 (fun bytes offset ->
-              Bytes.blit_string "true" 0 bytes offset 4)
+        then write_small_string destination ",true"
+        else write_small_string destination "true"
       in
       write_lexemes depth false destination lxms
     | `Bool false ->
       let* destination =
         if depth > 0 && not first
-        then
-          write1 destination 6 (fun bytes offset ->
-              Bytes.blit_string ",false" 0 bytes offset 6)
-        else
-          write1 destination 5 (fun bytes offset ->
-              Bytes.blit_string "false" 0 bytes offset 5)
+        then write_small_string destination ",false"
+        else write_small_string destination "false"
       in
       write_lexemes depth false destination lxms
     | `Float f ->
       (* TODO: more tractable representation of float *)
       let literal = Float.to_string f in
       let literal = if depth > 0 && not first then "," ^ literal else literal in
-      let len = String.length literal in
-      let* destination =
-        write1 destination len (fun bytes offset ->
-            Bytes.blit_string literal 0 bytes offset len)
-      in
+      let* destination = write_small_string destination literal in
       write_lexemes depth false destination lxms
     | `String s ->
       (* TODO: check for UTF8 validity *)
       let* destination =
         if depth > 0 && not first
-        then
-          write1 destination 2 (fun bytes offset ->
-              Bytes.blit_string ",\"" 0 bytes offset 2)
-        else
-          write1 destination 1 (fun bytes offset ->
-              Bytes.blit_string "\"" 0 bytes offset 1)
+        then write_small_string destination ",\""
+        else write_char destination '"'
       in
-      let size = String.length s in
-      (* TODO: avoid duplication with binary writer, provide string-chunked-writer in suspendable? *)
-      let rec chunkwriter source_offset buffer offset maxwritesize =
-        let needswriting = size - source_offset in
-        if needswriting = 0
-        then Finish 0
-        else if needswriting <= maxwritesize
-        then (
-          Bytes.blit_string s source_offset buffer offset needswriting;
-          Finish needswriting)
-        else (
-          Bytes.blit_string s source_offset buffer offset maxwritesize;
-          K (maxwritesize, chunkwriter (source_offset + maxwritesize)))
-      in
-      let* destination = writechunked destination (chunkwriter 0) in
-      let* destination =
-        write1 destination 1 (fun bytes offset -> Bytes.blit_string "\"" 0 bytes offset 1)
-      in
+      let* destination = write_large_string destination s in
+      let* destination = write_char destination '"' in
       write_lexemes depth false destination lxms
     | `Null ->
       let* destination =
         if depth > 0 && not first
-        then
-          write1 destination 5 (fun bytes offset ->
-              Bytes.blit_string ",null" 0 bytes offset 5)
-        else
-          write1 destination 4 (fun bytes offset ->
-              Bytes.blit_string "null" 0 bytes offset 4)
+        then write_small_string destination ",null"
+        else write_small_string destination "null"
       in
       write_lexemes depth false destination lxms
     | `As ->
       let* destination =
         if depth > 0 && not first
-        then
-          write1 destination 2 (fun bytes offset ->
-              Bytes.blit_string ",[" 0 bytes offset 2)
-        else
-          write1 destination 1 (fun bytes offset ->
-              Bytes.blit_string "[" 0 bytes offset 1)
+        then write_small_string destination ",["
+        else write_char destination '['
       in
       write_lexemes (depth + 1) true destination lxms
     | `Ae ->
-      let* destination =
-        write1 destination 1 (fun bytes offset -> Bytes.blit_string "]" 0 bytes offset 1)
-      in
+      let* destination = write_char destination ']' in
       write_lexemes (depth - 1) false destination lxms
     | `Os ->
       let* destination =
         if depth > 0 && not first
-        then
-          write1 destination 2 (fun bytes offset ->
-              Bytes.blit_string ",{" 0 bytes offset 2)
-        else
-          write1 destination 1 (fun bytes offset ->
-              Bytes.blit_string "{" 0 bytes offset 1)
+        then write_small_string destination ",{"
+        else write_char destination '{'
       in
       write_lexemes (depth + 1) true destination lxms
     | `Oe ->
-      let* destination =
-        write1 destination 1 (fun bytes offset -> Bytes.blit_string "}" 0 bytes offset 1)
-      in
+      let* destination = write_char destination '}' in
       write_lexemes (depth - 1) false destination lxms
     | `Name s ->
       let* destination =
         if depth > 0 && not first
-        then
-          write1 destination 2 (fun bytes offset ->
-              Bytes.blit_string ",\"" 0 bytes offset 2)
-        else
-          write1 destination 1 (fun bytes offset ->
-              Bytes.blit_string "\"" 0 bytes offset 1)
+        then write_small_string destination ",\""
+        else write_char destination '"'
       in
-      let size = String.length s in
-      (* TODO: avoid duplication with binary writer, provide string-chunked-writer in suspendable? *)
-      let rec chunkwriter source_offset buffer offset maxwritesize =
-        let needswriting = size - source_offset in
-        if needswriting = 0
-        then Finish 0
-        else if needswriting <= maxwritesize
-        then (
-          Bytes.blit_string s source_offset buffer offset needswriting;
-          Finish needswriting)
-        else (
-          Bytes.blit_string s source_offset buffer offset maxwritesize;
-          K (maxwritesize, chunkwriter (source_offset + maxwritesize)))
-      in
-      let* destination = writechunked destination (chunkwriter 0) in
-      let* destination =
-        write1 destination 2 (fun bytes offset ->
-            Bytes.blit_string "\":" 0 bytes offset 2)
-      in
+      let* destination = write_large_string destination s in
+      let* destination = write_small_string destination "\":" in
       write_lexemes (depth + 1) true destination lxms)
 ;;
 
