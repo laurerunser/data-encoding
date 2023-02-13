@@ -1,9 +1,9 @@
 let ( let* ) = Result.bind
 
 let rec map_e f seq =
-  match Seq.uncons seq with
-  | None -> Ok Seq.empty
-  | Some (x, next) ->
+  match seq () with
+  | Seq.Nil -> Ok Seq.empty
+  | Seq.Cons (x, next) ->
     let* y = f x in
     let* next = map_e f next in
     Ok (Seq.cons y next)
@@ -14,13 +14,13 @@ let rec construct : type a. a Encoding.t -> a -> (JSON.t, string) result =
   match encoding with
   | Unit ->
     assert (v = ());
-    Ok (`O Seq.empty)
+    Ok (`O [])
   | Bool -> Ok (`Bool v)
   | Int64 -> Ok (`String (Int64.to_string v))
   | String -> Ok (`String v) (* TODO check utf8 *)
   | Seq t ->
     let* seq = map_e (construct t) v in
-    Ok (`A seq)
+    Ok (`Aseq seq)
   | Tuple t -> construct_tuple t v
   | Object o -> construct_obj o v
   | Conv { serialisation; deserialisation = _; encoding } ->
@@ -30,7 +30,7 @@ let rec construct : type a. a Encoding.t -> a -> (JSON.t, string) result =
 and construct_tuple : type a. a Encoding.tuple -> a -> (JSON.t, string) result =
  fun encoding v ->
   match encoding with
-  | [] -> Ok (`A Seq.empty)
+  | [] -> Ok (`A [])
   | t :: ts ->
     let (v :: vs) = v in
     (match construct t v with
@@ -38,13 +38,14 @@ and construct_tuple : type a. a Encoding.tuple -> a -> (JSON.t, string) result =
     | Ok json ->
       (match construct_tuple ts vs with
       | Error _ as err -> err
-      | Ok (`A jsons) -> Ok (`A (Seq.cons json jsons))
+      | Ok (`Aseq jsons) -> Ok (`Aseq (Seq.cons json jsons))
+      | Ok (`A []) -> Ok (`Aseq (Seq.return json))
       | Ok _ -> assert false))
 
 and construct_obj : type a. a Encoding.obj -> a -> (JSON.t, string) result =
  fun encoding v ->
   match encoding with
-  | [] -> Ok (`O Seq.empty)
+  | [] -> Ok (`O [])
   | Req { encoding = t; name } :: ts ->
     let (v :: vs) = v in
     (match construct t v with
@@ -52,7 +53,8 @@ and construct_obj : type a. a Encoding.obj -> a -> (JSON.t, string) result =
     | Ok json ->
       (match construct_obj ts vs with
       | Error _ as err -> err
-      | Ok (`O jsons) -> Ok (`O (Seq.cons (name, json) jsons))
+      | Ok (`Oseq jsons) -> Ok (`Oseq (Seq.cons (name, json) jsons))
+      | Ok (`O []) -> Ok (`Oseq (Seq.return (name, json)))
       | Ok _ -> assert false))
   | Opt { encoding = t; name } :: ts ->
     let (v :: vs) = v in
@@ -64,7 +66,8 @@ and construct_obj : type a. a Encoding.obj -> a -> (JSON.t, string) result =
       | Ok json ->
         (match construct_obj ts vs with
         | Error _ as err -> err
-        | Ok (`O jsons) -> Ok (`O (Seq.cons (name, json) jsons))
+        | Ok (`Oseq jsons) -> Ok (`Oseq (Seq.cons (name, json) jsons))
+        | Ok (`O []) -> Ok (`Oseq (Seq.return (name, json)))
         | Ok _ -> assert false)))
 ;;
 
@@ -117,133 +120,9 @@ let%expect_test _ =
   ()
 ;;
 
-let error_unexpected_shape : type a. expected:string -> JSON.t -> (a, string) result =
- fun ~expected json ->
-  Error (Format.asprintf "Expected %s, got %a" expected PP.shape json)
-;;
-
-let rec destruct : type a. a Encoding.t -> JSON.t -> (a, string) result =
- fun encoding json ->
-  match encoding with
-  | Unit ->
-    (match json with
-    | `O seq when Seq.is_empty seq -> Ok ()
-    | other -> Error (Format.asprintf "Expected {}, got %a" PP.shape other))
-  | Bool ->
-    (match json with
-    | `Bool b -> Ok b
-    | other -> Error (Format.asprintf "Expected bool, got %a" PP.shape other))
-  | Int64 ->
-    (match json with
-    | `String s ->
-      (match Int64.of_string_opt s with
-      | Some i64 -> Ok i64
-      | None -> Error (Format.asprintf "Expected int64 numeral, got %S" s))
-    | other -> Error (Format.asprintf "Expected {}, got %a" PP.shape other))
-  | String ->
-    (match json with
-    | `String s -> Ok s
-    | other -> Error (Format.asprintf "Expected \"…\", got %a" PP.shape other))
-  | Seq t -> destruct_seq t json
-  | Tuple t -> destruct_tuple t json
-  | Object t -> destruct_obj t json
-  | Conv { serialisation = _; deserialisation; encoding } ->
-    (match destruct encoding json with
-    | Error _ as err -> err
-    | Ok w -> deserialisation w (* TODO: wrap error message *))
-
-and destruct_seq : type a. a Encoding.t -> JSON.t -> (a Seq.t, string) result =
- fun t json ->
-  match json with
-  | `A seq -> map_e (destruct t) seq
-  | _ -> error_unexpected_shape ~expected:"[.]" json
-
-and destruct_tuple : type a. a Encoding.tuple -> JSON.t -> (a, string) result =
- fun encoding json ->
-  match encoding with
-  | [] ->
-    (match json with
-    | `A seq when Seq.is_empty seq -> Ok []
-    | other -> Error (Format.asprintf "Expected [], got %a" PP.shape other))
-  | t :: ts ->
-    (match json with
-    | `A seq ->
-      (match Seq.uncons seq with
-      | Some (json, jsons) ->
-        (match destruct t json with
-        | Error _ as err -> err
-        | Ok v ->
-          (match destruct_tuple ts (`A jsons) with
-          | Error _ as err -> err
-          | Ok vs -> Ok (v :: vs)))
-      | None -> Error (Format.asprintf "Expected [..], got %a" PP.shape json))
-    | other -> Error (Format.asprintf "Expected [..], got %a" PP.shape other))
-
-and destruct_obj : type a. a Encoding.obj -> JSON.t -> (a, string) result =
- fun encoding json ->
-  match encoding with
-  | [] ->
-    (match json with
-    | `O seq when Seq.is_empty seq -> Ok []
-    | other ->
-      (* TODO: control what to do with left-over fields *)
-      Error (Format.asprintf "Expected {}, got %a" PP.shape other))
-  | Req { encoding = t; name } :: ts ->
-    (match json with
-    | `O seq ->
-      (match Seq.uncons seq with
-      | Some ((namename, json), jsons) ->
-        if not (String.equal name namename)
-        then
-          (* TODO: support out-of-order fields *)
-          Error (Format.asprintf "Expected field {%S:…}, got {%S:…}" name namename)
-        else (
-          match destruct t json with
-          | Error _ as err -> err
-          | Ok v ->
-            (match destruct_obj ts (`O jsons) with
-            | Error _ as err -> err
-            | Ok vs -> Ok (v :: vs)))
-      | None -> Error (Format.asprintf "Expected field {%S:…}, got {}" name))
-    | other -> Error (Format.asprintf "Expected {..}, got %a" PP.shape other))
-  | Opt { encoding = t; name } :: ts ->
-    (match json with
-    | `O seq ->
-      (match Seq.uncons seq with
-      | None ->
-        (match destruct_obj ts (`O Seq.empty) with
-        | Error _ as err -> err
-        | Ok vs -> Ok (None :: vs))
-      | Some ((namename, json), jsons) ->
-        if not (String.equal name namename)
-        then (
-          (* TODO: support out-of-order fields *)
-          match destruct_obj ts (`O jsons) with
-          | Error _ as err -> err
-          | Ok vs -> Ok (None :: vs))
-        else (
-          match destruct t json with
-          | Error _ as err -> err
-          | Ok v ->
-            (match destruct_obj ts (`O jsons) with
-            | Error _ as err -> err
-            | Ok vs -> Ok (Some v :: vs))))
-    | other -> Error (Format.asprintf "Expected {..}, got %a" PP.shape other))
-;;
-
 let empty_obj : JSON.lexeme Seq.node = Seq.Cons (`Os, fun () -> Seq.Cons (`Oe, Seq.empty))
 
-(* TODO: avoid duplication with JSON.ml, move to commons? *)
-let rec append1 seq stop () =
-  match seq () with
-  | Seq.Nil -> Seq.Cons (stop, Seq.empty)
-  | Seq.Cons (x, seq) -> Seq.Cons (x, append1 seq stop)
-;;
-
-(* TODO: avoid duplication with JSON.ml, move to commons? *)
-let bracket start seq stop () = Seq.Cons (start, append1 seq stop)
-
-let rec construct_lexeme : type a. a Encoding.t -> a -> JSON.lexeme Seq.t =
+let rec construct_lexemes : type a. a Encoding.t -> a -> JSON.lexeme Seq.t =
  fun encoding v () ->
   match encoding with
   | Unit ->
@@ -252,46 +131,46 @@ let rec construct_lexeme : type a. a Encoding.t -> a -> JSON.lexeme Seq.t =
   | Bool -> Seq.Cons (`Bool v, Seq.empty)
   | Int64 -> Seq.Cons (`String (Int64.to_string v), Seq.empty)
   | String -> Seq.Cons (`String v (* TODO check utf8 *), Seq.empty)
-  | Seq t -> bracket `As (Seq.flat_map (construct_lexeme t) v) `Ae ()
-  | Tuple t -> bracket `As (construct_tuple_lexeme t v) `Ae ()
-  | Object o -> bracket `Os (construct_obj_lexeme o v) `Oe ()
+  | Seq t -> Commons.Sequtils.bracket `As (Seq.flat_map (construct_lexemes t) v) `Ae ()
+  | Tuple t -> Commons.Sequtils.bracket `As (construct_tuple_lexemes t v) `Ae ()
+  | Object o -> Commons.Sequtils.bracket `Os (construct_obj_lexemes o v) `Oe ()
   | Conv { serialisation; deserialisation = _; encoding } ->
-    construct_lexeme encoding (serialisation v) ()
+    construct_lexemes encoding (serialisation v) ()
 (* TODO exception handling?? *)
 
-and construct_tuple_lexeme : type a. a Encoding.tuple -> a -> JSON.lexeme Seq.t =
+and construct_tuple_lexemes : type a. a Encoding.tuple -> a -> JSON.lexeme Seq.t =
  fun encoding v () ->
   match encoding with
   | [] -> Seq.Nil
   | t :: ts ->
     let (v :: vs) = v in
-    Seq.append (construct_lexeme t v) (construct_tuple_lexeme ts vs) ()
+    Seq.append (construct_lexemes t v) (construct_tuple_lexemes ts vs) ()
 
-and construct_obj_lexeme : type a. a Encoding.obj -> a -> JSON.lexeme Seq.t =
+and construct_obj_lexemes : type a. a Encoding.obj -> a -> JSON.lexeme Seq.t =
  fun encoding v () ->
   match encoding with
   | [] -> Seq.Nil
   | Req { encoding = t; name } :: ts ->
     let (v :: vs) = v in
     Seq.append
-      (Seq.cons (`Name name) (construct_lexeme t v))
-      (construct_obj_lexeme ts vs)
+      (Seq.cons (`Name name) (construct_lexemes t v))
+      (construct_obj_lexemes ts vs)
       ()
   | Opt { encoding = t; name } :: ts ->
     let (v :: vs) = v in
     (match v with
-    | None -> construct_obj_lexeme ts vs ()
+    | None -> construct_obj_lexemes ts vs ()
     | Some v ->
       Seq.append
-        (Seq.cons (`Name name) (construct_lexeme t v))
-        (construct_obj_lexeme ts vs)
+        (Seq.cons (`Name name) (construct_lexemes t v))
+        (construct_obj_lexemes ts vs)
         ())
 ;;
 
 let%expect_test _ =
   let w : type a. a Encoding.t -> a -> unit =
    fun e v ->
-    match construct_lexeme e v with
+    match construct_lexemes e v with
     | j -> Format.printf "%a\n" PP.mini_lexemes j
     | exception exc -> Format.printf "Error: %s\n" (Printexc.to_string exc)
   in
@@ -339,8 +218,6 @@ let%expect_test _ =
 
 let ( let* ) = Buffy.W.( let* )
 
-(* TODO: investigate if `blit` is the fastest for tiny strings (e.g.,
-   one-character strings) or whether `Bytes.set` (or other?) is faster. *)
 (* TODO: pbt tests *)
 let rec write_lexemes depth first destination (lxms : JSON.lexeme Seq.t) =
   match lxms () with
@@ -435,23 +312,171 @@ let%expect_test _ =
   in
   w Seq.empty;
   [%expect {| Ok: |}];
-  w (JSON.lexemify (`O Seq.empty));
+  w (JSON.lexemify (`Oseq Seq.empty));
   [%expect {| Ok:  {} |}];
-  w (JSON.lexemify (`O (List.to_seq [ "x", `Null ])));
+  w (JSON.lexemify (`Oseq (List.to_seq [ "x", `Null ])));
   [%expect {| Ok:  {"x":null} |}];
-  w (JSON.lexemify (`O (List.to_seq [ "x", `String "x"; "y", `String "y" ])));
+  w (JSON.lexemify (`O [ "x", `Null ]));
+  [%expect {| Ok:  {"x":null} |}];
+  w (JSON.lexemify (`Oseq (List.to_seq [ "x", `String "x"; "y", `String "y" ])));
   [%expect {| Ok:  {"x":"x","y":"y"} |}];
-  w (JSON.lexemify (`A Seq.empty));
+  w (JSON.lexemify (`O [ "x", `String "x"; "y", `String "y" ]));
+  [%expect {| Ok:  {"x":"x","y":"y"} |}];
+  w (JSON.lexemify (`Aseq Seq.empty));
   [%expect {| Ok:  [] |}];
-  w (JSON.lexemify (`A (List.to_seq [ `Null ])));
+  w (JSON.lexemify (`Aseq (List.to_seq [ `Null ])));
   [%expect {| Ok:  [null] |}];
-  w (JSON.lexemify (`A (List.to_seq [ `A Seq.empty ])));
+  w (JSON.lexemify (`A [ `Null ]));
+  [%expect {| Ok:  [null] |}];
+  w (JSON.lexemify (`A [ `Aseq Seq.empty ]));
   [%expect {| Ok:  [[]] |}];
-  w (JSON.lexemify (`A (List.to_seq [ `O (List.to_seq [ "x", `A Seq.empty ]) ])));
+  w (JSON.lexemify (`A [ `O [ "x", `A [] ] ]));
   [%expect {| Ok:  [{"x":[]}] |}];
-  w (JSON.lexemify (`A (List.to_seq [ `O Seq.empty; `A Seq.empty; `O Seq.empty ])));
+  w (JSON.lexemify (`A [ `O []; `Aseq Seq.empty; `Oseq Seq.empty ]));
+  [%expect {| Ok:  [{},[],{}] |}];
+  w (JSON.lexemify (`Aarray [| `O []; `A []; `Oseq Seq.empty |]));
   [%expect {| Ok:  [{},[],{}] |}];
   ()
 ;;
 
-(* TODO? have a value->written direct function (no intermediate seq)? *)
+(* TODO: pbt tests *)
+let rec write
+    : type a. int -> bool -> Buffy.W.destination -> a Encoding.t -> a -> Buffy.W.written
+  =
+ fun depth first destination encoding v ->
+  match encoding with
+  | Unit ->
+    assert (v = ());
+    if depth > 0 && not first
+    then Buffy.W.write_small_string destination ",{}"
+    else Buffy.W.write_small_string destination "{}"
+  | Bool ->
+    (match v with
+    | true ->
+      if depth > 0 && not first
+      then Buffy.W.write_small_string destination ",true"
+      else Buffy.W.write_small_string destination "true"
+    | false ->
+      if depth > 0 && not first
+      then Buffy.W.write_small_string destination ",false"
+      else Buffy.W.write_small_string destination "false")
+  | Int64 ->
+    let* destination =
+      if depth > 0 && not first
+      then Buffy.W.write_char destination ','
+      else Buffy.W.Written { destination }
+    in
+    let s = Int64.to_string v in
+    Buffy.W.write_small_string destination s
+  | String ->
+    let* destination =
+      if depth > 0 && not first
+      then Buffy.W.write_small_string destination ",\""
+      else Buffy.W.write_char destination '"'
+    in
+    let* destination = Buffy.W.write_large_string destination v in
+    Buffy.W.write_char destination '"'
+  | Seq t ->
+    let* destination =
+      if depth > 0 && not first
+      then Buffy.W.write_small_string destination ",["
+      else Buffy.W.write_char destination '['
+    in
+    let rec go first destination s =
+      match s () with
+      | Seq.Nil -> Buffy.W.Written { destination }
+      | Seq.Cons (v, s) ->
+        let* destination = write (depth + 1) first destination t v in
+        go false destination s
+    in
+    let* destination = go true destination v in
+    Buffy.W.write_char destination ']'
+  | Tuple t ->
+    let* destination =
+      if depth > 0 && not first
+      then Buffy.W.write_small_string destination ",["
+      else Buffy.W.write_char destination '['
+    in
+    let* destination = write_tuple (depth + 1) true destination t v in
+    Buffy.W.write_char destination ']'
+  | Object o ->
+    let* destination =
+      if depth > 0 && not first
+      then Buffy.W.write_small_string destination ",{"
+      else Buffy.W.write_char destination '{'
+    in
+    let* destination = write_object (depth + 1) true destination o v in
+    Buffy.W.write_char destination '}'
+  | Conv { serialisation; deserialisation = _; encoding } ->
+    (* TODO: exn management in serialisation function *)
+    write depth first destination encoding (serialisation v)
+
+and write_tuple
+    : type a.
+      int -> bool -> Buffy.W.destination -> a Encoding.tuple -> a -> Buffy.W.written
+  =
+ fun depth first destination encoding v ->
+  match encoding with
+  | [] -> Buffy.W.Written { destination }
+  | t :: ts ->
+    let (v :: vs) = v in
+    let* destination = write depth first destination t v in
+    write_tuple depth false destination ts vs
+
+and write_object
+    : type a. int -> bool -> Buffy.W.destination -> a Encoding.obj -> a -> Buffy.W.written
+  =
+ fun depth first destination encoding v ->
+  match encoding with
+  | [] -> Buffy.W.Written { destination }
+  | Req { encoding; name } :: ts ->
+    let (v :: vs) = v in
+    let* destination =
+      if depth > 0 && not first
+      then Buffy.W.write_small_string destination ",\""
+      else Buffy.W.write_char destination '"'
+    in
+    let* destination = Buffy.W.write_large_string destination name in
+    let* destination = Buffy.W.write_small_string destination "\":" in
+    let* destination = write depth true destination encoding v in
+    write_object depth false destination ts vs
+  | Opt { encoding; name } :: ts ->
+    (match v with
+    | None :: vs -> write_object depth first destination ts vs
+    | Some v :: vs ->
+      let* destination =
+        if depth > 0 && not first
+        then Buffy.W.write_small_string destination ",\""
+        else Buffy.W.write_char destination '"'
+      in
+      let* destination = Buffy.W.write_large_string destination name in
+      let* destination = Buffy.W.write_small_string destination "\":" in
+      let* destination = write depth true destination encoding v in
+      write_object depth false destination ts vs)
+;;
+
+let write destination encoding v = write 0 true destination encoding v
+
+let%expect_test _ =
+  let scratch = String.make 20 ' ' in
+  let w : type a. a Encoding.t -> a -> unit =
+   fun enc v ->
+    let destination = Buffy.W.mk_destination (Bytes.of_string scratch) 1 18 in
+    match write destination enc v with
+    | Buffy.W.Written { destination } ->
+      Format.printf "Ok: %s\n" (Bytes.unsafe_to_string destination.buffer)
+    | Buffy.W.Failed { destination; error } ->
+      Format.printf "Error: %s (%S)" error (Bytes.unsafe_to_string destination.buffer)
+    | Buffy.W.Suspended _ -> assert false
+   (* not possible in these small tests *)
+  in
+  w Encoding.Unit ();
+  [%expect {| Ok:  {} |}];
+  w Encoding.int64 0L;
+  [%expect {| Ok:  0 |}];
+  w Encoding.int64 1L;
+  [%expect {| Ok:  1 |}];
+  w Encoding.(tuple [ unit; bool; bool ]) Commons.Hlist.[ (); true; false ];
+  [%expect {| Ok:  [{},true,false] |}];
+  ()
+;;

@@ -1,15 +1,25 @@
 (* TODO: string escaping *)
 
-let shape fmt json =
+let shape fmt (json : JSON.t) =
   match json with
-  | `O seq ->
+  | `O [] -> Format.pp_print_string fmt "{}"
+  | `O (_ :: _) -> Format.pp_print_string fmt "{…}"
+  | `Oseq seq ->
     if Seq.is_empty seq
     then Format.pp_print_string fmt "{}"
     else Format.pp_print_string fmt "{…}"
-  | `A seq ->
+  | `Omap m ->
+    if JSON.FieldMap.is_empty m
+    then Format.pp_print_string fmt "{}"
+    else Format.pp_print_string fmt "{…}"
+  | `A [] -> Format.pp_print_string fmt "[]"
+  | `A (_ :: _) -> Format.pp_print_string fmt "[…]"
+  | `Aseq seq ->
     if Seq.is_empty seq
     then Format.pp_print_string fmt "[]"
     else Format.pp_print_string fmt "[…]"
+  | `Aarray [||] -> Format.pp_print_string fmt "[]"
+  | `Aarray _ -> Format.pp_print_string fmt "[…]"
   | `Bool true -> Format.pp_print_string fmt "true"
   | `Bool false -> Format.pp_print_string fmt "false"
   | `Float f ->
@@ -27,13 +37,13 @@ let shape fmt json =
 ;;
 
 let%expect_test _ =
-  Format.printf "%a\n" shape (`O Seq.empty);
+  Format.printf "%a\n" shape (`Oseq Seq.empty);
   [%expect {| {} |}];
-  Format.printf "%a\n" shape (`O (List.to_seq [ "this", `Null ]));
+  Format.printf "%a\n" shape (`O [ "this", `Null ]);
   [%expect {| {…} |}];
-  Format.printf "%a\n" shape (`A Seq.empty);
+  Format.printf "%a\n" shape (`Aseq Seq.empty);
   [%expect {| [] |}];
-  Format.printf "%a\n" shape (`A (List.to_seq [ `Null; `A [] ]));
+  Format.printf "%a\n" shape (`Aseq (List.to_seq [ `Null; `A [] ]));
   [%expect {| […] |}];
   Format.printf "%a\n" shape (`Bool true);
   [%expect {| true |}];
@@ -60,9 +70,17 @@ let%expect_test _ =
   ()
 ;;
 
-let rec mini fmt json =
+let rec mini fmt (json : JSON.t) =
   match json with
   | `O fields ->
+    Format.fprintf
+      fmt
+      "{%a}"
+      (Format.pp_print_list
+         ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
+         mini_field)
+      fields
+  | `Oseq fields ->
     Format.fprintf
       fmt
       "{%a}"
@@ -70,12 +88,32 @@ let rec mini fmt json =
          ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
          mini_field)
       fields
+  | `Omap fields ->
+    Format.fprintf
+      fmt
+      "{%a}"
+      (Format.pp_print_seq
+         ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
+         mini_field)
+      (JSON.FieldMap.to_seq fields)
   | `A elems ->
+    Format.fprintf
+      fmt
+      "[%a]"
+      (Format.pp_print_list ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',') mini)
+      elems
+  | `Aseq elems ->
     Format.fprintf
       fmt
       "[%a]"
       (Format.pp_print_seq ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',') mini)
       elems
+  | `Aarray elems ->
+    Format.fprintf
+      fmt
+      "[%a]"
+      (Format.pp_print_seq ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',') mini)
+      (Array.to_seq elems)
   | `Bool true -> Format.pp_print_string fmt "true"
   | `Bool false -> Format.pp_print_string fmt "false"
   | `Float f -> Format.pp_print_float fmt f
@@ -88,13 +126,15 @@ and mini_field fmt (name, json) =
 ;;
 
 let%expect_test _ =
-  Format.printf "%a\n" mini (`O Seq.empty);
+  Format.printf "%a\n" mini (`Oseq Seq.empty);
   [%expect {| {} |}];
-  Format.printf "%a\n" mini (`O (List.to_seq [ "this", `Null ]));
+  Format.printf "%a\n" mini (`O []);
+  [%expect {| {} |}];
+  Format.printf "%a\n" mini (`O [ "this", `Null ]);
   [%expect {| {"this":null} |}];
-  Format.printf "%a\n" mini (`A Seq.empty);
+  Format.printf "%a\n" mini (`A []);
   [%expect {| [] |}];
-  Format.printf "%a\n" mini (`A (List.to_seq [ `Null; `A Seq.empty ]));
+  Format.printf "%a\n" mini (`A [ `Null; `Aseq Seq.empty ]);
   [%expect {| [null,[]] |}];
   Format.printf "%a\n" mini (`Bool true);
   [%expect {| true |}];
@@ -170,21 +210,15 @@ let rec mini_lexemes depth first fmt (lxms : JSON.lexeme Seq.t) =
 let mini_lexemes fmt s = mini_lexemes 0 false fmt s
 
 let%expect_test _ =
-  Format.printf "%a\n" mini_lexemes (JSON.lexemify @@ `O Seq.empty);
+  Format.printf "%a\n" mini_lexemes (JSON.lexemify @@ `Oseq Seq.empty);
   [%expect {| {} |}];
-  Format.printf "%a\n" mini_lexemes (JSON.lexemify @@ `O (List.to_seq [ "this", `Null ]));
+  Format.printf "%a\n" mini_lexemes (JSON.lexemify @@ `O [ "this", `Null ]);
   [%expect {| {"this":null} |}];
-  Format.printf
-    "%a\n"
-    mini_lexemes
-    (JSON.lexemify @@ `O (List.to_seq [ "this", `Null; "that", `Null ]));
+  Format.printf "%a\n" mini_lexemes (JSON.lexemify @@ `O [ "this", `Null; "that", `Null ]);
   [%expect {| {"this":null,"that":null} |}];
-  Format.printf "%a\n" mini_lexemes (JSON.lexemify @@ `A Seq.empty);
+  Format.printf "%a\n" mini_lexemes (JSON.lexemify @@ `Aseq Seq.empty);
   [%expect {| [] |}];
-  Format.printf
-    "%a\n"
-    mini_lexemes
-    (JSON.lexemify @@ `A (List.to_seq [ `Null; `A Seq.empty ]));
+  Format.printf "%a\n" mini_lexemes (JSON.lexemify @@ `A [ `Null; `Aseq Seq.empty ]);
   [%expect {| [null,[]] |}];
   Format.printf "%a\n" mini_lexemes (JSON.lexemify @@ `Bool true);
   [%expect {| true |}];
