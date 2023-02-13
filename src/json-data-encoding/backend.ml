@@ -337,7 +337,7 @@ let%expect_test _ =
   ()
 ;;
 
-open Suspendable_buffers.Writing
+let ( let* ) = Buffy.W.( let* )
 
 (* TODO: investigate if `blit` is the fastest for tiny strings (e.g.,
    one-character strings) or whether `Bytes.set` (or other?) is faster. *)
@@ -346,75 +346,75 @@ let rec write_lexemes depth first destination (lxms : JSON.lexeme Seq.t) =
   match lxms () with
   | exception exc ->
     let error = "Error whilst serialising: " ^ Printexc.to_string exc in
-    Failed { destination; error }
-  | Seq.Nil -> Written { destination }
+    Buffy.W.Failed { destination; error }
+  | Seq.Nil -> Buffy.W.Written { destination }
   | Seq.Cons (lxm, lxms) ->
     (match lxm with
     | `Bool true ->
       let* destination =
         if depth > 0 && not first
-        then write_small_string destination ",true"
-        else write_small_string destination "true"
+        then Buffy.W.write_small_string destination ",true"
+        else Buffy.W.write_small_string destination "true"
       in
       write_lexemes depth false destination lxms
     | `Bool false ->
       let* destination =
         if depth > 0 && not first
-        then write_small_string destination ",false"
-        else write_small_string destination "false"
+        then Buffy.W.write_small_string destination ",false"
+        else Buffy.W.write_small_string destination "false"
       in
       write_lexemes depth false destination lxms
     | `Float f ->
       (* TODO: more tractable representation of float *)
       let literal = Float.to_string f in
       let literal = if depth > 0 && not first then "," ^ literal else literal in
-      let* destination = write_small_string destination literal in
+      let* destination = Buffy.W.write_small_string destination literal in
       write_lexemes depth false destination lxms
     | `String s ->
       (* TODO: check for UTF8 validity *)
       let* destination =
         if depth > 0 && not first
-        then write_small_string destination ",\""
-        else write_char destination '"'
+        then Buffy.W.write_small_string destination ",\""
+        else Buffy.W.write_char destination '"'
       in
-      let* destination = write_large_string destination s in
-      let* destination = write_char destination '"' in
+      let* destination = Buffy.W.write_large_string destination s in
+      let* destination = Buffy.W.write_char destination '"' in
       write_lexemes depth false destination lxms
     | `Null ->
       let* destination =
         if depth > 0 && not first
-        then write_small_string destination ",null"
-        else write_small_string destination "null"
+        then Buffy.W.write_small_string destination ",null"
+        else Buffy.W.write_small_string destination "null"
       in
       write_lexemes depth false destination lxms
     | `As ->
       let* destination =
         if depth > 0 && not first
-        then write_small_string destination ",["
-        else write_char destination '['
+        then Buffy.W.write_small_string destination ",["
+        else Buffy.W.write_char destination '['
       in
       write_lexemes (depth + 1) true destination lxms
     | `Ae ->
-      let* destination = write_char destination ']' in
+      let* destination = Buffy.W.write_char destination ']' in
       write_lexemes (depth - 1) false destination lxms
     | `Os ->
       let* destination =
         if depth > 0 && not first
-        then write_small_string destination ",{"
-        else write_char destination '{'
+        then Buffy.W.write_small_string destination ",{"
+        else Buffy.W.write_char destination '{'
       in
       write_lexemes (depth + 1) true destination lxms
     | `Oe ->
-      let* destination = write_char destination '}' in
+      let* destination = Buffy.W.write_char destination '}' in
       write_lexemes (depth - 1) false destination lxms
     | `Name s ->
       let* destination =
         if depth > 0 && not first
-        then write_small_string destination ",\""
-        else write_char destination '"'
+        then Buffy.W.write_small_string destination ",\""
+        else Buffy.W.write_char destination '"'
       in
-      let* destination = write_large_string destination s in
-      let* destination = write_small_string destination "\":" in
+      let* destination = Buffy.W.write_large_string destination s in
+      let* destination = Buffy.W.write_small_string destination "\":" in
       write_lexemes (depth + 1) true destination lxms)
 ;;
 
@@ -424,15 +424,13 @@ let%expect_test _ =
   let scratch = String.make 20 ' ' in
   let w : JSON.lexeme Seq.t -> unit =
    fun lxms ->
-    let destination =
-      Suspendable_buffers.Writing.mk_destination (Bytes.of_string scratch) 1 18
-    in
+    let destination = Buffy.W.mk_destination (Bytes.of_string scratch) 1 18 in
     match write_lexemes destination lxms with
-    | Written { destination } ->
+    | Buffy.W.Written { destination } ->
       Format.printf "Ok: %s\n" (Bytes.unsafe_to_string destination.buffer)
-    | Failed { destination; error } ->
+    | Buffy.W.Failed { destination; error } ->
       Format.printf "Error: %s (%S)" error (Bytes.unsafe_to_string destination.buffer)
-    | Suspended _ -> assert false
+    | Buffy.W.Suspended _ -> assert false
    (* not possible in these small tests *)
   in
   w Seq.empty;
@@ -455,3 +453,5 @@ let%expect_test _ =
   [%expect {| Ok:  [{},[],{}] |}];
   ()
 ;;
+
+(* TODO? have a value->written direct function (no intermediate seq)? *)

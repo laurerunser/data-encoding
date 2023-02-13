@@ -26,10 +26,7 @@
     When you call the [cont]inuation, the [maximum_length] carries over so that
     the maximum number of bytes read by the call to [readk] and all the
     subsequent calls to [cont]s never exceeds this limit. *)
-val readk
-  :  Suspendable_buffers.Reading.source
-  -> 'a Encoding.t
-  -> 'a Suspendable_buffers.Reading.readed
+val readk : Buffy.R.source -> 'a Encoding.t -> 'a Buffy.R.readed
 
 (** {2: High-level readers} *)
 

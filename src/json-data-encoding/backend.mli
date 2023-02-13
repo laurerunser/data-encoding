@@ -28,7 +28,4 @@ val construct_lexeme : 'a Encoding.t -> 'a -> JSON.lexeme Seq.t
 
 (** [write_lexemes destination lexemes] writes the JSON lexemes of [lexemes]
     onto the [destination] buffer. *)
-val write_lexemes
-  :  Suspendable_buffers.Writing.destination
-  -> JSON.lexeme Seq.t
-  -> Suspendable_buffers.Writing.written
+val write_lexemes : Buffy.W.destination -> JSON.lexeme Seq.t -> Buffy.W.written

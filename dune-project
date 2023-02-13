@@ -40,7 +40,7 @@
    (ocaml (>= 4.14))
    dune
    optint
-   suspendable-buffers
+   buffy
    (qcheck (and :with-test (>= 0.19)))
    (qcheck-core :with-test)
    (ppx_expect :with-test)
@@ -56,7 +56,7 @@
    (ocaml (>= 4.14))
    dune
    optint
-   suspendable-buffers
+   buffy
    (qcheck (and :with-test (>= 0.19)))
    (qcheck-core :with-test)
    (ppx_expect :with-test)
@@ -65,7 +65,7 @@
 )
 
 (package
- (name suspendable-buffers)
+ (name buffy)
  (synopsis "Buffers with user-controled allocation")
  (description "")
  (depends
