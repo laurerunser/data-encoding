@@ -7,7 +7,7 @@ let rec readk : type a. Buffy.R.source -> a Descr.t -> a Buffy.R.readed =
   match encoding with
   | Unit -> Buffy.R.Readed { source; value = () }
   | Bool ->
-    let* v, source = Buffy.R.read1 source Size.bool Commons.Sizedints.Uint8.get in
+    let* v, source = Buffy.R.readf source Size.bool Commons.Sizedints.Uint8.get in
     if v = Magic.bool_true
     then Buffy.R.Readed { source; value = true }
     else if v = Magic.bool_false
@@ -101,7 +101,7 @@ let rec readk : type a. Buffy.R.source -> a Descr.t -> a Buffy.R.readed =
       in
       fold source 1)
   | Option t ->
-    let* tag, source = Buffy.R.read1 source Size.uint8 Commons.Sizedints.Uint8.get in
+    let* tag, source = Buffy.R.readf source Size.uint8 Commons.Sizedints.Uint8.get in
     if tag = Magic.option_none_tag
     then Buffy.R.Readed { source; value = None }
     else if tag = Magic.option_some_tag
@@ -162,20 +162,20 @@ and read_numeral
   =
  fun source numeral endianness ->
   match numeral, endianness with
-  | Int64, Big_endian -> Buffy.R.read1 source Size.int64 String.get_int64_be
-  | Int64, Little_endian -> Buffy.R.read1 source Size.int64 String.get_int64_le
-  | Int32, Big_endian -> Buffy.R.read1 source Size.int32 String.get_int32_be
-  | Int32, Little_endian -> Buffy.R.read1 source Size.int32 String.get_int32_le
-  | UInt62, Big_endian -> Buffy.R.read1 source Size.uint62 Commons.Sizedints.Uint62.get_be
+  | Int64, Big_endian -> Buffy.R.readf source Size.int64 String.get_int64_be
+  | Int64, Little_endian -> Buffy.R.readf source Size.int64 String.get_int64_le
+  | Int32, Big_endian -> Buffy.R.readf source Size.int32 String.get_int32_be
+  | Int32, Little_endian -> Buffy.R.readf source Size.int32 String.get_int32_le
+  | UInt62, Big_endian -> Buffy.R.readf source Size.uint62 Commons.Sizedints.Uint62.get_be
   | UInt62, Little_endian ->
-    Buffy.R.read1 source Size.uint62 Commons.Sizedints.Uint62.get_le
-  | UInt30, Big_endian -> Buffy.R.read1 source Size.uint30 Commons.Sizedints.Uint30.get_be
+    Buffy.R.readf source Size.uint62 Commons.Sizedints.Uint62.get_le
+  | UInt30, Big_endian -> Buffy.R.readf source Size.uint30 Commons.Sizedints.Uint30.get_be
   | UInt30, Little_endian ->
-    Buffy.R.read1 source Size.uint30 Commons.Sizedints.Uint30.get_le
-  | UInt16, Big_endian -> Buffy.R.read1 source Size.uint16 Commons.Sizedints.Uint16.get_be
+    Buffy.R.readf source Size.uint30 Commons.Sizedints.Uint30.get_le
+  | UInt16, Big_endian -> Buffy.R.readf source Size.uint16 Commons.Sizedints.Uint16.get_be
   | UInt16, Little_endian ->
-    Buffy.R.read1 source Size.uint16 Commons.Sizedints.Uint16.get_le
-  | UInt8, _ -> Buffy.R.read1 source Size.uint8 Commons.Sizedints.Uint8.get
+    Buffy.R.readf source Size.uint16 Commons.Sizedints.Uint16.get_le
+  | UInt8, _ -> Buffy.R.readf source Size.uint8 Commons.Sizedints.Uint8.get
 ;;
 
 let readk : type a. Buffy.R.source -> a Descr.t -> a Buffy.R.readed =

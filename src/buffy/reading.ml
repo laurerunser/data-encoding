@@ -70,7 +70,7 @@ type 'a readed =
 
 let source_too_small_to_continue_message = "new source blob is too small to continue"
 
-let read1 source reading read =
+let readf source reading read =
   assert (reading >= 0);
   if source.readed + reading > source.maximum_length
   then Failed { source; error = "maximum-length exceeded" }
@@ -106,12 +106,12 @@ let read1 source reading read =
                 Readed { source; value }))
             else (
               assert (source.readed < source.length);
-              (* First check that the current here small read1 has enough data *)
+              (* First check that the current here small readf has enough data *)
               let available_length = source.length - source.readed + length in
               if reading > available_length
               then Failed { source; error = source_too_small_to_continue_message }
               else (
-                (* prepare for this small here read1 *)
+                (* prepare for this small here readf *)
                 let source =
                   let blob =
                     String.sub

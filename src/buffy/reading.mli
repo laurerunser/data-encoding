@@ -71,7 +71,7 @@ type 'a readed =
                 slice that the deserialisation can read from. *)
       }
 
-val read1 : source -> int -> (string -> int -> 'a) -> 'a readed
+val readf : source -> int -> (string -> int -> 'a) -> 'a readed
 
 type 'a chunkreader = string -> int -> int -> 'a chunkreaded
 
