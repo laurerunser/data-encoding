@@ -45,11 +45,40 @@ val mk_source
   -> int
   -> source
 
-(** TODO: document stops *)
+(** [push_stop source o] adds a stop hint [o] bytes ahead in the reading buffer.
+
+    A stop hint is a location in the buffer that a reader is marking so that it
+    can later stop at this position. This is primarily intended for binary
+    serialisation formats which include size headers: when encountering a
+    size header the reader pushes a stop hint; during deserialisation the
+    reader peaks at the recorded stop hint (via [peak_stop]); after reaching the
+    stop hint the reader pops the recorded stop hint (via [pop_stop]).
+
+    Note that the position [o] is relative to the current position in the
+    [source].
+
+    Returns an [Error] if the pushed stop hint is beyond the
+    [maximum_length] limit of the [source].
+
+    Returns an [Error] if the pushed stop hint is beyond an already placed
+    stop hint. This means that the stops must be nested correctly like
+    delimiters.
+ *)
 val push_stop : source -> int -> (source, string) result
 
-(** TODO: document stops *)
-val pop_stop : source -> int * source
+(** [peak_stop source] is the next stop hint offset (if any have been set). The
+    stop hint is relative to [source.offset]. In practical terms, it means there
+    are [peak_stop source - source.readed] bytes left to read before reaching
+    the stop hint. And as a special case, the stop hint is reached when
+    [peak_stop source = source.readed].
+
+    Returns [None] if there are no stop hints. *)
+val peak_stop : source -> int option
+
+(** [pop_stop source] removes and returns the next stop hint.
+
+    Returns an [Error] if there are no stop hints. *)
+val pop_stop : source -> (int * source, string) result
 
 (** [set_maximum_length source maximum_length] is a source identical
     to [source] but with the [maximum_length] field set to
@@ -58,7 +87,10 @@ val pop_stop : source -> int * source
     @raise Invalid_argument if [maximum_length > source.maximum_length].
     I.e., if this function is used to increase the limit.
 
-    @raise Invalid_argument if [maximum_length < 0]. *)
+    @raise Invalid_argument if [maximum_length < 0].
+
+    @raise Invalid_argument if [maximum_length] is before any of the pused stop
+    hints (see [push_stop]). *)
 val set_maximum_length : source -> int -> source
 
 (** [source_too_small_to_continue_message] is an error message used when a
@@ -83,7 +115,7 @@ val source_too_small_to_continue_message : string
 
     The past-participle of {e to read} is {e read}. However, this is ambiguous
     with other forms of the verb. To avoid this ambiguity, the past-participle
-    is mispelt into {e readed}. *)
+    is misspelt into {e readed}. *)
 type 'a readed =
   | Readed of
       { source : source
@@ -94,7 +126,7 @@ type 'a readed =
   | Failed of
       { source : source
       ; error : string
-            (** [error] carries a human-readable message indicationg the reason
+            (** [error] carries a human-readable message indicating the reason
                 for the failure. *)
       }
   | Suspended of
@@ -107,20 +139,50 @@ type 'a readed =
 
 (** {2: Simple reading functions} *)
 
-(* TODO: documentation *)
+(* [readf source reading f] is for reading [reading] bytes from [source]. If
+   enough bytes are available, it calls [f blob offset] allowing the actual read
+   to take place. If not enough bytes are available it returns a [Suspended]
+   value allowing the read to resume once more bytes have been provided.
+
+   Returns [Failed] if reading exceeds the [maximum_length] of the [source].
+
+   Returns [Failed] if the next stop hint is exceeded. (See [push_stop],
+   [peak_stop] and [pop_stop].)
+ *)
 val readf : source -> int -> (string -> int -> 'a) -> 'a readed
 
 (** {2: Chunked writing functions} *)
 
-(* TODO: documentation *)
+(** [chunkreader] is the type of readers that can be used to read a single value
+    spread over multiple chunks. See the documentation of [readchunked] below. *)
 type 'a chunkreader = string -> int -> int -> 'a chunkreaded
 
-(* TODO: documentation *)
 and 'a chunkreaded =
   | K of int * 'a chunkreader
+      (** [K (r, cr)] indicates that the chunkreader has
+          read [r] bytes and has more bytes to read still. *)
   | Finish of 'a * int
+      (** [Finish (v, r)] indicates that the chunkreader has
+          finished reading. *)
 
-(* TODO: documentation *)
+(** [readchunked source r] interleaves calls to [r] within the suspend-resume
+    mechanism of the [source], allowing the user to read more bytes than is
+    available in a single blob, or to spread the reading into multiple chunks.
+
+    [readchunked source r] calls [r b o l] where [b] is the underlying blob of
+    [source], [o] is the offset [r] should read at, and [l] is the maximum
+    number of bytes that [r] should read.
+
+    - If [r] needs to read [ll] bytes with [ll<=l] then it should read [ll]
+    bytes, transform those bytes into an OCaml value [v], and return
+    [Finish (v, ll)].
+    - If [r] needs to read [ll] bytes with [ll>l] then it should read as many
+    bytes as possible within the limit of [l] and return [K (lll, r)] where
+    [lll] is the number of bytes read and [r] is a [chunkreader] ready to
+    consume the additional needed bytes.
+
+    As a caller, it is your responsibility to ensure that [r] behaves as
+    documentated here. *)
 val readchunked : source -> 'a chunkreader -> 'a readed
 
 (** {2: OCaml base-type readers} *)
@@ -137,6 +199,16 @@ val read_utf8_uchar : source -> Uchar.t readed
 
 (** {2: Composing reading functions} *)
 
+(** [let*] is a binding operator for sequencing calls to different reading
+    functions. It handles failures and suspensions. E.g.,
+
+{[
+let source = mk_source … in
+let* c, source = read_char source in
+let n = Char.code c in
+let* s, source = read_large_string source n in
+…
+]} *)
 val ( let* ) : 'a readed -> ('a * source -> 'b readed) -> 'b readed
 
 (* TODO? [suspend] *)

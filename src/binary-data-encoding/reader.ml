@@ -38,15 +38,19 @@ let rec readk : type a. Buffy.R.source -> a Descr.t -> a Buffy.R.readed =
     in
     fold source [] intlength
   | USeq { elementencoding } ->
-    (match source.stop_at_readed with
-    | [] ->
+    (match Buffy.R.peak_stop source with
+    | None ->
       (* TODO: support unsized USeq once we support lazy useq *)
       Failed { source; error = "unlengthed-seq without a size" }
-    | expected_stop :: _ ->
+    | Some expected_stop ->
       let rec fold (source : Buffy.R.source) reversed_list =
+        assert (source.offset + source.readed <= expected_stop);
+        (* reading fails otherwise *)
         if expected_stop = source.readed
         then Buffy.R.Readed { source; value = List.to_seq (List.rev reversed_list) }
         else
+          (* TODO: in case of suspend, we have to recompute the expected_stop,
+             otherwise the expected stop is wrong, this is a bug *)
           let* v, source = readk source elementencoding in
           fold source (v :: reversed_list)
       in
@@ -107,10 +111,12 @@ let rec readk : type a. Buffy.R.source -> a Descr.t -> a Buffy.R.readed =
     (match Buffy.R.push_stop source readed_size with
     | Ok source ->
       let* v, source = readk source encoding in
-      let expected_stop, source = Buffy.R.pop_stop source in
-      if source.readed = expected_stop
-      then Buffy.R.Readed { source; value = v }
-      else Failed { source; error = "read fewer bytes than expected-length" }
+      (match Buffy.R.pop_stop source with
+      | Ok (expected_stop, source) ->
+        if source.readed = expected_stop
+        then Buffy.R.Readed { source; value = v }
+        else Failed { source; error = "read fewer bytes than expected-length" }
+      | Error error -> Failed { source; error })
     | Error msg ->
       (* TODO: context of error message*)
       Failed { source; error = msg })

@@ -33,6 +33,9 @@ let set_maximum_length source maximum_length =
   { source with maximum_length }
 ;;
 
+(* TODO: there needs to be more tests for stop hints in conjunction with
+   suspend-resume *)
+
 let push_stop source length =
   assert (length >= 0);
   if source.readed + length > source.maximum_length
@@ -47,12 +50,18 @@ let push_stop source length =
       else Ok { source with stop_at_readed = requested_stop :: source.stop_at_readed })
 ;;
 
-(* TODO: error management *)
-let pop_stop source =
-  assert (source.stop_at_readed <> []);
+let peak_stop source =
   match source.stop_at_readed with
-  | [] -> assert false
-  | stop :: stop_at_readed -> stop, { source with stop_at_readed }
+  | [] -> None
+  | stop :: _ -> Some stop
+;;
+
+(* TODO? return a [unit readed] instead? With a failed if the stop is different
+   from the readed? *)
+let pop_stop source =
+  match source.stop_at_readed with
+  | [] -> Error "expected an expected-stop but found none"
+  | stop :: stop_at_readed -> Ok (stop, { source with stop_at_readed })
 ;;
 
 type 'a readed =
@@ -90,8 +99,9 @@ let readf source reading read =
             then (
               let source =
                 mk_source
-                  ~maximum_length:source.maximum_length
-                  ~stop_at_readed:source.stop_at_readed
+                  ~maximum_length:(source.maximum_length - source.readed)
+                  ~stop_at_readed:
+                    (List.map (fun stop -> stop - source.readed) source.stop_at_readed)
                   blob
                   offset
                   length
@@ -127,8 +137,9 @@ let readf source reading read =
                   let offset = 0 in
                   let length = reading in
                   mk_source
-                    ~maximum_length:source.maximum_length
-                    ~stop_at_readed:source.stop_at_readed
+                    ~maximum_length:(source.maximum_length - source.readed)
+                    ~stop_at_readed:
+                      (List.map (fun stop -> stop - source.readed) source.stop_at_readed)
                     blob
                     offset
                     length
@@ -140,8 +151,9 @@ let readf source reading read =
                 (* Second prepare the source for giving back *)
                 let source =
                   mk_source
-                    ~maximum_length:source.maximum_length
-                    ~stop_at_readed:source.stop_at_readed
+                    ~maximum_length:(source.maximum_length - reading)
+                    ~stop_at_readed:
+                      (List.map (fun stop -> stop - reading) source.stop_at_readed)
                     blob
                     offset
                     length
@@ -181,8 +193,8 @@ let read_char source =
             (* we are reading 1 char, so we can't have left over from before *)
             let source =
               mk_source
-                ~maximum_length:source.maximum_length
-                ~stop_at_readed:source.stop_at_readed
+                ~maximum_length:(source.maximum_length - 1)
+                ~stop_at_readed:(List.map (fun stop -> stop - 1) source.stop_at_readed)
                 blob
                 offset
                 length
@@ -206,29 +218,44 @@ and 'a chunkreaded =
 
 let rec readchunked : type a. source -> a chunkreader -> a readed =
  fun source read ->
-  let reading =
-    min (source.maximum_length - source.readed) (source.length - source.readed)
+  let hard_limit = source.maximum_length - source.readed in
+  let hard_limit =
+    match source.stop_at_readed with
+    | [] -> hard_limit
+    | stop :: _ -> min hard_limit (stop - source.readed)
   in
+  let suspendable_limit = source.length - source.readed in
+  let reading = min hard_limit suspendable_limit in
+  assert (reading <= hard_limit);
   assert (reading >= 0);
   match read source.blob (source.offset + source.readed) reading with
   | Finish (value, readed) ->
+    assert (readed <= reading);
     let source = bump_readed source readed in
     Readed { source; value }
   | K (readed, read) ->
-    let source = bump_readed source readed in
-    Suspended
-      { source
-      ; cont =
-          (fun blob offset length ->
-            let source =
-              mk_source
-                ~maximum_length:(source.maximum_length - source.readed)
-                blob
-                offset
-                length
-            in
-            readchunked source read)
-      }
+    assert (readed <= reading);
+    if readed = hard_limit
+    then (
+      let error = "chunkreader requires more bytes but hard limit was reached" in
+      Failed { error; source })
+    else (
+      let source = bump_readed source readed in
+      Suspended
+        { source
+        ; cont =
+            (fun blob offset length ->
+              let source =
+                mk_source
+                  ~maximum_length:(source.maximum_length - source.readed)
+                  ~stop_at_readed:
+                    (List.map (fun stop -> stop - source.readed) source.stop_at_readed)
+                  blob
+                  offset
+                  length
+              in
+              readchunked source read)
+        })
 ;;
 
 let read_large_bytes source len =
