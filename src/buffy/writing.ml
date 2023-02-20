@@ -72,12 +72,7 @@ let writef destination writing write =
                 length
             in
             if destination.offset + writing > destination.length
-            then
-              (* TODO: instead of failing here, allow to continue after more
-                 buffering, possibly go a slow path where the value is written
-                 to an internal buffer which is blitted bit by bit on the small
-                 buffers that are passed by the user *)
-              Failed { destination; error = destination_too_small_to_continue_message }
+            then Failed { destination; error = destination_too_small_to_continue_message }
             else (
               write destination.buffer (destination.offset + destination.written);
               let destination = bump_written destination writing in

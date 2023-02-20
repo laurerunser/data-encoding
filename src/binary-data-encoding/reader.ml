@@ -15,45 +15,15 @@ let rec readk : type a. Buffy.R.source -> a Descr.t -> a Buffy.R.readed =
     else Failed { source; error = "Unknown value for Bool" }
   | Numeral { numeral; endianness } -> read_numeral source numeral endianness
   | String n ->
-    (* TODO: support chunk reading of string so that it's possible to deserialise
-     a big blob from several small blobs *)
     (* TODO: support for 32-bit machines: don't use `Int63.to_int`, maybe writef
        should take an int63? *)
     let size = Optint.Int63.to_int (n :> Optint.Int63.t) in
-    let dest = Bytes.make size '\000' in
-    let rec chunkreader dest_offset blob offset maxreadsize =
-      let needsreading = size - dest_offset in
-      if needsreading = 0
-      then Buffy.R.Finish (Bytes.unsafe_to_string dest, 0)
-      else if needsreading <= maxreadsize
-      then (
-        Bytes.blit_string blob offset dest dest_offset needsreading;
-        Buffy.R.Finish (Bytes.unsafe_to_string dest, needsreading))
-      else (
-        Bytes.blit_string blob offset dest dest_offset maxreadsize;
-        K (maxreadsize, chunkreader maxreadsize))
-    in
-    Buffy.R.readchunked source (chunkreader 0)
+    Buffy.R.read_large_string source size
   | Bytes n ->
-    (* TODO: support chunk reading of bytes so that it's possible to deserialise
-     a big blob from several small blobs *)
     (* TODO: support for 32-bit machines: don't use `Int63.to_int`, maybe writef
        should take an int63? *)
     let size = Optint.Int63.to_int (n :> Optint.Int63.t) in
-    let dest = Bytes.make size '\000' in
-    let rec chunkreader dest_offset blob offset maxreadsize =
-      let needsreading = size - dest_offset in
-      if needsreading = 0
-      then Buffy.R.Finish (dest, 0)
-      else if needsreading <= maxreadsize
-      then (
-        Bytes.blit_string blob offset dest dest_offset needsreading;
-        Buffy.R.Finish (dest, needsreading))
-      else (
-        Bytes.blit_string blob offset dest dest_offset maxreadsize;
-        K (maxreadsize, chunkreader maxreadsize))
-    in
-    Buffy.R.readchunked source (chunkreader 0)
+    Buffy.R.read_large_bytes source size
   | LSeq { length; elementencoding } ->
     let intlength = Optint.Int63.to_int (length :> Optint.Int63.t) in
     let rec fold source reversed_list remaining_length =

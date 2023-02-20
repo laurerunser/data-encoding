@@ -1,6 +1,6 @@
 (** {1: Suspendable writing buffers}
 
-    This module exports types and values to allow users to write serialiser
+    This module exports types and values to allow users to write serialisers
     which manage suspending when more space is needed and resuming when more
     space is made available.
 
@@ -64,7 +64,7 @@ val set_maximum_length : destination -> int -> destination
 
 (** [destination_too_small_to_continue_message] is an error message used when a
     suspended destination is provided with a new buffer which is too small to
-    resume the suspending write.
+    resume the suspended write.
 
     There are two approaches to avoiding this error.
 
@@ -157,17 +157,6 @@ type written =
     If you need to write large values, consider using [writechunked] below. *)
 val writef : destination -> int -> (bytes -> int -> unit) -> written
 
-(** [write_small_string destination s] is equivalent to
-    [writef destination (String.length s) (fun b o -> Bytes.blit_string s 0 b o (String.length s)].
-    I.e., it writes the whole of the string [s] onto [destination]. The warning
-    about large writes detailed for [writef] apply too. For large strings
-    consider using [writechunked] or [write_large_string]. *)
-val write_small_string : destination -> string -> written
-
-(** [write_char destination c] is equivalent to
-    [writed destination 1 (fun b o -> Bytes.set b o c)]. *)
-val write_char : destination -> char -> written
-
 (** {2: Chunked writing functions} *)
 
 (** [chunkwriter] is the type of functions that can be used to write a single
@@ -200,6 +189,21 @@ and chunkwritten =
     discipline described above. *)
 val writechunked : destination -> chunkwriter -> written
 
+(** {2: OCaml base-type writers} *)
+
+(* TODO? place these functions in a module of its own *)
+
+(** [write_small_string destination s] is equivalent to
+    [writef destination (String.length s) (fun b o -> Bytes.blit_string s 0 b o (String.length s)].
+    I.e., it writes the whole of the string [s] onto [destination]. The warning
+    about large writes detailed for [writef] apply too. For large strings
+    consider using [writechunked] or [write_large_string]. *)
+val write_small_string : destination -> string -> written
+
+(** [write_char destination c] is equivalent to
+    [writed destination 1 (fun b o -> Bytes.set b o c)]. *)
+val write_char : destination -> char -> written
+
 (** [write_large_string destination s] uses the chunkwritter mechanism
     above to write the string [s] onto the destination. You should use this
     function when you need to write a string that is on the same order of
@@ -211,6 +215,9 @@ val write_large_string : destination -> string -> written
     that in case of suspension, time can elapse in between multiple uses of the
     argument: avoid performing side-effects on the bytes during that time. *)
 val write_large_bytes : destination -> bytes -> written
+
+(* TODO? list/array/seq writing combinator? other combinators? *)
+(* TODO? uint8, uint16, etc. writing functions (wrapping [Bytes.*]) *)
 
 (** {2: Composing writing functions} *)
 
@@ -224,6 +231,8 @@ let* destination = write_char destination '!' in
 …
 ]} *)
 val ( let* ) : written -> (destination -> written) -> written
+
+(* TODO? [suspend : destination -> written]? *)
 
 (** {2 Wrapping writing functions} *)
 

@@ -97,6 +97,8 @@ and parse_array : t list -> lexeme Seq.t -> (t list * lexeme Seq.t, string) resu
     parse_array (t :: acc) s
 ;;
 
+let parse_partial s = parse s
+
 let parse s =
   let* t, s = parse s in
   let* () =

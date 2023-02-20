@@ -47,6 +47,7 @@ let push_stop source length =
       else Ok { source with stop_at_readed = requested_stop :: source.stop_at_readed })
 ;;
 
+(* TODO: error management *)
 let pop_stop source =
   assert (source.stop_at_readed <> []);
   match source.stop_at_readed with
@@ -105,6 +106,9 @@ let readf source reading read =
                 let source = bump_readed source reading in
                 Readed { source; value }))
             else (
+              (* TODO: provide a [copy_threshold] to let the user control when
+                 the partial read of the remaining of the previous source is
+                 copied and when is it kept a reference of. *)
               assert (source.readed < source.length);
               (* First check that the current here small readf has enough data *)
               let available_length = source.length - source.readed + length in
@@ -155,13 +159,53 @@ let readf source reading read =
     Readed { source; value })
 ;;
 
+let read_small_string source len =
+  readf source len (fun src off -> String.sub src off len)
+;;
+
+let read_char source =
+  if source.readed + 1 > source.maximum_length
+  then Failed { source; error = "maximum-length exceeded" }
+  else if match source.stop_at_readed with
+          | [] -> false
+          | stop :: _ -> source.readed + 1 > stop
+  then Failed { source; error = "expected-stop point exceeded" }
+  else if source.readed + 1 > source.length
+  then
+    Suspended
+      { source
+      ; cont =
+          (fun blob offset length ->
+            assert (source.readed <= source.length);
+            assert (source.readed = source.length);
+            (* we are reading 1 char, so we can't have left over from before *)
+            let source =
+              mk_source
+                ~maximum_length:source.maximum_length
+                ~stop_at_readed:source.stop_at_readed
+                blob
+                offset
+                length
+            in
+            assert (length > 0);
+            let value = String.get source.blob source.offset in
+            let source = bump_readed source 1 in
+            Readed { source; value })
+      }
+  else (
+    let value = String.get source.blob (source.offset + source.readed) in
+    let source = bump_readed source 1 in
+    Readed { source; value })
+;;
+
 type 'a chunkreader = string -> int -> int -> 'a chunkreaded
 
 and 'a chunkreaded =
   | K of int * 'a chunkreader
   | Finish of 'a * int
 
-let rec readchunked source read =
+let rec readchunked : type a. source -> a chunkreader -> a readed =
+ fun source read ->
   let reading =
     min (source.maximum_length - source.readed) (source.length - source.readed)
   in
@@ -187,6 +231,40 @@ let rec readchunked source read =
       }
 ;;
 
+let read_large_bytes source len =
+  let dest = Bytes.make len '\000' in
+  let rec chunkreader dest_offset blob offset maxreadsize =
+    let needsreading = len - dest_offset in
+    if needsreading = 0
+    then Finish (dest, 0)
+    else if needsreading <= maxreadsize
+    then (
+      Bytes.blit_string blob offset dest dest_offset needsreading;
+      Finish (dest, needsreading))
+    else (
+      Bytes.blit_string blob offset dest dest_offset maxreadsize;
+      K (maxreadsize, chunkreader maxreadsize))
+  in
+  readchunked source (chunkreader 0)
+;;
+
+let read_large_string source len =
+  let dest = Bytes.make len '\000' in
+  let rec chunkreader dest_offset blob offset maxreadsize =
+    let needsreading = len - dest_offset in
+    if needsreading = 0
+    then Finish (Bytes.unsafe_to_string dest, 0)
+    else if needsreading <= maxreadsize
+    then (
+      Bytes.blit_string blob offset dest dest_offset needsreading;
+      Finish (Bytes.unsafe_to_string dest, needsreading))
+    else (
+      Bytes.blit_string blob offset dest dest_offset maxreadsize;
+      K (maxreadsize, chunkreader maxreadsize))
+  in
+  readchunked source (chunkreader 0)
+;;
+
 let rec ( let* ) x f =
   match x with
   | Readed { source; value } -> f (value, source)
@@ -197,4 +275,36 @@ let rec ( let* ) x f =
       f x
     in
     Suspended { source; cont }
+;;
+
+let of_string read s =
+  let source = mk_source s 0 (String.length s) in
+  match read source with
+  | Readed { source; value } ->
+    assert (source.readed <= source.length);
+    if source.readed < source.length then Error "Too many bytes" else Ok value
+  | Failed { source = _; error } -> Error error
+  | Suspended { source = _; cont = _ } -> Error "Not enough bytes"
+;;
+
+let rec of_string_seq_loop seq cont =
+  match seq () with
+  | Seq.Nil -> Error "Not enough chunks or bytes"
+  | Seq.Cons (s, seq) ->
+    (match cont s 0 (String.length s) with
+    | Readed { source; value } ->
+      assert (source.readed <= source.length);
+      if source.readed < source.length
+      then Error "Too many bytes"
+      else if Seq.is_empty seq
+      then Ok value
+      else Error "Too many chunks"
+    | Failed { source = _; error } -> Error error
+    | Suspended { source = _; cont } -> of_string_seq_loop seq cont)
+;;
+
+let of_string_seq read s =
+  of_string_seq_loop s (fun s off len ->
+      let source = mk_source s off len in
+      read source)
 ;;

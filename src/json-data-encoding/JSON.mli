@@ -57,8 +57,9 @@ type flex =
 (** By default we use the flexible representation. *)
 type t = flex
 
-val lexemify : t -> lexeme Seq.t
-val parse : lexeme Seq.t -> (t, string) result
+val lexemify : t -> lexemes
+val parse : lexemes -> (t, string) result
+val parse_partial : lexemes -> (t * lexemes, string) result
 val compatify : t -> compat
 
 (** Note that [t] is a more general representation than [compat] and so this
