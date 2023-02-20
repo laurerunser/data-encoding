@@ -131,6 +131,7 @@ val read_small_string : source -> int -> string readed
 val read_large_string : source -> int -> string readed
 val read_large_bytes : source -> int -> bytes readed
 val read_char : source -> char readed
+val read_utf8_uchar : source -> Uchar.t readed
 (* TODO? list/array/seq writing combinator? other combinators? *)
 (* TODO? uint8, uint16, etc. reading functions (wrapping [Bytes.*]) *)
 

@@ -167,6 +167,68 @@ let%expect_test _ =
   ()
 ;;
 
+let write_utf8_uchar destination c =
+  let c = Uchar.to_int c in
+  if c < 0b1000_0000
+  then write_char destination (Char.chr c)
+  else if c < 0b1_00000_000000
+  then (
+    let c0 = 0b110_00000 lor ((c land 0b11111_000000) lsr 6) in
+    let c1 = 0b10_000000 lor (c land 0b00000_111111) in
+    writef destination 2 (fun b o ->
+        Bytes.set_uint8 b o c0;
+        Bytes.set_uint8 b (o + 1) c1))
+  else if c < 0b1_0000_000000_000000
+  then (
+    let c0 = 0b1110_0000 lor ((c land 0b1111_000000_000000) lsr 12) in
+    let c1 = 0b10_000000 lor ((c land 0b0000_111111_000000) lsr 6) in
+    let c2 = 0b10_000000 lor (c land 0b0000_000000_111111) in
+    writef destination 2 (fun b o ->
+        Bytes.set_uint8 b o c0;
+        Bytes.set_uint8 b (o + 1) c1;
+        Bytes.set_uint8 b (o + 2) c2))
+  else if c < 0b1_000_000000_000000_000000
+  then (
+    let c0 = 0b11110_000 lor ((c land 0b111_000000_000000_000000) lsr 18) in
+    let c1 = 0b10_000000 lor ((c land 0b000_111111_000000_000000) lsr 12) in
+    let c2 = 0b10_000000 lor ((c land 0b000_000000_111111_000000) lsr 6) in
+    let c3 = 0b10_000000 lor (c land 0b000_000000_000000_111111) in
+    writef destination 2 (fun b o ->
+        Bytes.set_uint8 b o c0;
+        Bytes.set_uint8 b (o + 1) c1;
+        Bytes.set_uint8 b (o + 2) c2;
+        Bytes.set_uint8 b (o + 3) c3))
+  else (
+    let error = "Invalid uchar" in
+    Failed { destination; error })
+;;
+
+let%expect_test _ =
+  let w c =
+    let len = 6 in
+    let buffer = Bytes.make len '_' in
+    let destination = mk_destination buffer 1 4 in
+    match write_utf8_uchar destination c with
+    | Written { destination } ->
+      assert (destination.buffer == buffer);
+      Format.printf "Written: %s" (Bytes.unsafe_to_string buffer)
+    | Failed { destination; error } ->
+      assert (destination.buffer == buffer);
+      Format.printf "Failed: %s (%s)" error (Bytes.unsafe_to_string buffer)
+    | Suspended _ -> assert false
+    (* no test for suspended in this block *)
+  in
+  w (Uchar.of_int 0x24);
+  [%expect {| Written: _$____ |}];
+  w (Uchar.of_int 0x00A3);
+  [%expect {| Written: _£___ |}];
+  w (Uchar.of_int 0x20AC);
+  [%expect {| Written: _€__ |}];
+  w (Uchar.of_int 0x10348);
+  [%expect {| Written: _𐍈_ |}];
+  ()
+;;
+
 type chunkwriter = bytes -> int -> int -> chunkwritten
 
 and chunkwritten =

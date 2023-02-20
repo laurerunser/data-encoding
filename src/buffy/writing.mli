@@ -204,6 +204,10 @@ val write_small_string : destination -> string -> written
     [writed destination 1 (fun b o -> Bytes.set b o c)]. *)
 val write_char : destination -> char -> written
 
+(** [write_utf8_uchar destination c] writes the UTF-8 encoding of the unicode
+    point [c]. *)
+val write_utf8_uchar : destination -> Uchar.t -> written
+
 (** [write_large_string destination s] uses the chunkwritter mechanism
     above to write the string [s] onto the destination. You should use this
     function when you need to write a string that is on the same order of

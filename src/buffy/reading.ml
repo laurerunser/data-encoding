@@ -277,6 +277,110 @@ let rec ( let* ) x f =
     Suspended { source; cont }
 ;;
 
+let read_utf8_uchar source =
+  let* c, source = read_char source in
+  let c = Char.code c in
+  if c land 0b1000_0000 = 0b0000_0000
+  then (
+    (* length 1 *)
+    let value = Uchar.of_int c in
+    Readed { source; value })
+  else if c land 0b1110_0000 = 0b1100_0000
+  then
+    (* length 2 *)
+    let* c1, source = read_char source in
+    let c1 = Char.code c1 in
+    if c1 land 0b1100_0000 = 0b1000_0000
+    then (
+      let c = (c land 0b0001_1111) lsl 6 in
+      let c1 = c1 land 0b0011_1111 in
+      let point = c lor c1 in
+      let value = Uchar.of_int point in
+      Readed { source; value })
+    else (
+      let error = "Invalid UTF8 byte" in
+      Failed { source; error })
+  else if c land 0b1111_0000 = 0b1110_0000
+  then
+    (* length 3 *)
+    let* c1, source = read_char source in
+    let c1 = Char.code c1 in
+    let* c2, source = read_char source in
+    let c2 = Char.code c2 in
+    if c1 land 0b1100_0000 = 0b1000_0000 && c2 land 0b1100_0000 = 0b1000_0000
+    then (
+      let c = (c land 0b0000_1111) lsl 12 in
+      let c1 = (c1 land 0b0011_1111) lsl 6 in
+      let c2 = c2 land 0b0011_1111 in
+      let point = c lor c1 lor c2 in
+      let value = Uchar.of_int point in
+      Readed { source; value })
+    else (
+      let error = "Invalid UTF8 byte" in
+      Failed { source; error })
+  else if c land 0b1111_1000 = 0b1111_0000
+  then
+    (* length 4 *)
+    let* c1, source = read_char source in
+    let c1 = Char.code c1 in
+    let* c2, source = read_char source in
+    let c2 = Char.code c2 in
+    let* c3, source = read_char source in
+    let c3 = Char.code c3 in
+    if c1 land 0b1100_0000 = 0b1000_0000
+       && c2 land 0b1100_0000 = 0b1000_0000
+       && c3 land 0b1100_0000 = 0b1000_0000
+    then (
+      let c = (c land 0b0000_0111) lsl 18 in
+      let c1 = (c1 land 0b0011_1111) lsl 12 in
+      let c2 = (c2 land 0b0011_1111) lsl 6 in
+      let c3 = c3 land 0b0011_1111 in
+      let point = c lor c1 lor c2 lor c3 in
+      let value = Uchar.of_int point in
+      Readed { source; value })
+    else (
+      let error = "Invalid UTF8 byte" in
+      Failed { source; error })
+  else (
+    let error = "Invalid UTF8 leading byte" in
+    Failed { source; error })
+;;
+
+let%expect_test _ =
+  let w s =
+    let rec loop acc source =
+      match read_utf8_uchar source with
+      | Readed { value; source } -> loop (value :: acc) source
+      | Failed { error; source = _ } -> Error error
+      | Suspended { source = _; cont = _ } -> Ok (List.rev acc)
+    in
+    match loop [] (mk_source s 0 (String.length s)) with
+    | Ok uchars ->
+      Format.printf
+        "%a\n"
+        (Format.pp_print_list
+           ~pp_sep:(fun fmt () -> Format.pp_print_char fmt '.')
+           (fun fmt u -> Format.fprintf fmt "x%x" (Uchar.to_int u)))
+        uchars
+    | Error error -> Format.printf "Error %s\n" error
+  in
+  w "";
+  [%expect {| |}];
+  w "abc";
+  [%expect {| x61.x62.x63 |}];
+  w "\xff";
+  [%expect {| Error Invalid UTF8 leading byte |}];
+  w "$";
+  [%expect {| x24 |}];
+  w "£";
+  [%expect {| xa3 |}];
+  w "€";
+  [%expect {| x20ac |}];
+  w "𐍈";
+  [%expect {| x10348 |}];
+  ()
+;;
+
 let of_string read s =
   let source = mk_source s 0 (String.length s) in
   match read source with
