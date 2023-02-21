@@ -11,10 +11,10 @@ type source =
   }
 
 let mk_source ?(maximum_length = max_int) ?(stop_at_readed = []) blob offset length =
-  if offset < 0 then failwith "Suspendable_buffers.Reading.mk_source: negative offset";
-  if length < 0 then failwith "Suspendable_buffers.Reading.mk_source: negative length";
+  if offset < 0 then failwith "Buffy.R.mk_source: negative offset";
+  if length < 0 then failwith "Buffy.R.mk_source: negative length";
   if offset + length > String.length blob
-  then failwith "Suspendable_buffers.Reading.mk_source: offset+length overflow";
+  then failwith "Buffy.R.mk_source: offset+length overflow";
   { blob; offset; length; readed = 0; stop_at_readed; maximum_length }
 ;;
 
@@ -22,14 +22,10 @@ let bump_readed source reading = { source with readed = source.readed + reading 
 
 let set_maximum_length source maximum_length =
   if maximum_length < 0
-  then
-    raise
-      (Invalid_argument "Suspendable_buffers.Reading.set_maximum_length: negative length");
+  then raise (Invalid_argument "Buffy.R.set_maximum_length: negative length");
   if maximum_length > source.maximum_length
   then
-    raise
-      (Invalid_argument
-         "Suspendable_buffers.Reading.set_maximum_length: cannot increase maximum length");
+    raise (Invalid_argument "Buffy.R.set_maximum_length: cannot increase maximum length");
   { source with maximum_length }
 ;;
 
