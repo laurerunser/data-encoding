@@ -18,7 +18,12 @@ let mk_source ?(maximum_length = max_int) ?(stop_at_readed = []) blob offset len
   { blob; offset; length; readed = 0; stop_at_readed; maximum_length }
 ;;
 
-let bump_readed source reading = { source with readed = source.readed + reading }
+let bump_readed source reading =
+  let readed = source.readed + reading in
+  assert (readed <= source.length);
+  assert (readed <= source.maximum_length);
+  { source with readed }
+;;
 
 let set_maximum_length source maximum_length =
   if maximum_length < 0
@@ -26,6 +31,15 @@ let set_maximum_length source maximum_length =
   if maximum_length > source.maximum_length
   then
     raise (Invalid_argument "Buffy.R.set_maximum_length: cannot increase maximum length");
+  (match source.stop_at_readed with
+  | [] -> ()
+  | stop :: _ ->
+    if maximum_length > stop
+    then
+      raise
+        (Invalid_argument
+           "Buffy.R.set_maximum_length: cannot set maximum length lower than expected \
+            stop"));
   { source with maximum_length }
 ;;
 
@@ -165,6 +179,72 @@ let readf source reading read =
     let value = read source.blob (source.offset + source.readed) in
     let source = bump_readed source reading in
     Readed { source; value })
+;;
+
+let%expect_test _ =
+  let pp_source_state fmt source =
+    Format.fprintf
+      fmt
+      "blob: %S, offset: %d, length: %d, readed: %d, stops: [%a], maxlen: %d"
+      source.blob
+      source.offset
+      source.length
+      source.readed
+      (Format.pp_print_list
+         ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
+         Format.pp_print_int)
+      source.stop_at_readed
+      source.maximum_length
+  in
+  let w source ls =
+    Format.printf "Source: %a\n" pp_source_state source;
+    match
+      List.fold_left
+        (fun source l ->
+          match readf source l (fun b o -> String.sub b o l) with
+          | Suspended _ ->
+            Format.printf "Suspended!\n";
+            raise Exit
+          | Failed { error; source } ->
+            Format.printf "Error: %S\nSource: %a\n" error pp_source_state source;
+            source
+          | Readed { value; source } ->
+            Format.printf "Ok: %S\nSource: %a\n" value pp_source_state source;
+            source)
+        source
+        ls
+    with
+    | exception Exit -> ()
+    | _ -> ()
+  in
+  let source = mk_source "foobarbaz" 0 9 in
+  w source [ 3; 0; 6; 1 ];
+  [%expect
+    {|
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 0, stops: [], maxlen: 4611686018427387903
+    Ok: "foo"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 4611686018427387903
+    Ok: ""
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 4611686018427387903
+    Ok: "barbaz"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 9, stops: [], maxlen: 4611686018427387903
+    Suspended! |}];
+  let source = mk_source "foobarbaz" ~maximum_length:6 0 9 in
+  w source [ 3; 0; 6; 3; 1 ];
+  [%expect
+    {|
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 0, stops: [], maxlen: 6
+    Ok: "foo"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
+    Ok: ""
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
+    Error: "maximum-length exceeded"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
+    Ok: "bar"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 6, stops: [], maxlen: 6
+    Error: "maximum-length exceeded"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 6, stops: [], maxlen: 6 |}];
+  ()
 ;;
 
 let read_small_string source len =
