@@ -251,6 +251,72 @@ let read_small_string source len =
   readf source len (fun src off -> String.sub src off len)
 ;;
 
+let%expect_test _ =
+  let pp_source_state fmt source =
+    Format.fprintf
+      fmt
+      "blob: %S, offset: %d, length: %d, readed: %d, stops: [%a], maxlen: %d"
+      source.blob
+      source.offset
+      source.length
+      source.readed
+      (Format.pp_print_list
+         ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
+         Format.pp_print_int)
+      source.stop_at_readed
+      source.maximum_length
+  in
+  let w source ls =
+    Format.printf "Source: %a\n" pp_source_state source;
+    match
+      List.fold_left
+        (fun source l ->
+          match read_small_string source l with
+          | Suspended _ ->
+            Format.printf "Suspended!\n";
+            raise Exit
+          | Failed { error; source } ->
+            Format.printf "Error: %S\nSource: %a\n" error pp_source_state source;
+            source
+          | Readed { value; source } ->
+            Format.printf "Ok: %S\nSource: %a\n" value pp_source_state source;
+            source)
+        source
+        ls
+    with
+    | exception Exit -> ()
+    | _ -> ()
+  in
+  let source = mk_source "foobarbaz" 0 9 in
+  w source [ 3; 0; 6; 1 ];
+  [%expect
+    {|
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 0, stops: [], maxlen: 4611686018427387903
+    Ok: "foo"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 4611686018427387903
+    Ok: ""
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 4611686018427387903
+    Ok: "barbaz"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 9, stops: [], maxlen: 4611686018427387903
+    Suspended! |}];
+  let source = mk_source "foobarbaz" ~maximum_length:6 0 9 in
+  w source [ 3; 0; 6; 3; 1 ];
+  [%expect
+    {|
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 0, stops: [], maxlen: 6
+    Ok: "foo"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
+    Ok: ""
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
+    Error: "maximum-length exceeded"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
+    Ok: "bar"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 6, stops: [], maxlen: 6
+    Error: "maximum-length exceeded"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 6, stops: [], maxlen: 6 |}];
+  ()
+;;
+
 let read_char source =
   if source.readed + 1 > source.maximum_length
   then Failed { source; error = "maximum-length exceeded" }
@@ -284,6 +350,65 @@ let read_char source =
     let value = String.get source.blob (source.offset + source.readed) in
     let source = bump_readed source 1 in
     Readed { source; value })
+;;
+
+let%expect_test _ =
+  let pp_source_state fmt source =
+    Format.fprintf
+      fmt
+      "blob: %S, offset: %d, length: %d, readed: %d, stops: [%a], maxlen: %d"
+      source.blob
+      source.offset
+      source.length
+      source.readed
+      (Format.pp_print_list
+         ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
+         Format.pp_print_int)
+      source.stop_at_readed
+      source.maximum_length
+  in
+  let w source =
+    Format.printf "Source: %a\n" pp_source_state source;
+    let rec go source =
+      match read_char source with
+      | Suspended _ ->
+        Format.printf "Suspended!\n";
+        ()
+      | Failed { error; source } ->
+        Format.printf "Error: %S\nSource: %a\n" error pp_source_state source;
+        ()
+      | Readed { value; source } ->
+        Format.printf "Ok: %c\nSource: %a\n" value pp_source_state source;
+        go source
+    in
+    go source
+  in
+  let source = mk_source "foobarbaz" 3 3 in
+  w source;
+  [%expect
+    {|
+    Source: blob: "foobarbaz", offset: 3, length: 3, readed: 0, stops: [], maxlen: 4611686018427387903
+    Ok: b
+    Source: blob: "foobarbaz", offset: 3, length: 3, readed: 1, stops: [], maxlen: 4611686018427387903
+    Ok: a
+    Source: blob: "foobarbaz", offset: 3, length: 3, readed: 2, stops: [], maxlen: 4611686018427387903
+    Ok: r
+    Source: blob: "foobarbaz", offset: 3, length: 3, readed: 3, stops: [], maxlen: 4611686018427387903
+    Suspended! |}];
+  let source = mk_source "foobarbaz" ~maximum_length:3 0 9 in
+  w source;
+  [%expect
+    {|
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 0, stops: [], maxlen: 3
+    Ok: f
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 1, stops: [], maxlen: 3
+    Ok: o
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 2, stops: [], maxlen: 3
+    Ok: o
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 3
+    Error: "maximum-length exceeded"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 3 |}];
+  ()
 ;;
 
 type 'a chunkreader = string -> int -> int -> 'a chunkreaded
@@ -334,6 +459,9 @@ let rec readchunked : type a. source -> a chunkreader -> a readed =
         })
 ;;
 
+(* TODO: have the user pass the buffer for [read_large_bytes] to avoid major
+   allocation. *)
+
 let read_large_bytes source len =
   let dest = Bytes.make len '\000' in
   let rec chunkreader dest_offset blob offset maxreadsize =
@@ -351,6 +479,11 @@ let read_large_bytes source len =
   readchunked source (chunkreader 0)
 ;;
 
+(* TODO: have a large-string variant which returns [(string*int*int)list] to
+   avoid allocations. *)
+(* TODO: have a large-string variant which takes [(string*int*int)->unit] to let
+   the user control the copying/use. *)
+
 let read_large_string source len =
   let dest = Bytes.make len '\000' in
   let rec chunkreader dest_offset blob offset maxreadsize =
@@ -366,6 +499,137 @@ let read_large_string source len =
       K (maxreadsize, chunkreader maxreadsize))
   in
   readchunked source (chunkreader 0)
+;;
+
+let%expect_test _ =
+  let pp_source_state fmt source =
+    Format.fprintf
+      fmt
+      "blob: %S, offset: %d, length: %d, readed: %d, stops: [%a], maxlen: %d"
+      source.blob
+      source.offset
+      source.length
+      source.readed
+      (Format.pp_print_list
+         ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
+         Format.pp_print_int)
+      source.stop_at_readed
+      source.maximum_length
+  in
+  let w source ls =
+    Format.printf "Source: %a\n" pp_source_state source;
+    match
+      List.fold_left
+        (fun source l ->
+          match read_large_string source l with
+          | Suspended _ ->
+            Format.printf "Suspended!\n";
+            raise Exit
+          | Failed { error; source } ->
+            Format.printf "Error: %S\nSource: %a\n" error pp_source_state source;
+            source
+          | Readed { value; source } ->
+            Format.printf "Ok: %S\nSource: %a\n" value pp_source_state source;
+            source)
+        source
+        ls
+    with
+    | exception Exit -> ()
+    | _ -> ()
+  in
+  let source = mk_source "foobarbaz" 0 9 in
+  w source [ 3; 0; 6; 1 ];
+  [%expect
+    {|
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 0, stops: [], maxlen: 4611686018427387903
+    Ok: "foo"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 4611686018427387903
+    Ok: ""
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 4611686018427387903
+    Ok: "barbaz"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 9, stops: [], maxlen: 4611686018427387903
+    Suspended! |}];
+  let source = mk_source "foobarbaz" ~maximum_length:6 0 9 in
+  w source [ 3; 0; 6; 3; 1 ];
+  [%expect
+    {|
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 0, stops: [], maxlen: 6
+    Ok: "foo"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
+    Ok: ""
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
+    Error: "chunkreader requires more bytes but hard limit was reached"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
+    Ok: "bar"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 6, stops: [], maxlen: 6
+    Error: "chunkreader requires more bytes but hard limit was reached"
+    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 6, stops: [], maxlen: 6 |}];
+  ();
+  let w ss ls =
+    let rec go ss cont =
+      match cont () with
+      | Suspended { source; cont } ->
+        Format.printf "Suspended!\nSource: %a\n" pp_source_state source;
+        let s = List.hd ss in
+        let ss = List.tl ss in
+        go ss (fun () -> cont s 0 (String.length s))
+      | Failed { error; source } as failed ->
+        Format.printf "Error: %S\nSource: %a\n" error pp_source_state source;
+        failed, source, ss
+      | Readed { value; source } as readed ->
+        Format.printf "Ok: %S\nSource: %a\n" value pp_source_state source;
+        readed, source, ss
+    in
+    let rec reads source ss ls =
+      match ls with
+      | [] -> ()
+      | l :: ls ->
+        (match go ss (fun () -> read_large_string source l) with
+        | Suspended _, _, _ -> assert false
+        | (Failed _ | Readed _), source, ss -> reads source ss ls)
+    in
+    let s = List.hd ss in
+    let ss = List.tl ss in
+    let source = mk_source s 0 (String.length s) in
+    Format.printf "Start!\nSource: %a\n" pp_source_state source;
+    reads source ss ls
+  in
+  w [ "foo"; "bar"; "baz" ] [ 3; 0; 6 ];
+  [%expect
+    {|
+    Start!
+    Source: blob: "foo", offset: 0, length: 3, readed: 0, stops: [], maxlen: 4611686018427387903
+    Ok: "foo"
+    Source: blob: "foo", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387903
+    Ok: ""
+    Source: blob: "foo", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387903
+    Suspended!
+    Source: blob: "foo", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387903
+    Suspended!
+    Source: blob: "bar", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387900
+    Ok: "barbaz"
+    Source: blob: "baz", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387897 |}];
+  w
+    (let rec xs = "xyz" :: xs in
+     xs)
+    [ 4; 4; 4 ];
+  [%expect
+    {|
+    Start!
+    Source: blob: "xyz", offset: 0, length: 3, readed: 0, stops: [], maxlen: 4611686018427387903
+    Suspended!
+    Source: blob: "xyz", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387903
+    Ok: "xyzx"
+    Source: blob: "xyz", offset: 0, length: 3, readed: 1, stops: [], maxlen: 4611686018427387900
+    Suspended!
+    Source: blob: "xyz", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387900
+    Ok: "yzxy"
+    Source: blob: "xyz", offset: 0, length: 3, readed: 2, stops: [], maxlen: 4611686018427387897
+    Suspended!
+    Source: blob: "xyz", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387897
+    Ok: "zxyz"
+    Source: blob: "xyz", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387894 |}];
+  ()
 ;;
 
 let rec ( let* ) x f =
