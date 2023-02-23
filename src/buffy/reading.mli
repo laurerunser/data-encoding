@@ -141,14 +141,23 @@ type 'a readed =
 
 (* [readf source reading f] is for reading [reading] bytes from [source]. If
    enough bytes are available, it calls [f blob offset] allowing the actual read
-   to take place. If not enough bytes are available it returns a [Suspended]
-   value allowing the read to resume once more bytes have been provided.
+   to take place.
 
    Returns [Failed] if reading exceeds the [maximum_length] of the [source].
 
    Returns [Failed] if the next stop hint is exceeded. (See [push_stop],
    [peak_stop] and [pop_stop].)
- *)
+
+   If there are not enough bytes available in [source], then
+   [readf source reading f] will allocate a buffer of [reading] bytes which it
+   uses to copy the bytes remaining in the current source and proceed with the
+   reading when more bytes are given to the suspension.
+
+   It is recommended to use [readf] with values of [reading] which are small.
+   One of the reason being this allocation which might be performed here.
+   Another is detailed in the documentation of
+   {!source_too_small_to_continue_message}. Check out chunk readers (below) if
+   you need to read large values. *)
 val readf : source -> int -> (string -> int -> 'a) -> 'a readed
 
 (** {2: Chunked writing functions} *)
@@ -188,6 +197,7 @@ val readchunked : source -> 'a chunkreader -> 'a readed
 (** {2: OCaml base-type readers} *)
 
 (* TODO? place those in their own module? *)
+(* TODO? type [('a, 'b) reader = 'a -> source -> 'b readed] *)
 
 val read_small_string : source -> int -> string readed
 val read_large_string : source -> int -> string readed
@@ -210,8 +220,6 @@ let* s, source = read_large_string source n in
 …
 ]} *)
 val ( let* ) : 'a readed -> ('a * source -> 'b readed) -> 'b readed
-
-(* TODO? [suspend] *)
 
 (** {2: Wrapping reading functions} *)
 

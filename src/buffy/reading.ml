@@ -8,6 +8,9 @@ type source =
   ; stop_hints : int list
         (* this list is grown when there is a size-header in the encoded binary data *)
   ; maximum_length : int
+        (* the [maximum_length] is the maximum number of bytes to be read
+           through all the buffer for the whole reading, it is a property passed
+           from one source to the next during suspensions *)
   }
 
 let rec check_stop_hints base stops maximum_length =
@@ -102,6 +105,7 @@ type 'a readed =
   | Suspended of
       { source : source
             (* TODO? add a field to indicate number of chars read from previous buffer *)
+            (* TODO? add a field for the buffer that's used as the bridge reading *)
       ; cont : string -> int -> int -> 'a readed
       }
 
@@ -117,7 +121,6 @@ let readf source reading read =
   then Failed { source; error = "expected-stop point exceeded" }
   else if source.readed + reading <= source.length
   then (
-    (* full reading can happen immediately, just do it *)
     let value = read source.blob (source.offset + source.readed) in
     let source = bump_readed source reading in
     Readed { source; value })
@@ -660,6 +663,7 @@ let rec ( let* ) x f =
     Suspended { source; cont }
 ;;
 
+(* TODO: avoid so many calls to [read_char] and [let*] to speed up reading *)
 let read_utf8_uchar source =
   let* c, source = read_char source in
   let c = Char.code c in

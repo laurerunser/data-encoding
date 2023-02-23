@@ -192,6 +192,7 @@ val writechunked : destination -> chunkwriter -> written
 (** {2: OCaml base-type writers} *)
 
 (* TODO? place these functions in a module of its own *)
+(* TODO? [type 'a writer = 'a -> destination -> written] *)
 
 (** [write_small_string destination s] is equivalent to
     [writef destination (String.length s) (fun b o -> Bytes.blit_string s 0 b o (String.length s)].
@@ -235,8 +236,6 @@ let* destination = write_char destination '!' in
 …
 ]} *)
 val ( let* ) : written -> (destination -> written) -> written
-
-(* TODO? [suspend : destination -> written]? *)
 
 (** {2 Wrapping writing functions} *)
 
