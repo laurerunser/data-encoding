@@ -58,30 +58,28 @@ let writef destination writing write =
   assert (writing >= 0);
   if destination.written + writing > destination.maximum_length
   then Failed { destination; error = "maximum-length exceeded" }
-  else if destination.written + writing > destination.length
-  then
+  else if destination.written + writing <= destination.length
+  then (
+    write destination.buffer (destination.offset + destination.written);
+    let destination = bump_written destination writing in
+    Written { destination })
+  else (
+    (* TODO? add an option which does some copying to a temporary buffer and
+       uses the original destination to its maximum capacity. (Similar to
+       Reading case.) *)
+    let maximum_length = destination.maximum_length - destination.written in
     Suspended
       { destination
       ; cont =
           (fun buffer offset length ->
-            let destination =
-              mk_destination
-                ~maximum_length:(destination.maximum_length - destination.written)
-                buffer
-                offset
-                length
-            in
+            let destination = mk_destination ~maximum_length buffer offset length in
             if destination.offset + writing > destination.length
             then Failed { destination; error = destination_too_small_to_continue_message }
             else (
               write destination.buffer (destination.offset + destination.written);
               let destination = bump_written destination writing in
               Written { destination }))
-      }
-  else (
-    write destination.buffer (destination.offset + destination.written);
-    let destination = bump_written destination writing in
-    Written { destination })
+      })
 ;;
 
 let%expect_test _ =
