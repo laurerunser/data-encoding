@@ -21,7 +21,7 @@ type source = private
   ; offset : int
   ; length : int
   ; readed : int (* [read] is ambiguous so we make it unambiguously past as [readed] *)
-  ; stop_at_readed : int list
+  ; stop_hints : int list
         (* this list is grown when there is a size-header in the encoded binary data *)
   ; maximum_length : int
   }
@@ -39,7 +39,7 @@ type source = private
     [ offset<0 || length<0 || offset+length>String.length blob ]. *)
 val mk_source
   :  ?maximum_length:int
-  -> ?stop_at_readed:int list
+  -> ?stop_hints:int list
   -> string
   -> int
   -> int
@@ -89,7 +89,7 @@ val pop_stop : source -> (int * source, string) result
 
     @raise Invalid_argument if [maximum_length < 0].
 
-    @raise Invalid_argument if [maximum_length] is before any of the pused stop
+    @raise Invalid_argument if [maximum_length] is before any of the pushed stop
     hints (see [push_stop]). *)
 val set_maximum_length : source -> int -> source
 

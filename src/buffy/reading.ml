@@ -5,28 +5,26 @@ type source =
   ; offset : int
   ; length : int
   ; readed : int (* [read] is ambiguous so we make it unambiguously past as [readed] *)
-  ; stop_at_readed : int list
+  ; stop_hints : int list
         (* this list is grown when there is a size-header in the encoded binary data *)
   ; maximum_length : int
   }
 
-let rec check_stop_at_readed base stops maximum_length =
+let rec check_stop_hints base stops maximum_length =
   match stops with
   | [] -> true
   | stop :: stops ->
-    base <= stop
-    && stop <= maximum_length
-    && check_stop_at_readed stop stops maximum_length
+    base <= stop && stop <= maximum_length && check_stop_hints stop stops maximum_length
 ;;
 
-let mk_source ?(maximum_length = max_int) ?(stop_at_readed = []) blob offset length =
+let mk_source ?(maximum_length = max_int) ?(stop_hints = []) blob offset length =
   if offset < 0 then failwith "Buffy.R.mk_source: negative offset";
   if length < 0 then failwith "Buffy.R.mk_source: negative length";
   if offset + length > String.length blob
   then failwith "Buffy.R.mk_source: offset+length overflow";
-  if not (check_stop_at_readed 0 stop_at_readed maximum_length)
-  then failwith "Buffy.R.mk_source: stops out of bound or out of order";
-  { blob; offset; length; readed = 0; stop_at_readed; maximum_length }
+  if not (check_stop_hints 0 stop_hints maximum_length)
+  then failwith "Buffy.R.mk_source: stops out of bounds or out of order";
+  { blob; offset; length; readed = 0; stop_hints; maximum_length }
 ;;
 
 let bump_readed source reading =
@@ -53,7 +51,7 @@ let set_maximum_length source maximum_length =
   if maximum_length > source.maximum_length
   then
     raise (Invalid_argument "Buffy.R.set_maximum_length: cannot increase maximum length");
-  if not (check_last_stop source.stop_at_readed maximum_length)
+  if not (check_last_stop source.stop_hints maximum_length)
   then
     raise
       (Invalid_argument
@@ -70,16 +68,16 @@ let push_stop source length =
   then Error "expected-stop exceeds maximum-length"
   else (
     let requested_stop = source.readed + length in
-    match source.stop_at_readed with
-    | [] -> Ok { source with stop_at_readed = [ requested_stop ] }
+    match source.stop_hints with
+    | [] -> Ok { source with stop_hints = [ requested_stop ] }
     | previously_requested_stop :: _ ->
       if requested_stop > previously_requested_stop
       then Error "expected-stop exceeds previously requested stop"
-      else Ok { source with stop_at_readed = requested_stop :: source.stop_at_readed })
+      else Ok { source with stop_hints = requested_stop :: source.stop_hints })
 ;;
 
 let peak_stop source =
-  match source.stop_at_readed with
+  match source.stop_hints with
   | [] -> None
   | stop :: _ -> Some stop
 ;;
@@ -87,9 +85,9 @@ let peak_stop source =
 (* TODO? return a [unit readed] instead? With a failed if the stop is different
    from the readed? *)
 let pop_stop source =
-  match source.stop_at_readed with
+  match source.stop_hints with
   | [] -> Error "expected an expected-stop but found none"
-  | stop :: stop_at_readed -> Ok (stop, { source with stop_at_readed })
+  | stop :: stop_hints -> Ok (stop, { source with stop_hints })
 ;;
 
 type 'a readed =
@@ -103,6 +101,7 @@ type 'a readed =
       }
   | Suspended of
       { source : source
+            (* TODO? add a field to indicate number of chars read from previous buffer *)
       ; cont : string -> int -> int -> 'a readed
       }
 
@@ -112,7 +111,7 @@ let readf source reading read =
   assert (reading >= 0);
   if source.readed + reading > source.maximum_length
   then Failed { source; error = "maximum-length exceeded" }
-  else if match source.stop_at_readed with
+  else if match source.stop_hints with
           | [] -> false
           | stop :: _ -> source.readed + reading > stop
   then Failed { source; error = "expected-stop point exceeded" }
@@ -127,14 +126,12 @@ let readf source reading read =
     (* the source was fully consumed, we do a simple continuation *)
     (* To avoid the continuation capturing the [source] we compute some values immediately *)
     let maximum_length = source.maximum_length - source.readed in
-    let stop_at_readed =
-      List.map (fun stop -> stop - source.readed) source.stop_at_readed
-    in
+    let stop_hints = List.map (fun stop -> stop - source.readed) source.stop_hints in
     Suspended
       { source
       ; cont =
           (fun blob offset length ->
-            let source = mk_source ~maximum_length ~stop_at_readed blob offset length in
+            let source = mk_source ~maximum_length ~stop_hints blob offset length in
             if reading > length
             then Failed { source; error = source_too_small_to_continue_message }
             else (
@@ -160,9 +157,7 @@ let readf source reading read =
     let split_reading_right_length = reading - split_reading_left_length in
     assert (split_reading_right_length > 0);
     let maximum_length = source.maximum_length - source.readed in
-    let stop_at_readed =
-      List.map (fun stop -> stop - source.readed) source.stop_at_readed
-    in
+    let stop_hints = List.map (fun stop -> stop - source.readed) source.stop_hints in
     Suspended
       { source
       ; cont =
@@ -184,7 +179,7 @@ let readf source reading read =
               let source =
                 mk_source
                   ~maximum_length
-                  ~stop_at_readed
+                  ~stop_hints
                   (Bytes.unsafe_to_string split_reading_buffer)
                   0
                   reading
@@ -193,12 +188,10 @@ let readf source reading read =
               let value = read source.blob source.offset in
               (* Second prepare the source for giving back *)
               let maximum_length = source.maximum_length - split_reading_left_length in
-              let stop_at_readed =
-                List.map
-                  (fun stop -> stop - split_reading_left_length)
-                  source.stop_at_readed
+              let stop_hints =
+                List.map (fun stop -> stop - split_reading_left_length) source.stop_hints
               in
-              let source = mk_source ~maximum_length ~stop_at_readed blob offset length in
+              let source = mk_source ~maximum_length ~stop_hints blob offset length in
               let source = bump_readed source split_reading_right_length in
               Readed { source; value }))
       })
@@ -216,7 +209,7 @@ let%expect_test _ =
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
          Format.pp_print_int)
-      source.stop_at_readed
+      source.stop_hints
       source.maximum_length
   in
   let w source ls =
@@ -286,7 +279,7 @@ let%expect_test _ =
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
          Format.pp_print_int)
-      source.stop_at_readed
+      source.stop_hints
       source.maximum_length
   in
   let w source ls =
@@ -343,7 +336,7 @@ let%expect_test _ =
 let read_char source =
   if source.readed + 1 > source.maximum_length
   then Failed { source; error = "maximum-length exceeded" }
-  else if match source.stop_at_readed with
+  else if match source.stop_hints with
           | [] -> false
           | stop :: _ -> source.readed + 1 > stop
   then Failed { source; error = "expected-stop point exceeded" }
@@ -359,7 +352,7 @@ let read_char source =
             let source =
               mk_source
                 ~maximum_length:(source.maximum_length - 1)
-                ~stop_at_readed:(List.map (fun stop -> stop - 1) source.stop_at_readed)
+                ~stop_hints:(List.map (fun stop -> stop - 1) source.stop_hints)
                 blob
                 offset
                 length
@@ -387,7 +380,7 @@ let%expect_test _ =
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
          Format.pp_print_int)
-      source.stop_at_readed
+      source.stop_hints
       source.maximum_length
   in
   let w source =
@@ -444,7 +437,7 @@ let rec readchunked : type a. source -> a chunkreader -> a readed =
  fun source read ->
   let hard_limit = source.maximum_length - source.readed in
   let hard_limit =
-    match source.stop_at_readed with
+    match source.stop_hints with
     | [] -> hard_limit
     | stop :: _ -> min hard_limit (stop - source.readed)
   in
@@ -472,8 +465,8 @@ let rec readchunked : type a. source -> a chunkreader -> a readed =
               let source =
                 mk_source
                   ~maximum_length:(source.maximum_length - source.readed)
-                  ~stop_at_readed:
-                    (List.map (fun stop -> stop - source.readed) source.stop_at_readed)
+                  ~stop_hints:
+                    (List.map (fun stop -> stop - source.readed) source.stop_hints)
                   blob
                   offset
                   length
@@ -536,7 +529,7 @@ let%expect_test _ =
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
          Format.pp_print_int)
-      source.stop_at_readed
+      source.stop_hints
       source.maximum_length
   in
   let w source ls =

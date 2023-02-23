@@ -9,7 +9,7 @@ let%expect_test _ =
       ~pp_sep:(fun fmt () -> Format.pp_print_char fmt '-')
       Format.pp_print_int
       fmt
-      source.stop_at_readed
+      source.stop_hints
   in
   let w : type a. int -> int -> a Encoding.t -> a -> unit =
    fun initread morereads e v ->
@@ -64,6 +64,7 @@ let%expect_test _ =
         in
         go initread cont)
   in
+  (* A simple test with a lot of size-header but no substance *)
   let encoding =
     let open Encoding in
     with_size_header
@@ -91,11 +92,13 @@ let%expect_test _ =
                                          ~sizeencoding:`UInt62
                                          ~encoding:uint62)))))))
   in
-  w 16 8 encoding (Option.get @@ Encoding.Sizedints.Uint62.of_int64 0L);
+  (* The test with very friendly cuts of buffer *)
+  w 8 8 encoding (Option.get @@ Encoding.Sizedints.Uint62.of_int64 0L);
   [%expect
     {|
     Blob: 000000000000004000000000000000380000000000000030000000000000002800000000000000200000000000000018000000000000001000000000000000080000000000000000
-    Suspended, Readed: 16, Stops: 72-72
+    Suspended, Readed: 8, Stops: 72
+    Suspended, Readed: 8, Stops: 64-64
     Suspended, Readed: 8, Stops: 56-56-56
     Suspended, Readed: 8, Stops: 48-48-48-48
     Suspended, Readed: 8, Stops: 40-40-40-40-40
@@ -103,6 +106,7 @@ let%expect_test _ =
     Suspended, Readed: 8, Stops: 24-24-24-24-24-24-24
     Suspended, Readed: 8, Stops: 16-16-16-16-16-16-16-16
     Ok, Readed: 8, Stops: |}];
+  (* The test but with less friendly cuts of buffer *)
   w 7 9 encoding (Option.get @@ Encoding.Sizedints.Uint62.of_int64 0L);
   [%expect
     {|
@@ -116,6 +120,7 @@ let%expect_test _ =
     Suspended, Readed: 4, Stops: 20-20-20-20-20-20-20
     Suspended, Readed: 3, Stops: 11-11-11-11-11-11-11-11
     Ok, Readed: 2, Stops: |}];
+  (* a slightly more complex with some nesting structure *)
   let encoding =
     let open Encoding in
     let base = with_size_header ~sizeencoding:`UInt8 ~encoding:uint16 in
@@ -128,6 +133,13 @@ let%expect_test _ =
     let open Encoding.Hlist in
     [| [ uint16 0xdead; uint16 0xbeef ]; [ uint16 0xfeed; uint16 0xbeef ] |]
   in
+  (* full all-in-one read (with [-1] to ensure crash otherwise) *)
+  w 18 (-1) encoding v;
+  [%expect
+    {|
+    Blob: 000000020602dead02beef0602feed02beef
+    Ok, Readed: 18, Stops: |}];
+  (* somewhat friendly cuts *)
   w 10 6 encoding v;
   [%expect
     {|
@@ -135,6 +147,7 @@ let%expect_test _ =
     Suspended, Readed: 9, Stops: 11-11
     Suspended, Readed: 6, Stops: 8-8
     Ok, Readed: 2, Stops: |}];
+  (* unfriendly cuts *)
   w 6 5 encoding v;
   [%expect
     {|
@@ -143,6 +156,7 @@ let%expect_test _ =
     Suspended, Readed: 5, Stops:
     Suspended, Readed: 5, Stops: 7-7
     Ok, Readed: 2, Stops: |}];
+  (* a more complex test mixing in strings which use chunkread *)
   let encoding =
     let open Encoding in
     let tup =
@@ -182,5 +196,16 @@ let%expect_test _ =
     Suspended, Readed: 5, Stops: 15
     Suspended, Readed: 5, Stops: 10-10
     Ok, Readed: 5, Stops: |}];
+  w 3 5 encoding v;
+  [%expect
+    {|
+    Blob: 0000001b000000020c02dead02eeee05ffffffffff0902feed02eeee02eeee
+    Suspended, Readed: 0, Stops:
+    Suspended, Readed: 5, Stops: 28
+    Suspended, Readed: 5, Stops: 13-23
+    Suspended, Readed: 5, Stops: 8-18
+    Suspended, Readed: 5, Stops: 7-13-13
+    Suspended, Readed: 5, Stops: 8-8
+    Ok, Readed: 3, Stops: |}];
   ()
 ;;
