@@ -10,11 +10,22 @@ type source =
   ; maximum_length : int
   }
 
+let rec check_stop_at_readed base stops maximum_length =
+  match stops with
+  | [] -> true
+  | stop :: stops ->
+    base <= stop
+    && stop <= maximum_length
+    && check_stop_at_readed stop stops maximum_length
+;;
+
 let mk_source ?(maximum_length = max_int) ?(stop_at_readed = []) blob offset length =
   if offset < 0 then failwith "Buffy.R.mk_source: negative offset";
   if length < 0 then failwith "Buffy.R.mk_source: negative length";
   if offset + length > String.length blob
   then failwith "Buffy.R.mk_source: offset+length overflow";
+  if not (check_stop_at_readed 0 stop_at_readed maximum_length)
+  then failwith "Buffy.R.mk_source: stops out of bound or out of order";
   { blob; offset; length; readed = 0; stop_at_readed; maximum_length }
 ;;
 
@@ -25,21 +36,28 @@ let bump_readed source reading =
   { source with readed }
 ;;
 
+let rec check_last_stop stops maximum_length =
+  match stops with
+  | [] -> true
+  | [ stop ] -> stop < maximum_length
+  | stop :: stops ->
+    assert (stop >= 0);
+    assert (stop < maximum_length);
+    assert (stop <= List.hd stops);
+    check_last_stop stops maximum_length
+;;
+
 let set_maximum_length source maximum_length =
   if maximum_length < 0
   then raise (Invalid_argument "Buffy.R.set_maximum_length: negative length");
   if maximum_length > source.maximum_length
   then
     raise (Invalid_argument "Buffy.R.set_maximum_length: cannot increase maximum length");
-  (match source.stop_at_readed with
-  | [] -> ()
-  | stop :: _ ->
-    if maximum_length > stop
-    then
-      raise
-        (Invalid_argument
-           "Buffy.R.set_maximum_length: cannot set maximum length lower than expected \
-            stop"));
+  if not (check_last_stop source.stop_at_readed maximum_length)
+  then
+    raise
+      (Invalid_argument
+         "Buffy.R.set_maximum_length: cannot set maximum length lower than expected stop");
   { source with maximum_length }
 ;;
 
@@ -98,87 +116,92 @@ let readf source reading read =
           | [] -> false
           | stop :: _ -> source.readed + reading > stop
   then Failed { source; error = "expected-stop point exceeded" }
-  else if source.readed + reading > source.length
-  then
+  else if source.readed + reading <= source.length
+  then (
+    (* full reading can happen immediately, just do it *)
+    let value = read source.blob (source.offset + source.readed) in
+    let source = bump_readed source reading in
+    Readed { source; value })
+  else if source.readed = source.length
+  then (
+    (* the source was fully consumed, we do a simple continuation *)
+    (* To avoid the continuation capturing the [source] we compute some values immediately *)
+    let maximum_length = source.maximum_length - source.readed in
+    let stop_at_readed =
+      List.map (fun stop -> stop - source.readed) source.stop_at_readed
+    in
     Suspended
       { source
       ; cont =
           (fun blob offset length ->
-            assert (source.readed <= source.length);
-            if source.readed = source.length
+            let source = mk_source ~maximum_length ~stop_at_readed blob offset length in
+            if reading > length
+            then Failed { source; error = source_too_small_to_continue_message }
+            else (
+              let value = read source.blob source.offset in
+              let source = bump_readed source reading in
+              Readed { source; value }))
+      })
+  else (
+    (* the source has left-over bytes, do a two-step continuation to use those *)
+    (* TODO? provide a [copy_threshold] to let the user control when
+         the partial read of the remaining of the previous source is
+         copied and when is it kept a reference of. *)
+    (* TODO? provide a copy_limit and return [Failed] if going over *)
+    let split_reading_buffer = Bytes.make reading '\x00' in
+    let split_reading_left_length = source.length - source.readed in
+    assert (split_reading_left_length > 0);
+    Bytes.blit_string
+      source.blob
+      (source.offset + source.readed)
+      split_reading_buffer
+      0
+      split_reading_left_length;
+    let split_reading_right_length = reading - split_reading_left_length in
+    assert (split_reading_right_length > 0);
+    let maximum_length = source.maximum_length - source.readed in
+    let stop_at_readed =
+      List.map (fun stop -> stop - source.readed) source.stop_at_readed
+    in
+    Suspended
+      { source
+      ; cont =
+          (fun blob offset length ->
+            (* First check that the current here readf has enough data *)
+            if reading > split_reading_left_length + length
             then (
+              (* TODO: what source should we return here? *)
+              let source = mk_source "DUMMYTODO" 0 0 in
+              Failed { source; error = source_too_small_to_continue_message })
+            else (
+              (* prepare for this small here readf *)
+              Bytes.blit_string
+                blob
+                offset
+                split_reading_buffer
+                split_reading_left_length
+                split_reading_right_length;
               let source =
                 mk_source
-                  ~maximum_length:(source.maximum_length - source.readed)
-                  ~stop_at_readed:
-                    (List.map (fun stop -> stop - source.readed) source.stop_at_readed)
-                  blob
-                  offset
-                  length
+                  ~maximum_length
+                  ~stop_at_readed
+                  (Bytes.unsafe_to_string split_reading_buffer)
+                  0
+                  reading
               in
-              if reading > source.length
-                 (* TODO: instead of failing here (and below), allow to continue
-                 after more feeding, possibly by concatenating bigger and bigger
-                 blobs until the value is readable *)
-              then Failed { source; error = source_too_small_to_continue_message }
-              else (
-                let value = read source.blob source.offset in
-                let source = bump_readed source reading in
-                Readed { source; value }))
-            else (
-              (* TODO: provide a [copy_threshold] to let the user control when
-                 the partial read of the remaining of the previous source is
-                 copied and when is it kept a reference of. *)
-              assert (source.readed < source.length);
-              (* First check that the current here small readf has enough data *)
-              let available_length = source.length - source.readed + length in
-              if reading > available_length
-              then Failed { source; error = source_too_small_to_continue_message }
-              else (
-                (* prepare for this small here readf *)
-                let source =
-                  let blob =
-                    String.sub
-                      source.blob
-                      (source.offset + source.readed)
-                      (source.length - source.readed)
-                    ^ String.sub blob offset (reading - (source.length - source.readed))
-                  in
-                  let offset = 0 in
-                  let length = reading in
-                  mk_source
-                    ~maximum_length:(source.maximum_length - source.readed)
-                    ~stop_at_readed:
-                      (List.map (fun stop -> stop - source.readed) source.stop_at_readed)
-                    blob
-                    offset
-                    length
-                in
-                (* actually do this small here read *)
-                let value = read source.blob source.offset in
-                let source = bump_readed source reading in
-                assert (source.readed = source.length);
-                (* Second prepare the source for giving back *)
-                let source =
-                  mk_source
-                    ~maximum_length:(source.maximum_length - reading)
-                    ~stop_at_readed:
-                      (List.map (fun stop -> stop - reading) source.stop_at_readed)
-                    blob
-                    offset
-                    length
-                in
-                (* delta is the part of the new blob that has already been
-                         read by the actual small read above *)
-                let delta = reading - (source.length - source.readed) in
-                assert (source.readed = 0);
-                let source = { source with readed = delta } in
-                Readed { source; value })))
-      }
-  else (
-    let value = read source.blob (source.offset + source.readed) in
-    let source = bump_readed source reading in
-    Readed { source; value })
+              (* actually do this small here read *)
+              let value = read source.blob source.offset in
+              (* Second prepare the source for giving back *)
+              let maximum_length = source.maximum_length - split_reading_left_length in
+              let stop_at_readed =
+                List.map
+                  (fun stop -> stop - split_reading_left_length)
+                  source.stop_at_readed
+              in
+              let source = mk_source ~maximum_length ~stop_at_readed blob offset length in
+              let source = bump_readed source split_reading_right_length in
+              Readed { source; value }))
+      })
 ;;
 
 let%expect_test _ =
