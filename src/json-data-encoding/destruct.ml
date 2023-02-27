@@ -78,6 +78,25 @@ let rec destruct : type a. a Encoding.t -> JSON.t -> (a, string) result =
     (match destruct encoding json with
      | Error _ as err -> err
      | Ok w -> deserialisation w (* TODO: wrap error message *))
+  | Union { cases = _; serialisation = _; deserialisation } ->
+    let* tag, payload =
+      match json with
+      | `O [ (tag, payload) ] -> Ok (tag, payload)
+      | `Omap fields when JSON.FieldMap.cardinal fields = 1 ->
+        Ok (JSON.FieldMap.choose fields)
+      | `Oseq fields ->
+        (match fields () with
+         | Seq.Nil -> Error "Expected {…}, got {}"
+         | Seq.Cons ((tag, payload), fields) ->
+           if Seq.is_empty fields
+           then Ok (tag, payload)
+           else Error "Expected a single field, got more")
+      | other ->
+        Error (Format.asprintf "Expected {\"<tag>\":<payload>}, got %a" PP.shape other)
+    in
+    let* (AnyC { tag = _; encoding; inject }) = deserialisation tag in
+    let* p = destruct encoding payload in
+    Ok (inject p)
 
 and destruct_seq : type a. a Encoding.t -> JSON.t -> (a Seq.t, string) result =
  fun t json ->
@@ -267,6 +286,16 @@ let rec destruct_lexemes
     let* w, lxms = destruct_lexemes encoding lxms in
     let* w = deserialisation w in
     Ok (w, lxms)
+  | Union { cases = _; serialisation = _; deserialisation } ->
+    let* lxms = consume_1 lxms `Os in
+    let* tag, lxms =
+      consume_q lxms (function
+        | `Name tag -> Some tag
+        | _ -> None)
+    in
+    let* (AnyC { tag = _; encoding; inject }) = deserialisation tag in
+    let* p, lxms = destruct_lexemes encoding lxms in
+    Ok (inject p, lxms)
 
 and destruct_lexemes_seq
   : type a.

@@ -14,6 +14,11 @@ let rec generator_of_encoding : type t. t Json_data_encoding.Encoding.t -> t QCh
     QCheck2.Gen.map
       (fun w -> Result.get_ok @@ deserialisation w)
       (generator_of_encoding encoding)
+  | Union { cases; serialisation = _; deserialisation = _ } ->
+    QCheck2.Gen.bind
+      (QCheck2.Gen.oneofl cases)
+      (fun (Json_data_encoding.Encoding.AnyC { tag = _; encoding; inject }) ->
+      QCheck2.Gen.map inject (generator_of_encoding encoding))
 
 and generator_of_encoding_tuple
   : type t. t Json_data_encoding.Encoding.tuple -> t QCheck2.Gen.t
@@ -55,6 +60,15 @@ let rec equal_of_encoding : type t. t Json_data_encoding.Encoding.t -> t -> t ->
   | Object t -> equal_of_encoding_object t
   | Conv { serialisation; deserialisation = _; encoding } ->
     fun a b -> (equal_of_encoding encoding) (serialisation a) (serialisation b)
+  | Union { cases = _; serialisation; deserialisation = _ } ->
+    fun a b ->
+      let (AnyP (ca, pa)) = serialisation a in
+      let (AnyP (cb, pb)) = serialisation b in
+      if ca.tag = cb.tag
+      then
+        (* TODO: extract an equality witness from the tag comparison *)
+        equal_of_encoding ca.encoding pa (Obj.magic pb)
+      else false
 
 and equal_of_encoding_tuple
   : type t. t Json_data_encoding.Encoding.tuple -> t -> t -> bool
