@@ -127,6 +127,17 @@ let rec readk : type a. Buffy.R.source -> a Descr.t -> a Buffy.R.readed =
     in
     let source = Buffy.R.set_maximum_length source maximum_length in
     readk source encoding
+  | Union { tag; serialisation = _; deserialisation; maximum_size = _ } ->
+    let* found_tag, source = readk source tag in
+    (match deserialisation found_tag with
+     | Ok (AnyC { tag = expected_tag; encoding; inject }) ->
+       if Query.equal_of tag found_tag expected_tag
+       then
+         let* payload, source = readk source encoding in
+         let value = inject payload in
+         Buffy.R.Readed { source; value }
+       else Buffy.R.Failed { source; error = "inconsistent tag in union" }
+     | Error error -> Buffy.R.Failed { source; error })
   | [] -> Buffy.R.Readed { source; value = [] }
   | t :: ts ->
     let* v, source = readk source t in

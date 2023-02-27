@@ -30,6 +30,7 @@ let all_ground_encodings : any_encoding Seq.t =
             uint16 )
     ; AnyE ("sequ[ui8](ui8)", seq_with_size `UInt8 uint8)
     ; AnyE ("sequ[ui8](ui16)", seq_with_size `UInt8 uint16)
+    ; AnyE ("either(ui8,ui16)", Union.either uint8 uint16)
     ]
 ;;
 
@@ -82,6 +83,8 @@ let simplish_encodings : any_encoding Seq.t -> any_encoding Seq.t =
             , Binary_data_encoding.Encoding.array
                 (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 2L))
                 e )
+        ; AnyE
+            ("either(" ^ s ^ ",unit)", Binary_data_encoding.Encoding.(Union.either e unit))
         ])
     s
 ;;

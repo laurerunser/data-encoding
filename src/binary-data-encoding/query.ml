@@ -150,6 +150,12 @@ let rec size_of : type t. t Descr.t -> t -> (Optint.Int63.t, string) result =
     let* size = size_of encoding v in
     (* TODO: earlier failing ? *)
     if size > (at_most :> Optint.Int63.t) then Error "size exceeds limit" else Ok size
+  | Union { tag = tag_encoding; serialisation; deserialisation = _; maximum_size = _ } ->
+    let (AnyP ({ Descr.tag; encoding; _ }, payload)) = serialisation v in
+    let* tag_size = size_of tag_encoding tag in
+    let* payload_size = size_of encoding payload in
+    (* TODO: overflow *)
+    Ok (Optint.Int63.add tag_size payload_size)
   | [] -> Ok Optint.Int63.zero
   | ehead :: etail ->
     (match v with
@@ -214,6 +220,8 @@ let rec maximum_size_of : type t. t Descr.t -> Optint.Int63.t =
     let maxencodingsize = maximum_size_of encoding in
     if Optint.Int63.compare maxsize maxencodingsize < 0 then maxsize else maxencodingsize
   | Size_limit { at_most; encoding = _ } -> (at_most :> Optint.Int63.t)
+  | Union { tag; serialisation = _; deserialisation = _; maximum_size } ->
+    Optint.Int63.add (maximum_size_of tag) maximum_size
   | [] -> Optint.Int63.zero
   | head :: tail -> Optint.Int63.add (maximum_size_of head) (maximum_size_of tail)
 ;;
@@ -290,6 +298,16 @@ let rec equal_of : type t. t Descr.t -> t -> t -> bool =
     fun x y -> (equal_of encoding) (serialisation x) (serialisation y)
   | Size_headered { size = _; encoding } -> equal_of encoding
   | Size_limit { at_most = _; encoding } -> equal_of encoding
+  | Union { tag; serialisation; deserialisation = _; maximum_size = _ } ->
+    fun v1 v2 ->
+      let (AnyP (descr1, payload1)) = serialisation v1 in
+      let (AnyP (descr2, payload2)) = serialisation v2 in
+      equal_of tag descr1.Descr.tag descr2.Descr.tag
+      &&
+      ((* TODO: equality witness if tag equality is checked *)
+       ignore payload1;
+       ignore payload2;
+       true)
   | [] -> fun [] [] -> true
   | head :: tail ->
     let head = equal_of head in
@@ -367,6 +385,9 @@ let rec pp_of : type t. t Descr.t -> Format.formatter -> t -> unit =
     Format.fprintf fmt "conved(%a)" pp v
   | Size_headered { size = _; encoding } -> pp_of encoding fmt v
   | Size_limit { at_most = _; encoding } -> pp_of encoding fmt v
+  | Union { tag = tag_encoding; serialisation; deserialisation = _; maximum_size = _ } ->
+    let (AnyP ({ Descr.tag; encoding; inject = _ }, payload)) = serialisation v in
+    Format.fprintf fmt "case(%a:%a)" (pp_of tag_encoding) tag (pp_of encoding) payload
   | [] -> ()
   | [ head ] ->
     let [ v ] = v in

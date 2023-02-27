@@ -77,8 +77,28 @@ type _ t =
       ; encoding : 'a t
       }
       -> 'a t
+  | Union :
+      { tag : 'tag t
+      ; serialisation : 'a -> ('tag, 'a) anycaseandpayload
+      ; deserialisation : 'tag -> (('tag, 'a) anycase, string) result
+      ; maximum_size : Optint.Int63.t
+      }
+      -> 'a t
   | [] : unit Hlist.t t
   | ( :: ) : 'a t * 'b Hlist.t t -> ('a * 'b) Hlist.t t
+
+and ('tag, 'payload, 'union) case_descr =
+  { tag : 'tag
+  ; encoding : 'payload t
+  ; inject : 'payload -> 'union
+  }
+
+and ('tag, 'p, 'a) case_and_payload = ('tag, 'p, 'a) case_descr * 'p
+
+and ('tag, 'a) anycaseandpayload =
+  | AnyP : ('tag, _, 'a) case_and_payload -> ('tag, 'a) anycaseandpayload
+
+and ('tag, 'a) anycase = AnyC : ('tag, _, 'a) case_descr -> ('tag, 'a) anycase
 
 (* In order to avoid some complications w.r.t. inter-module dependencies and in
    order to allow the (local) opening of the [Encoding] module (necessary to get

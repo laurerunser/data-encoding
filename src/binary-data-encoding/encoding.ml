@@ -90,8 +90,29 @@ type 'a t = 'a Descr.t =
       ; encoding : 'a t
       }
       -> 'a t
+  | Union :
+      { tag : 'tag t
+      ; serialisation : 'a -> ('tag, 'a) anycaseandpayload
+      ; deserialisation : 'tag -> (('tag, 'a) anycase, string) result
+      ; maximum_size : Optint.Int63.t
+      }
+      -> 'a t
   | [] : unit Hlist.t t
   | ( :: ) : 'a t * 'b Hlist.t t -> ('a * 'b) Hlist.t t
+
+and ('tag, 'payload, 'union) case_descr = ('tag, 'payload, 'union) Descr.case_descr =
+  { tag : 'tag
+  ; encoding : 'payload t
+  ; inject : 'payload -> 'union
+  }
+
+and ('tag, 'p, 'a) case_and_payload = ('tag, 'p, 'a) case_descr * 'p
+
+and ('tag, 'a) anycaseandpayload = ('tag, 'a) Descr.anycaseandpayload =
+  | AnyP : ('tag, _, 'a) case_and_payload -> ('tag, 'a) anycaseandpayload
+
+and ('tag, 'a) anycase = ('tag, 'a) Descr.anycase =
+  | AnyC : ('tag, _, 'a) case_descr -> ('tag, 'a) anycase
 
 let unit = Unit
 let bool = Bool
@@ -352,3 +373,30 @@ let ellastic_uint30 : Sizedints.Uint30.t t =
     ~equal:(fun a b -> Int.equal (a :> int) (b :> int))
     ~maximum_size:(Optint.Int63.of_int 5)
 ;;
+
+module Union = struct
+  let case tag encoding inject = { tag; encoding; inject }
+
+  let union ~maximum_size tag serialisation deserialisation =
+    Union { tag; serialisation; deserialisation; maximum_size }
+  ;;
+
+  let either ?maximum_size l r =
+    let maximum_size =
+      match maximum_size with
+      | None -> max (Query.maximum_size_of l) (Query.maximum_size_of r)
+      | Some m -> m
+    in
+    let cl = case true l Either.left in
+    let cr = case false r Either.right in
+    union
+      ~maximum_size
+      bool
+      (function
+       | Either.Left l -> AnyP (cl, l)
+       | Either.Right r -> AnyP (cr, r))
+      (function
+       | true -> Ok (AnyC cl)
+       | false -> Ok (AnyC cr))
+  ;;
+end

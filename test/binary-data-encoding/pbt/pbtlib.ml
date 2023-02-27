@@ -102,6 +102,10 @@ let rec generator_of_encoding
     ignore at_most;
     ignore encoding;
     failwith "TODO"
+  | Union { tag; serialisation = _; deserialisation; maximum_size = _ } ->
+    QCheck2.Gen.bind (generator_of_encoding tag) (fun tag ->
+      let* (AnyC { tag = _; encoding; inject }) = deserialisation tag in
+      QCheck2.Gen.map inject (generator_of_encoding encoding))
   | [] -> QCheck2.Gen.pure Commons.Hlist.[]
   | head :: tail ->
     let head = generator_of_encoding head in

@@ -90,8 +90,29 @@ type 'a t = 'a Descr.t =
       ; encoding : 'a t
       }
       -> 'a t
+  | Union :
+      { tag : 'tag t
+      ; serialisation : 'a -> ('tag, 'a) anycaseandpayload
+      ; deserialisation : 'tag -> (('tag, 'a) anycase, string) result
+      ; maximum_size : Optint.Int63.t
+      }
+      -> 'a t
   | [] : unit Hlist.t t
   | ( :: ) : 'a t * 'b Hlist.t t -> ('a * 'b) Hlist.t t
+
+and ('tag, 'payload, 'union) case_descr = ('tag, 'payload, 'union) Descr.case_descr =
+  { tag : 'tag
+  ; encoding : 'payload t
+  ; inject : 'payload -> 'union
+  }
+
+and ('tag, 'p, 'a) case_and_payload = ('tag, 'p, 'a) case_descr * 'p
+
+and ('tag, 'a) anycaseandpayload = ('tag, 'a) Descr.anycaseandpayload =
+  | AnyP : ('tag, _, 'a) case_and_payload -> ('tag, 'a) anycaseandpayload
+
+and ('tag, 'a) anycase = ('tag, 'a) Descr.anycase =
+  | AnyC : ('tag, _, 'a) case_descr -> ('tag, 'a) anycase
 
 val unit : unit t
 val bool : bool t
@@ -177,3 +198,22 @@ val fold
   -> 'a t
 
 val ellastic_uint30 : Sizedints.Uint30.t t
+
+module Union : sig
+  val case
+    :  'tag
+    -> 'payload t
+    -> ('payload -> 'union)
+    -> ('tag, 'payload, 'union) case_descr
+
+  (** [maximum_size] is the maximum size of the payload; it doesn't inlcude the
+      tag *)
+  val union
+    :  maximum_size:Optint.Int63.t
+    -> 'tag t
+    -> ('a -> ('tag, 'a) anycaseandpayload)
+    -> ('tag -> (('tag, 'a) anycase, string) result)
+    -> 'a t
+
+  val either : ?maximum_size:Optint.Int63.t -> 'l t -> 'r t -> ('l, 'r) Either.t t
+end
