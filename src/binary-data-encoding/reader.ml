@@ -39,22 +39,22 @@ let rec readk : type a. Buffy.R.source -> a Descr.t -> a Buffy.R.readed =
     fold source [] intlength
   | USeq { elementencoding } ->
     (match Buffy.R.peak_stop source with
-    | None ->
-      (* TODO: support unsized USeq once we support lazy useq *)
-      Failed { source; error = "unlengthed-seq without a size" }
-    | Some expected_stop ->
-      let rec fold (source : Buffy.R.source) reversed_list =
-        assert (source.offset + source.readed <= expected_stop);
-        (* reading fails otherwise *)
-        if expected_stop = source.readed
-        then Buffy.R.Readed { source; value = List.to_seq (List.rev reversed_list) }
-        else
-          (* TODO: in case of suspend, we have to recompute the expected_stop,
+     | None ->
+       (* TODO: support unsized USeq once we support lazy useq *)
+       Failed { source; error = "unlengthed-seq without a size" }
+     | Some expected_stop ->
+       let rec fold (source : Buffy.R.source) reversed_list =
+         assert (source.offset + source.readed <= expected_stop);
+         (* reading fails otherwise *)
+         if expected_stop = source.readed
+         then Buffy.R.Readed { source; value = List.to_seq (List.rev reversed_list) }
+         else
+           (* TODO: in case of suspend, we have to recompute the expected_stop,
              otherwise the expected stop is wrong, this is a bug *)
-          let* v, source = readk source elementencoding in
-          fold source (v :: reversed_list)
-      in
-      fold source [])
+           let* v, source = readk source elementencoding in
+           fold source (v :: reversed_list)
+       in
+       fold source [])
   | Array { length; elementencoding } ->
     if Optint.Int63.equal (length :> Optint.Int63.t) Optint.Int63.zero
     then Buffy.R.Readed { source; value = [||] }
@@ -86,10 +86,10 @@ let rec readk : type a. Buffy.R.source -> a Descr.t -> a Buffy.R.readed =
   | Headered { mkheader = _; headerencoding; mkencoding; equal = _; maximum_size = _ } ->
     let* header, source = readk source headerencoding in
     (match mkencoding header with
-    | Error msg ->
-      let error = "error in user-provided encoding function: " ^ msg in
-      Failed { source; error }
-    | Ok encoding -> readk source encoding)
+     | Error msg ->
+       let error = "error in user-provided encoding function: " ^ msg in
+       Failed { source; error }
+     | Ok encoding -> readk source encoding)
   | Fold { chunkencoding; chunkify = _; readinit; reducer; equal = _; maximum_size = _ }
     ->
     let rec reduce acc source =
@@ -102,24 +102,24 @@ let rec readk : type a. Buffy.R.source -> a Descr.t -> a Buffy.R.readed =
   | Conv { serialisation = _; deserialisation; encoding } ->
     let* v, source = readk source encoding in
     (match deserialisation v with
-    | Ok value -> Buffy.R.Readed { source; value }
-    | Error error -> Failed { source; error })
+     | Ok value -> Buffy.R.Readed { source; value }
+     | Error error -> Failed { source; error })
   | Size_headered { size; encoding } ->
     let* readed_size, source = read_numeral source size Encoding.default_endianness in
     let readed_size = Query.int_of_numeral size readed_size in
     assert (readed_size >= 0);
     (match Buffy.R.push_stop source readed_size with
-    | Ok source ->
-      let* v, source = readk source encoding in
-      (match Buffy.R.pop_stop source with
-      | Ok (expected_stop, source) ->
-        if source.readed = expected_stop
-        then Buffy.R.Readed { source; value = v }
-        else Failed { source; error = "read fewer bytes than expected-length" }
-      | Error error -> Failed { source; error })
-    | Error msg ->
-      (* TODO: context of error message*)
-      Failed { source; error = msg })
+     | Ok source ->
+       let* v, source = readk source encoding in
+       (match Buffy.R.pop_stop source with
+        | Ok (expected_stop, source) ->
+          if source.readed = expected_stop
+          then Buffy.R.Readed { source; value = v }
+          else Failed { source; error = "read fewer bytes than expected-length" }
+        | Error error -> Failed { source; error })
+     | Error msg ->
+       (* TODO: context of error message*)
+       Failed { source; error = msg })
   | Size_limit { at_most; encoding } ->
     let maximum_length =
       (* TODO: handle overflow *)
@@ -134,7 +134,7 @@ let rec readk : type a. Buffy.R.source -> a Descr.t -> a Buffy.R.readed =
     Buffy.R.Readed { source; value = Descr.Hlist.( :: ) (v, vs) }
 
 and read_numeral
-    : type n. Buffy.R.source -> n Descr.numeral -> Descr.endianness -> n Buffy.R.readed
+  : type n. Buffy.R.source -> n Descr.numeral -> Descr.endianness -> n Buffy.R.readed
   =
  fun source numeral endianness ->
   match numeral, endianness with
@@ -171,24 +171,24 @@ let read_strings : type a. (string * int * int) Seq.t -> a Descr.t -> (a, string
     | Buffy.R.Failed { source = _; error } -> Error error
     | Buffy.R.Suspended { source = _; cont } ->
       (match sources () with
-      | Seq.Nil -> Error "not enough inputs"
-      | Seq.Cons (source, sources) -> loop source sources cont)
+       | Seq.Nil -> Error "not enough inputs"
+       | Seq.Cons (source, sources) -> loop source sources cont)
   in
   match sources () with
   | Seq.Nil -> Error "no inputs"
   | Seq.Cons (source, sources) ->
     loop source sources (fun blob offset length ->
-        let source = Buffy.R.mk_source blob offset length in
-        readk source e)
+      let source = Buffy.R.mk_source blob offset length in
+      readk source e)
 ;;
 
 let%expect_test _ =
   let w
-      : type a.
-        (string * int * int) Seq.t
-        -> a Encoding.t
-        -> (Format.formatter -> a -> unit)
-        -> unit
+    : type a.
+      (string * int * int) Seq.t
+      -> a Encoding.t
+      -> (Format.formatter -> a -> unit)
+      -> unit
     =
    fun sources e f ->
     match read_strings sources e with
@@ -259,7 +259,7 @@ let%expect_test _ =
 ;;
 
 let read
-    : type a. src:string -> offset:int -> length:int -> a Descr.t -> (a, string) result
+  : type a. src:string -> offset:int -> length:int -> a Descr.t -> (a, string) result
   =
  fun ~src ~offset ~length encoding ->
   let source = Buffy.R.mk_source ~maximum_length:length src offset length in

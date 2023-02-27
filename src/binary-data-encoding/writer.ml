@@ -13,9 +13,9 @@ let rec writek : type a. Buffy.W.destination -> a Descr.t -> a -> Buffy.W.writte
   | Unit -> Written { destination }
   | Bool ->
     Buffy.W.writef destination Size.bool (fun buffer offset ->
-        if v
-        then Bytes.set_uint8 buffer offset (Magic.bool_true :> int)
-        else Bytes.set_uint8 buffer offset (Magic.bool_false :> int))
+      if v
+      then Bytes.set_uint8 buffer offset (Magic.bool_true :> int)
+      else Bytes.set_uint8 buffer offset (Magic.bool_false :> int))
   | Numeral { numeral; endianness } -> write_numeral destination numeral endianness v
   | String n ->
     (* TODO: support chunk writing of strings so that it's possible to serialise
@@ -82,30 +82,30 @@ let rec writek : type a. Buffy.W.destination -> a Descr.t -> a -> Buffy.W.writte
       fold destination 0)
   | Option t ->
     (match v with
-    | None ->
-      let* destination =
-        Buffy.W.writef destination Size.uint8 (fun buffer offset ->
-            Bytes.set_uint8 buffer offset (Magic.option_none_tag :> int))
-      in
-      Buffy.W.Written { destination }
-    | Some v ->
-      let* destination =
-        Buffy.W.writef destination Size.uint8 (fun buffer offset ->
-            Bytes.set_uint8 buffer offset (Magic.option_some_tag :> int))
-      in
-      writek destination t v)
+     | None ->
+       let* destination =
+         Buffy.W.writef destination Size.uint8 (fun buffer offset ->
+           Bytes.set_uint8 buffer offset (Magic.option_none_tag :> int))
+       in
+       Buffy.W.Written { destination }
+     | Some v ->
+       let* destination =
+         Buffy.W.writef destination Size.uint8 (fun buffer offset ->
+           Bytes.set_uint8 buffer offset (Magic.option_some_tag :> int))
+       in
+       writek destination t v)
   | Headered { mkheader; headerencoding; mkencoding; equal = _; maximum_size = _ } ->
     (match mkheader v with
-    | Error msg ->
-      let error = "error in user-provided mkheader function: " ^ msg in
-      Failed { destination; error }
-    | Ok header ->
-      let* destination = writek destination headerencoding header in
-      (match mkencoding header with
-      | Error msg ->
-        let error = "error in user-provided encoding function: " ^ msg in
-        Failed { destination; error }
-      | Ok encoding -> writek destination encoding v))
+     | Error msg ->
+       let error = "error in user-provided mkheader function: " ^ msg in
+       Failed { destination; error }
+     | Ok header ->
+       let* destination = writek destination headerencoding header in
+       (match mkencoding header with
+        | Error msg ->
+          let error = "error in user-provided encoding function: " ^ msg in
+          Failed { destination; error }
+        | Ok encoding -> writek destination encoding v))
   | Fold
       { chunkencoding; chunkify; readinit = _; reducer = _; equal = _; maximum_size = _ }
     ->
@@ -124,35 +124,16 @@ let rec writek : type a. Buffy.W.destination -> a Descr.t -> a -> Buffy.W.writte
     let size0 = Query.zero_of_numeral size in
     (* TODO: make tests that covers the Written and the Suspended cases *)
     (match write_numeral destination size Encoding.default_endianness size0 with
-    | Buffy.W.Written { destination } ->
-      let written_before_write = destination.written in
-      (* TODO: set a maximum-length so that it always accomodates the size
+     | Buffy.W.Written { destination } ->
+       let written_before_write = destination.written in
+       (* TODO: set a maximum-length so that it always accomodates the size
            header limit (e.g., 256 if uint8) *)
-      (match writek destination encoding v with
-      | Buffy.W.Written { destination } as written_destination ->
-        let written_after_write = destination.written in
-        let actual_size =
-          Query.numeral_of_int size (written_after_write - written_before_write)
-        in
-        let* (_ : Buffy.W.destination) =
-          write_numeral original_destination size Encoding.default_endianness actual_size
-        in
-        written_destination
-      | Buffy.W.Failed _ as failed -> failed
-      | Buffy.W.Suspended _ as suspend_written ->
-        (* slow-path: we compute the whole size and we write it before
-               returning the suspension. This causes to traverse [v] which is
-               the price to pay for chunked writing *)
-        (* TODO: make a whole lot of tests that [size_of] and [writek] agree
-               on size *)
-        (* TODO: make a [size_of] variant which stops early when exceeding
-               [maximum_length] *)
-        (match Query.size_of encoding v with
-        | Error s ->
-          (* TODO: wrap error message *)
-          Failed { destination; error = s }
-        | Ok actual_size ->
-          let actual_size = Query.numeral_of_int size (Optint.Int63.to_int actual_size) in
+       (match writek destination encoding v with
+        | Buffy.W.Written { destination } as written_destination ->
+          let written_after_write = destination.written in
+          let actual_size =
+            Query.numeral_of_int size (written_after_write - written_before_write)
+          in
           let* (_ : Buffy.W.destination) =
             write_numeral
               original_destination
@@ -160,12 +141,37 @@ let rec writek : type a. Buffy.W.destination -> a Descr.t -> a -> Buffy.W.writte
               Encoding.default_endianness
               actual_size
           in
-          suspend_written))
-    | Buffy.W.Failed _ as failed -> failed
-    | Buffy.W.Suspended _ as suspended ->
-      (* we happen onto this case if we are so close to the end of the
+          written_destination
+        | Buffy.W.Failed _ as failed -> failed
+        | Buffy.W.Suspended _ as suspend_written ->
+          (* slow-path: we compute the whole size and we write it before
+               returning the suspension. This causes to traverse [v] which is
+               the price to pay for chunked writing *)
+          (* TODO: make a whole lot of tests that [size_of] and [writek] agree
+               on size *)
+          (* TODO: make a [size_of] variant which stops early when exceeding
+               [maximum_length] *)
+          (match Query.size_of encoding v with
+           | Error s ->
+             (* TODO: wrap error message *)
+             Failed { destination; error = s }
+           | Ok actual_size ->
+             let actual_size =
+               Query.numeral_of_int size (Optint.Int63.to_int actual_size)
+             in
+             let* (_ : Buffy.W.destination) =
+               write_numeral
+                 original_destination
+                 size
+                 Encoding.default_endianness
+                 actual_size
+             in
+             suspend_written))
+     | Buffy.W.Failed _ as failed -> failed
+     | Buffy.W.Suspended _ as suspended ->
+       (* we happen onto this case if we are so close to the end of the
                buffer that even the size header cannot be written *)
-      suspended)
+       suspended)
   | Size_limit { at_most; encoding } ->
     let maximum_length =
       (* TODO: handle overflow *)
@@ -178,59 +184,54 @@ let rec writek : type a. Buffy.W.destination -> a Descr.t -> a -> Buffy.W.writte
     Written { destination }
   | t :: ts ->
     (match v with
-    | v :: vs ->
-      let* destination = writek destination t v in
-      writek destination ts vs)
+     | v :: vs ->
+       let* destination = writek destination t v in
+       writek destination ts vs)
 
 and write_numeral
-    : type a.
-      Buffy.W.destination -> a Descr.numeral -> Descr.endianness -> a -> Buffy.W.written
+  : type a.
+    Buffy.W.destination -> a Descr.numeral -> Descr.endianness -> a -> Buffy.W.written
   =
  fun destination numeral endianness v ->
   match numeral, endianness with
   | Int64, Big_endian ->
     Buffy.W.writef destination Size.int64 (fun buffer offset ->
-        Bytes.set_int64_be buffer offset v)
+      Bytes.set_int64_be buffer offset v)
   | Int64, Little_endian ->
     Buffy.W.writef destination Size.int64 (fun buffer offset ->
-        Bytes.set_int64_le buffer offset v)
+      Bytes.set_int64_le buffer offset v)
   | Int32, Big_endian ->
     Buffy.W.writef destination Size.int32 (fun buffer offset ->
-        Bytes.set_int32_be buffer offset v)
+      Bytes.set_int32_be buffer offset v)
   | Int32, Little_endian ->
     Buffy.W.writef destination Size.int32 (fun buffer offset ->
-        Bytes.set_int32_le buffer offset v)
+      Bytes.set_int32_le buffer offset v)
   | UInt62, Big_endian ->
     Buffy.W.writef destination Size.uint62 (fun buffer offset ->
-        Commons.Sizedints.Uint62.set_be buffer offset v)
+      Commons.Sizedints.Uint62.set_be buffer offset v)
   | UInt62, Little_endian ->
     Buffy.W.writef destination Size.uint62 (fun buffer offset ->
-        Commons.Sizedints.Uint62.set_le buffer offset v)
+      Commons.Sizedints.Uint62.set_le buffer offset v)
   | UInt30, Big_endian ->
     Buffy.W.writef destination Size.uint30 (fun buffer offset ->
-        Commons.Sizedints.Uint30.set_be buffer offset v)
+      Commons.Sizedints.Uint30.set_be buffer offset v)
   | UInt30, Little_endian ->
     Buffy.W.writef destination Size.uint30 (fun buffer offset ->
-        Commons.Sizedints.Uint30.set_le buffer offset v)
+      Commons.Sizedints.Uint30.set_le buffer offset v)
   | UInt16, Big_endian ->
     Buffy.W.writef destination Size.uint16 (fun buffer offset ->
-        Bytes.set_uint16_be buffer offset (v :> int))
+      Bytes.set_uint16_be buffer offset (v :> int))
   | UInt16, Little_endian ->
     Buffy.W.writef destination Size.uint16 (fun buffer offset ->
-        Bytes.set_uint16_le buffer offset (v :> int))
+      Bytes.set_uint16_le buffer offset (v :> int))
   | UInt8, _ ->
     Buffy.W.writef destination Size.uint8 (fun buffer offset ->
-        Bytes.set_uint8 buffer offset (v :> int))
+      Bytes.set_uint8 buffer offset (v :> int))
 ;;
 
 let write
-    : type a.
-      dst:bytes
-      -> offset:int
-      -> length:int
-      -> a Descr.t
-      -> a
-      -> (int, int * string) result
+  : type a.
+    dst:bytes -> offset:int -> length:int -> a Descr.t -> a -> (int, int * string) result
   =
  fun ~dst:buffer ~offset ~length encoding v ->
   if offset + length > Bytes.length buffer

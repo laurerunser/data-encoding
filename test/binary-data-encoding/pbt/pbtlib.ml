@@ -5,7 +5,7 @@ let ( let* ) x f =
 ;;
 
 let rec generator_of_encoding
-    : type t. t Binary_data_encoding.Encoding.t -> t QCheck2.Gen.t
+  : type t. t Binary_data_encoding.Encoding.t -> t QCheck2.Gen.t
   =
  fun encoding ->
   match encoding with
@@ -31,11 +31,11 @@ let rec generator_of_encoding
              Random.State.int64 prng excl_bound)
            ~shrink:
              (Seq.unfold (fun i64 ->
-                  if i64 = 0L
-                  then None
-                  else (
-                    let shrunk = Int64.shift_right i64 1 in
-                    Some (shrunk, shrunk))))))
+                if i64 = 0L
+                then None
+                else (
+                  let shrunk = Int64.shift_right i64 1 in
+                  Some (shrunk, shrunk))))))
   | Numeral { numeral = UInt16; endianness = _ } ->
     QCheck2.Gen.(
       map
@@ -78,12 +78,12 @@ let rec generator_of_encoding
   | Headered { mkheader; headerencoding; mkencoding; equal = _; maximum_size = _ } ->
     let headert = generator_of_encoding headerencoding in
     QCheck2.Gen.bind headert (fun header ->
-        let* payloadencoding = mkencoding header in
-        QCheck2.Gen.map
-          (fun payload ->
-            QCheck2.assume (Result.is_ok (mkheader payload));
-            payload)
-          (generator_of_encoding payloadencoding))
+      let* payloadencoding = mkencoding header in
+      QCheck2.Gen.map
+        (fun payload ->
+          QCheck2.assume (Result.is_ok (mkheader payload));
+          payload)
+        (generator_of_encoding payloadencoding))
   | Fold _ ->
     if Obj.magic encoding == Binary_data_encoding.Encoding.ellastic_uint30
     then Obj.magic (generator_of_encoding Binary_data_encoding.Encoding.uint30)
@@ -120,11 +120,8 @@ let ( let* ) x f =
 ;;
 
 let to_test
-    : type t.
-      string
-      -> ?gen:t QCheck2.Gen.t
-      -> t Binary_data_encoding.Encoding.t
-      -> QCheck2.Test.t
+  : type t.
+    string -> ?gen:t QCheck2.Gen.t -> t Binary_data_encoding.Encoding.t -> QCheck2.Test.t
   =
  fun name ?gen encoding ->
   let generator =
@@ -139,17 +136,17 @@ let to_test
   let buffer_size = 4096 in
   let dst = Bytes.make buffer_size '\x00' in
   QCheck2.Test.make ~name ~print generator (fun v ->
-      let* written_size =
-        Binary_data_encoding.Writer.write ~dst ~offset ~length:buffer_size encoding v
-      in
-      let* queried_size = Binary_data_encoding.Query.size_of encoding v in
-      let queried_size = Optint.Int63.to_int queried_size in
-      if written_size <> queried_size
-      then failwith "Computed size inconsistent with written size";
-      let src = Bytes.to_string dst in
-      let* vv =
-        Binary_data_encoding.Reader.read ~src ~offset ~length:written_size encoding
-      in
-      if not (equal v vv) then failwith "roundtrip roken";
-      true)
+    let* written_size =
+      Binary_data_encoding.Writer.write ~dst ~offset ~length:buffer_size encoding v
+    in
+    let* queried_size = Binary_data_encoding.Query.size_of encoding v in
+    let queried_size = Optint.Int63.to_int queried_size in
+    if written_size <> queried_size
+    then failwith "Computed size inconsistent with written size";
+    let src = Bytes.to_string dst in
+    let* vv =
+      Binary_data_encoding.Reader.read ~src ~offset ~length:written_size encoding
+    in
+    if not (equal v vv) then failwith "roundtrip roken";
+    true)
 ;;

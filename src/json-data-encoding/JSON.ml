@@ -62,20 +62,19 @@ let rec parse : lexeme Seq.t -> (t * lexeme Seq.t, string) result =
   | Seq.Nil -> Error "Unexpected end of lexeme"
   | Seq.Cons (c, s) ->
     (match c with
-    | `Os ->
-      let* o, s = parse_obj [] s in
-      Ok (`O o, s)
-    | `As ->
-      let* a, s = parse_array [] s in
-      Ok (`A a, s)
-    | (`Bool _ | `Float _ | `String _ | `Null) as t -> Ok (t, s)
-    | `Oe -> Error "Unexpected closing curly brace"
-    | `Ae -> Error "Unexpected closing square braket"
-    | `Name _ -> Error "Unexpected field name")
+     | `Os ->
+       let* o, s = parse_obj [] s in
+       Ok (`O o, s)
+     | `As ->
+       let* a, s = parse_array [] s in
+       Ok (`A a, s)
+     | (`Bool _ | `Float _ | `String _ | `Null) as t -> Ok (t, s)
+     | `Oe -> Error "Unexpected closing curly brace"
+     | `Ae -> Error "Unexpected closing square braket"
+     | `Name _ -> Error "Unexpected field name")
 
 and parse_obj
-    :  (string * t) list -> lexeme Seq.t
-    -> ((string * t) list * lexeme Seq.t, string) result
+  : (string * t) list -> lexeme Seq.t -> ((string * t) list * lexeme Seq.t, string) result
   =
  fun acc s ->
   match s () with

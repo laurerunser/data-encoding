@@ -167,44 +167,44 @@ let rec mini_lexemes depth first fmt (lxms : JSON.lexeme Seq.t) =
     if depth <> 0 then raise (Invalid_argument "unterminated lexeme sequence") else ()
   | Seq.Cons (lxm, lxms) ->
     (match lxm with
-    | `Bool true ->
-      if depth > 0 && not first then Format.pp_print_char fmt ',';
-      Format.pp_print_string fmt "true";
-      mini_lexemes depth false fmt lxms
-    | `Bool false ->
-      if depth > 0 && not first then Format.pp_print_char fmt ',';
-      Format.pp_print_string fmt "false";
-      mini_lexemes depth false fmt lxms
-    | `Float f ->
-      if depth > 0 && not first then Format.pp_print_char fmt ',';
-      Format.pp_print_float fmt f;
-      mini_lexemes depth false fmt lxms
-    | `String s ->
-      if depth > 0 && not first then Format.pp_print_char fmt ',';
-      Format.fprintf fmt "%S" s;
-      mini_lexemes depth false fmt lxms
-    | `Null ->
-      if depth > 0 && not first then Format.pp_print_char fmt ',';
-      Format.pp_print_string fmt "null";
-      mini_lexemes depth false fmt lxms
-    | `As ->
-      if depth > 0 && not first then Format.pp_print_char fmt ',';
-      Format.pp_print_string fmt "[";
-      mini_lexemes (depth + 1) true fmt lxms
-    | `Ae ->
-      Format.pp_print_string fmt "]";
-      mini_lexemes (depth - 1) false fmt lxms
-    | `Os ->
-      if depth > 0 && not first then Format.pp_print_char fmt ',';
-      Format.pp_print_string fmt "{";
-      mini_lexemes (depth + 1) true fmt lxms
-    | `Oe ->
-      Format.pp_print_string fmt "}";
-      mini_lexemes (depth - 1) false fmt lxms
-    | `Name s ->
-      if depth > 0 && not first then Format.pp_print_char fmt ',';
-      Format.fprintf fmt "\"%s\":" s;
-      mini_lexemes depth true fmt lxms)
+     | `Bool true ->
+       if depth > 0 && not first then Format.pp_print_char fmt ',';
+       Format.pp_print_string fmt "true";
+       mini_lexemes depth false fmt lxms
+     | `Bool false ->
+       if depth > 0 && not first then Format.pp_print_char fmt ',';
+       Format.pp_print_string fmt "false";
+       mini_lexemes depth false fmt lxms
+     | `Float f ->
+       if depth > 0 && not first then Format.pp_print_char fmt ',';
+       Format.pp_print_float fmt f;
+       mini_lexemes depth false fmt lxms
+     | `String s ->
+       if depth > 0 && not first then Format.pp_print_char fmt ',';
+       Format.fprintf fmt "%S" s;
+       mini_lexemes depth false fmt lxms
+     | `Null ->
+       if depth > 0 && not first then Format.pp_print_char fmt ',';
+       Format.pp_print_string fmt "null";
+       mini_lexemes depth false fmt lxms
+     | `As ->
+       if depth > 0 && not first then Format.pp_print_char fmt ',';
+       Format.pp_print_string fmt "[";
+       mini_lexemes (depth + 1) true fmt lxms
+     | `Ae ->
+       Format.pp_print_string fmt "]";
+       mini_lexemes (depth - 1) false fmt lxms
+     | `Os ->
+       if depth > 0 && not first then Format.pp_print_char fmt ',';
+       Format.pp_print_string fmt "{";
+       mini_lexemes (depth + 1) true fmt lxms
+     | `Oe ->
+       Format.pp_print_string fmt "}";
+       mini_lexemes (depth - 1) false fmt lxms
+     | `Name s ->
+       if depth > 0 && not first then Format.pp_print_char fmt ',';
+       Format.fprintf fmt "\"%s\":" s;
+       mini_lexemes depth true fmt lxms)
 ;;
 
 let mini_lexemes fmt s = mini_lexemes 0 false fmt s

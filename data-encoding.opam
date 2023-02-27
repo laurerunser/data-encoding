@@ -16,7 +16,7 @@ depends: [
   "binary-data-encoding" {= version}
   "optint"
   "ppx_expect" {with-test}
-  "ocamlformat" {with-test & = "0.20.1"}
+  "ocamlformat" {with-test & = "0.24.1"}
   "odoc" {with-doc}
 ]
 build: [

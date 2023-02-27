@@ -137,21 +137,21 @@ type size_spec =
   ]
 
 let with_length_header
-    : type a.
-      lengthencoding:size_spec
-      -> length:(a -> Sizedints.Uint62.t)
-      -> mkencoding:(Sizedints.Uint62.t -> (a t, string) result)
-      -> equal:(a -> a -> bool)
-      -> maximum_size:Optint.Int63.t
-      -> a t
+  : type a.
+    lengthencoding:size_spec
+    -> length:(a -> Sizedints.Uint62.t)
+    -> mkencoding:(Sizedints.Uint62.t -> (a t, string) result)
+    -> equal:(a -> a -> bool)
+    -> maximum_size:Optint.Int63.t
+    -> a t
   =
  fun ~lengthencoding ~length ~mkencoding ~equal ~maximum_size ->
   match lengthencoding with
   | `Fixed length ->
     (match mkencoding length with
-    | Ok encoding -> encoding
-    | Error msg ->
-      raise (Invalid_argument ("data-encoding.binary.with_length_header: " ^ msg)))
+     | Ok encoding -> encoding
+     | Error msg ->
+       raise (Invalid_argument ("data-encoding.binary.with_length_header: " ^ msg)))
   | `UInt62 ->
     with_header
       ~headerencoding:uint62
@@ -288,11 +288,11 @@ let string lengthencoding =
     ~equal:String.equal
     ~maximum_size:
       (match lengthencoding with
-      | `Fixed n -> (n :> Optint.Int63.t)
-      | `UInt8 -> (Sizedints.Uint8.(to_uint62 max_int) :> Optint.Int63.t)
-      | `UInt16 -> (Sizedints.Uint16.(to_uint62 max_int) :> Optint.Int63.t)
-      | `UInt30 -> (Sizedints.Uint30.(to_uint62 max_int) :> Optint.Int63.t)
-      | `UInt62 -> (Sizedints.Uint62.max_int :> Optint.Int63.t))
+       | `Fixed n -> (n :> Optint.Int63.t)
+       | `UInt8 -> (Sizedints.Uint8.(to_uint62 max_int) :> Optint.Int63.t)
+       | `UInt16 -> (Sizedints.Uint16.(to_uint62 max_int) :> Optint.Int63.t)
+       | `UInt30 -> (Sizedints.Uint30.(to_uint62 max_int) :> Optint.Int63.t)
+       | `UInt62 -> (Sizedints.Uint62.max_int :> Optint.Int63.t))
 ;;
 
 let bytes lengthencoding =
@@ -304,11 +304,11 @@ let bytes lengthencoding =
     ~equal:Bytes.equal
     ~maximum_size:
       (match lengthencoding with
-      | `Fixed n -> (n :> Optint.Int63.t)
-      | `UInt8 -> (Sizedints.Uint8.(to_uint62 max_int) :> Optint.Int63.t)
-      | `UInt16 -> (Sizedints.Uint16.(to_uint62 max_int) :> Optint.Int63.t)
-      | `UInt30 -> (Sizedints.Uint30.(to_uint62 max_int) :> Optint.Int63.t)
-      | `UInt62 -> (Sizedints.Uint62.max_int :> Optint.Int63.t))
+       | `Fixed n -> (n :> Optint.Int63.t)
+       | `UInt8 -> (Sizedints.Uint8.(to_uint62 max_int) :> Optint.Int63.t)
+       | `UInt16 -> (Sizedints.Uint16.(to_uint62 max_int) :> Optint.Int63.t)
+       | `UInt30 -> (Sizedints.Uint30.(to_uint62 max_int) :> Optint.Int63.t)
+       | `UInt62 -> (Sizedints.Uint62.max_int :> Optint.Int63.t))
 ;;
 
 let ellastic_uint30 : Sizedints.Uint30.t t =

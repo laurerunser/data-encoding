@@ -104,7 +104,7 @@ let tuplify : any_encoding -> any_hlist_encoding =
 let detuplify : any_hlist_encoding -> any_encoding = fun (AnyH (s, e)) -> AnyE (s, e)
 
 let tuple_encodings
-    : any_encoding Seq.t -> any_hlist_encoding Seq.t -> any_hlist_encoding Seq.t
+  : any_encoding Seq.t -> any_hlist_encoding Seq.t -> any_hlist_encoding Seq.t
   =
  fun es hs ->
   Seq.concat_map

@@ -6,9 +6,9 @@ type source =
   ; length : int
   ; readed : int (* [read] is ambiguous so we make it unambiguously past as [readed] *)
   ; stop_hints : int list
-        (* this list is grown when there is a size-header in the encoded binary data *)
+      (* this list is grown when there is a size-header in the encoded binary data *)
   ; maximum_length : int
-        (* the [maximum_length] is the maximum number of bytes to be read
+      (* the [maximum_length] is the maximum number of bytes to be read
            through all the buffer for the whole reading, it is a property passed
            from one source to the next during suspensions *)
   }
@@ -104,8 +104,8 @@ type 'a readed =
       }
   | Suspended of
       { source : source
-            (* TODO? add a field to indicate number of chars read from previous buffer *)
-            (* TODO? add a field for the buffer that's used as the bridge reading *)
+          (* TODO? add a field to indicate number of chars read from previous buffer *)
+          (* TODO? add a field for the buffer that's used as the bridge reading *)
       ; cont : string -> int -> int -> 'a readed
       }
 
@@ -604,8 +604,8 @@ let%expect_test _ =
       | [] -> ()
       | l :: ls ->
         (match go ss (fun () -> read_large_string source l) with
-        | Suspended _, _, _ -> assert false
-        | (Failed _ | Readed _), source, ss -> reads source ss ls)
+         | Suspended _, _, _ -> assert false
+         | (Failed _ | Readed _), source, ss -> reads source ss ls)
     in
     let s = List.hd ss in
     let ss = List.tl ss in
@@ -783,19 +783,19 @@ let rec of_string_seq_loop seq cont =
   | Seq.Nil -> Error "Not enough chunks or bytes"
   | Seq.Cons (s, seq) ->
     (match cont s 0 (String.length s) with
-    | Readed { source; value } ->
-      assert (source.readed <= source.length);
-      if source.readed < source.length
-      then Error "Too many bytes"
-      else if Seq.is_empty seq
-      then Ok value
-      else Error "Too many chunks"
-    | Failed { source = _; error } -> Error error
-    | Suspended { source = _; cont } -> of_string_seq_loop seq cont)
+     | Readed { source; value } ->
+       assert (source.readed <= source.length);
+       if source.readed < source.length
+       then Error "Too many bytes"
+       else if Seq.is_empty seq
+       then Ok value
+       else Error "Too many chunks"
+     | Failed { source = _; error } -> Error error
+     | Suspended { source = _; cont } -> of_string_seq_loop seq cont)
 ;;
 
 let of_string_seq read s =
   of_string_seq_loop s (fun s off len ->
-      let source = mk_source s off len in
-      read source)
+    let source = mk_source s off len in
+    read source)
 ;;

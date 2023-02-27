@@ -7,10 +7,10 @@ let seed_gen =
     Random.State.make [| seed |]
   | Some s ->
     (match int_of_string_opt s with
-    | None ->
-      Printf.eprintf "Malformed PBT_ROUNDTRIP_SEED";
-      exit 1
-    | Some seed -> Random.State.make [| seed |])
+     | None ->
+       Printf.eprintf "Malformed PBT_ROUNDTRIP_SEED";
+       exit 1
+     | Some seed -> Random.State.make [| seed |])
 ;;
 
 type any_encoding = AnyE : _ Json_data_encoding.Encoding.t -> any_encoding
