@@ -94,7 +94,7 @@ type 'a t = 'a Descr.t =
       { tag : 'tag t
       ; serialisation : 'a -> ('tag, 'a) anycaseandpayload
       ; deserialisation : 'tag -> (('tag, 'a) anycase, string) result
-      ; maximum_size : Optint.Int63.t
+      ; cases : ('tag, 'a) anycase list
       }
       -> 'a t
   | [] : unit Hlist.t t
@@ -209,11 +209,11 @@ module Union : sig
   (** [maximum_size] is the maximum size of the payload; it doesn't inlcude the
       tag *)
   val union
-    :  maximum_size:Optint.Int63.t
-    -> 'tag t
+    :  'tag t
+    -> ('tag, 'a) anycase list
     -> ('a -> ('tag, 'a) anycaseandpayload)
     -> ('tag -> (('tag, 'a) anycase, string) result)
     -> 'a t
 
-  val either : ?maximum_size:Optint.Int63.t -> 'l t -> 'r t -> ('l, 'r) Either.t t
+  val either : 'l t -> 'r t -> ('l, 'r) Either.t t
 end

@@ -179,7 +179,7 @@ let rec writek : type a. Buffy.W.destination -> a Descr.t -> a -> Buffy.W.writte
     in
     let destination = Buffy.W.set_maximum_length destination maximum_length in
     writek destination encoding v
-  | Union { tag = tag_encoding; serialisation; deserialisation = _; maximum_size = _ } ->
+  | Union { tag = tag_encoding; serialisation; deserialisation = _; cases = _ } ->
     let (AnyP ({ Descr.tag; encoding; inject = _ }, payload)) = serialisation v in
     let* destination = writek destination tag_encoding tag in
     writek destination encoding payload

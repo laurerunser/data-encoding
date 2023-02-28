@@ -94,7 +94,7 @@ type 'a t = 'a Descr.t =
       { tag : 'tag t
       ; serialisation : 'a -> ('tag, 'a) anycaseandpayload
       ; deserialisation : 'tag -> (('tag, 'a) anycase, string) result
-      ; maximum_size : Optint.Int63.t
+      ; cases : ('tag, 'a) anycase list
       }
       -> 'a t
   | [] : unit Hlist.t t
@@ -377,26 +377,23 @@ let ellastic_uint30 : Sizedints.Uint30.t t =
 module Union = struct
   let case tag encoding inject = { tag; encoding; inject }
 
-  let union ~maximum_size tag serialisation deserialisation =
-    Union { tag; serialisation; deserialisation; maximum_size }
+  let union tag cases serialisation deserialisation =
+    Union { tag; serialisation; deserialisation; cases }
   ;;
 
-  let either ?maximum_size l r =
-    let maximum_size =
-      match maximum_size with
-      | None -> max (Query.maximum_size_of l) (Query.maximum_size_of r)
-      | Some m -> m
-    in
+  let either l r =
     let cl = case true l Either.left in
+    let anycl = AnyC cl in
     let cr = case false r Either.right in
+    let anycr = AnyC cr in
     union
-      ~maximum_size
       bool
+      [ anycl; anycr ]
       (function
        | Either.Left l -> AnyP (cl, l)
        | Either.Right r -> AnyP (cr, r))
       (function
-       | true -> Ok (AnyC cl)
-       | false -> Ok (AnyC cr))
+       | true -> Ok anycl
+       | false -> Ok anycr)
   ;;
 end

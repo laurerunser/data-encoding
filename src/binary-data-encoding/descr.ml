@@ -81,7 +81,7 @@ type _ t =
       { tag : 'tag t
       ; serialisation : 'a -> ('tag, 'a) anycaseandpayload
       ; deserialisation : 'tag -> (('tag, 'a) anycase, string) result
-      ; maximum_size : Optint.Int63.t
+      ; cases : ('tag, 'a) anycase list
       }
       -> 'a t
   | [] : unit Hlist.t t

@@ -127,7 +127,7 @@ let rec readk : type a. Buffy.R.source -> a Descr.t -> a Buffy.R.readed =
     in
     let source = Buffy.R.set_maximum_length source maximum_length in
     readk source encoding
-  | Union { tag; serialisation = _; deserialisation; maximum_size = _ } ->
+  | Union { tag; serialisation = _; deserialisation; cases = _ } ->
     let* found_tag, source = readk source tag in
     (match deserialisation found_tag with
      | Ok (AnyC { tag = expected_tag; encoding; inject }) ->
