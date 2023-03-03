@@ -25,44 +25,44 @@ let%expect_test _ =
       let initread = min initread (String.length blob) in
       let source = Buffy.R.mk_source blob 0 initread in
       (match Reader.readk source e with
-      | Failed { error; source } ->
-        Format.printf
-          "Error: %S, Readed: %d, Stops: %a\n"
-          error
-          source.readed
-          print_stops
-          source
-      | Readed { value; source } ->
-        Format.printf "Ok, Readed: %d, Stops: %a\n" source.readed print_stops source;
-        assert (Query.equal_of e v value)
-      | Suspended { cont; source } ->
-        Format.printf
-          "Suspended, Readed: %d, Stops: %a\n"
-          source.readed
-          print_stops
-          source;
-        let rec go offset (cont : string -> int -> int -> a Buffy.R.readed) =
-          let length = min (String.length blob - offset) morereads in
-          match cont blob offset length with
-          | Failed { error; source } ->
-            Format.printf
-              "Error: %S, Readed: %d, Stops: %a\n"
-              error
-              source.readed
-              print_stops
-              source
-          | Readed { value; source } ->
-            Format.printf "Ok, Readed: %d, Stops: %a\n" source.readed print_stops source;
-            assert (Query.equal_of e v value)
-          | Suspended { cont; source } ->
-            Format.printf
-              "Suspended, Readed: %d, Stops: %a\n"
-              source.readed
-              print_stops
-              source;
-            go (offset + length) cont
-        in
-        go initread cont)
+       | Failed { error; source } ->
+         Format.printf
+           "Error: %S, Readed: %d, Stops: %a\n"
+           error
+           source.readed
+           print_stops
+           source
+       | Readed { value; source } ->
+         Format.printf "Ok, Readed: %d, Stops: %a\n" source.readed print_stops source;
+         assert (Query.equal_of e v value)
+       | Suspended { cont; source } ->
+         Format.printf
+           "Suspended, Readed: %d, Stops: %a\n"
+           source.readed
+           print_stops
+           source;
+         let rec go offset (cont : string -> int -> int -> a Buffy.R.readed) =
+           let length = min (String.length blob - offset) morereads in
+           match cont blob offset length with
+           | Failed { error; source } ->
+             Format.printf
+               "Error: %S, Readed: %d, Stops: %a\n"
+               error
+               source.readed
+               print_stops
+               source
+           | Readed { value; source } ->
+             Format.printf "Ok, Readed: %d, Stops: %a\n" source.readed print_stops source;
+             assert (Query.equal_of e v value)
+           | Suspended { cont; source } ->
+             Format.printf
+               "Suspended, Readed: %d, Stops: %a\n"
+               source.readed
+               print_stops
+               source;
+             go (offset + length) cont
+         in
+         go initread cont)
   in
   (* A simple test with a lot of size-header but no substance *)
   let encoding =

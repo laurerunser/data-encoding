@@ -28,16 +28,16 @@ let rec filter f (json : JSON.flex) =
   match f, json with
   | Field s, `O fs ->
     (match assoc_opt s (List.to_seq fs) with
-    | Some json -> Seq.return json
-    | None -> Seq.empty)
+     | Some json -> Seq.return json
+     | None -> Seq.empty)
   | Field s, `Oseq fs ->
     (match assoc_opt s fs with
-    | Some json -> Seq.return json
-    | None -> Seq.empty)
+     | Some json -> Seq.return json
+     | None -> Seq.empty)
   | Field s, `Omap fs ->
     (match JSON.FieldMap.find_opt s fs with
-    | Some json -> Seq.return json
-    | None -> Seq.empty)
+     | Some json -> Seq.return json
+     | None -> Seq.empty)
   | Index n, `A vs ->
     if n >= 0
     then (

@@ -20,16 +20,16 @@
 type destination = private
   { buffer : bytes (** [buffer] is the actual bytes that the data is serialised onto *)
   ; offset : int
-        (** [offset] is the start of the area of [buffer] that the data is
+      (** [offset] is the start of the area of [buffer] that the data is
                      serialised onto *)
   ; length : int
-        (** [length] is the length of the area of [buffer] that the data is
+      (** [length] is the length of the area of [buffer] that the data is
                      serialised onto *)
   ; written : int
-        (** [written] is the number of bytes that have been serialised; it
+      (** [written] is the number of bytes that have been serialised; it
                       starts at [0] and is updated when writing *)
   ; maximum_length : int
-        (** [maximum_length] is the total number of bytes that
+      (** [maximum_length] is the total number of bytes that
                              can ever be written, on this buffer and all the
                              subsequent buffers that may be needed after a
                              suspend/resume. *)
@@ -103,26 +103,26 @@ val slice_of_destination : destination -> bytes * int * int
 type written =
   | Written of
       { destination : destination
-            (** The serialisation was successful and complete. Use
+          (** The serialisation was successful and complete. Use
                 [slice_of_destination] to extract useful information from this
                 [destination]. *)
       }
   | Failed of
       { destination : destination
-            (** [destination] may contain some serialised data (data up until
+          (** [destination] may contain some serialised data (data up until
                 the error). Depending on your application you may be able to
                 restart based on this [destination]. *)
       ; error : string
-            (** [error] carries a human-readable message indicating the reason
+          (** [error] carries a human-readable message indicating the reason
                 for the failure. *)
       }
   | Suspended of
       { destination : destination
-            (** The serialisation is partial. Some bytes have been written. Use
+          (** The serialisation is partial. Some bytes have been written. Use
                 [slice_of_destination] to extract useful information about from
                 this [destination]. *)
       ; cont : bytes -> int -> int -> written
-            (** The serialisation is suspended because it ran out of bytes to
+          (** The serialisation is suspended because it ran out of bytes to
                 write to. Use [cont buffer offset length] to provide one more
                 slice that the serialisation can write on.
 

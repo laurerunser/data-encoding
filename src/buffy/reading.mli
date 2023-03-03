@@ -22,7 +22,7 @@ type source = private
   ; length : int
   ; readed : int (* [read] is ambiguous so we make it unambiguously past as [readed] *)
   ; stop_hints : int list
-        (* this list is grown when there is a size-header in the encoded binary data *)
+      (* this list is grown when there is a size-header in the encoded binary data *)
   ; maximum_length : int
   }
 
@@ -120,19 +120,19 @@ type 'a readed =
   | Readed of
       { source : source
       ; value : 'a
-            (** The deserialisation was successful and complete. The [value] is
+          (** The deserialisation was successful and complete. The [value] is
                 available. *)
       }
   | Failed of
       { source : source
       ; error : string
-            (** [error] carries a human-readable message indicating the reason
+          (** [error] carries a human-readable message indicating the reason
                 for the failure. *)
       }
   | Suspended of
       { source : source
       ; cont : string -> int -> int -> 'a readed
-            (** The deserialisation is suspeneded because it ran out of bytes to
+          (** The deserialisation is suspeneded because it ran out of bytes to
                 read from. Use [cont blob offset length] to provide one more
                 slice that the deserialisation can read from. *)
       }

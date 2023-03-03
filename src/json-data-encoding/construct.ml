@@ -34,13 +34,13 @@ and construct_tuple : type a. a Encoding.tuple -> a -> (JSON.t, string) result =
   | t :: ts ->
     let (v :: vs) = v in
     (match construct t v with
-    | Error _ as err -> err
-    | Ok json ->
-      (match construct_tuple ts vs with
-      | Error _ as err -> err
-      | Ok (`Aseq jsons) -> Ok (`Aseq (Seq.cons json jsons))
-      | Ok (`A []) -> Ok (`Aseq (Seq.return json))
-      | Ok _ -> assert false))
+     | Error _ as err -> err
+     | Ok json ->
+       (match construct_tuple ts vs with
+        | Error _ as err -> err
+        | Ok (`Aseq jsons) -> Ok (`Aseq (Seq.cons json jsons))
+        | Ok (`A []) -> Ok (`Aseq (Seq.return json))
+        | Ok _ -> assert false))
 
 and construct_obj : type a. a Encoding.obj -> a -> (JSON.t, string) result =
  fun encoding v ->
@@ -49,26 +49,26 @@ and construct_obj : type a. a Encoding.obj -> a -> (JSON.t, string) result =
   | Req { encoding = t; name } :: ts ->
     let (v :: vs) = v in
     (match construct t v with
-    | Error _ as err -> err
-    | Ok json ->
-      (match construct_obj ts vs with
-      | Error _ as err -> err
-      | Ok (`Oseq jsons) -> Ok (`Oseq (Seq.cons (name, json) jsons))
-      | Ok (`O []) -> Ok (`Oseq (Seq.return (name, json)))
-      | Ok _ -> assert false))
-  | Opt { encoding = t; name } :: ts ->
-    let (v :: vs) = v in
-    (match v with
-    | None -> construct_obj ts vs
-    | Some v ->
-      (match construct t v with
-      | Error _ as err -> err
-      | Ok json ->
-        (match construct_obj ts vs with
+     | Error _ as err -> err
+     | Ok json ->
+       (match construct_obj ts vs with
         | Error _ as err -> err
         | Ok (`Oseq jsons) -> Ok (`Oseq (Seq.cons (name, json) jsons))
         | Ok (`O []) -> Ok (`Oseq (Seq.return (name, json)))
-        | Ok _ -> assert false)))
+        | Ok _ -> assert false))
+  | Opt { encoding = t; name } :: ts ->
+    let (v :: vs) = v in
+    (match v with
+     | None -> construct_obj ts vs
+     | Some v ->
+       (match construct t v with
+        | Error _ as err -> err
+        | Ok json ->
+          (match construct_obj ts vs with
+           | Error _ as err -> err
+           | Ok (`Oseq jsons) -> Ok (`Oseq (Seq.cons (name, json) jsons))
+           | Ok (`O []) -> Ok (`Oseq (Seq.return (name, json)))
+           | Ok _ -> assert false)))
 ;;
 
 let%expect_test _ =
@@ -159,12 +159,12 @@ and construct_obj_lexemes : type a. a Encoding.obj -> a -> JSON.lexeme Seq.t =
   | Opt { encoding = t; name } :: ts ->
     let (v :: vs) = v in
     (match v with
-    | None -> construct_obj_lexemes ts vs ()
-    | Some v ->
-      Seq.append
-        (Seq.cons (`Name name) (construct_lexemes t v))
-        (construct_obj_lexemes ts vs)
-        ())
+     | None -> construct_obj_lexemes ts vs ()
+     | Some v ->
+       Seq.append
+         (Seq.cons (`Name name) (construct_lexemes t v))
+         (construct_obj_lexemes ts vs)
+         ())
 ;;
 
 let%expect_test _ =
@@ -227,72 +227,72 @@ let rec write_lexemes depth first destination (lxms : JSON.lexeme Seq.t) =
   | Seq.Nil -> Buffy.W.Written { destination }
   | Seq.Cons (lxm, lxms) ->
     (match lxm with
-    | `Bool true ->
-      let* destination =
-        if depth > 0 && not first
-        then Buffy.W.write_small_string destination ",true"
-        else Buffy.W.write_small_string destination "true"
-      in
-      write_lexemes depth false destination lxms
-    | `Bool false ->
-      let* destination =
-        if depth > 0 && not first
-        then Buffy.W.write_small_string destination ",false"
-        else Buffy.W.write_small_string destination "false"
-      in
-      write_lexemes depth false destination lxms
-    | `Float f ->
-      (* TODO: more tractable representation of float *)
-      let literal = Float.to_string f in
-      let literal = if depth > 0 && not first then "," ^ literal else literal in
-      let* destination = Buffy.W.write_small_string destination literal in
-      write_lexemes depth false destination lxms
-    | `String s ->
-      (* TODO: check for UTF8 validity *)
-      let* destination =
-        if depth > 0 && not first
-        then Buffy.W.write_small_string destination ",\""
-        else Buffy.W.write_char destination '"'
-      in
-      let* destination = Buffy.W.write_large_string destination s in
-      let* destination = Buffy.W.write_char destination '"' in
-      write_lexemes depth false destination lxms
-    | `Null ->
-      let* destination =
-        if depth > 0 && not first
-        then Buffy.W.write_small_string destination ",null"
-        else Buffy.W.write_small_string destination "null"
-      in
-      write_lexemes depth false destination lxms
-    | `As ->
-      let* destination =
-        if depth > 0 && not first
-        then Buffy.W.write_small_string destination ",["
-        else Buffy.W.write_char destination '['
-      in
-      write_lexemes (depth + 1) true destination lxms
-    | `Ae ->
-      let* destination = Buffy.W.write_char destination ']' in
-      write_lexemes (depth - 1) false destination lxms
-    | `Os ->
-      let* destination =
-        if depth > 0 && not first
-        then Buffy.W.write_small_string destination ",{"
-        else Buffy.W.write_char destination '{'
-      in
-      write_lexemes (depth + 1) true destination lxms
-    | `Oe ->
-      let* destination = Buffy.W.write_char destination '}' in
-      write_lexemes (depth - 1) false destination lxms
-    | `Name s ->
-      let* destination =
-        if depth > 0 && not first
-        then Buffy.W.write_small_string destination ",\""
-        else Buffy.W.write_char destination '"'
-      in
-      let* destination = Buffy.W.write_large_string destination s in
-      let* destination = Buffy.W.write_small_string destination "\":" in
-      write_lexemes (depth + 1) true destination lxms)
+     | `Bool true ->
+       let* destination =
+         if depth > 0 && not first
+         then Buffy.W.write_small_string destination ",true"
+         else Buffy.W.write_small_string destination "true"
+       in
+       write_lexemes depth false destination lxms
+     | `Bool false ->
+       let* destination =
+         if depth > 0 && not first
+         then Buffy.W.write_small_string destination ",false"
+         else Buffy.W.write_small_string destination "false"
+       in
+       write_lexemes depth false destination lxms
+     | `Float f ->
+       (* TODO: more tractable representation of float *)
+       let literal = Float.to_string f in
+       let literal = if depth > 0 && not first then "," ^ literal else literal in
+       let* destination = Buffy.W.write_small_string destination literal in
+       write_lexemes depth false destination lxms
+     | `String s ->
+       (* TODO: check for UTF8 validity *)
+       let* destination =
+         if depth > 0 && not first
+         then Buffy.W.write_small_string destination ",\""
+         else Buffy.W.write_char destination '"'
+       in
+       let* destination = Buffy.W.write_large_string destination s in
+       let* destination = Buffy.W.write_char destination '"' in
+       write_lexemes depth false destination lxms
+     | `Null ->
+       let* destination =
+         if depth > 0 && not first
+         then Buffy.W.write_small_string destination ",null"
+         else Buffy.W.write_small_string destination "null"
+       in
+       write_lexemes depth false destination lxms
+     | `As ->
+       let* destination =
+         if depth > 0 && not first
+         then Buffy.W.write_small_string destination ",["
+         else Buffy.W.write_char destination '['
+       in
+       write_lexemes (depth + 1) true destination lxms
+     | `Ae ->
+       let* destination = Buffy.W.write_char destination ']' in
+       write_lexemes (depth - 1) false destination lxms
+     | `Os ->
+       let* destination =
+         if depth > 0 && not first
+         then Buffy.W.write_small_string destination ",{"
+         else Buffy.W.write_char destination '{'
+       in
+       write_lexemes (depth + 1) true destination lxms
+     | `Oe ->
+       let* destination = Buffy.W.write_char destination '}' in
+       write_lexemes (depth - 1) false destination lxms
+     | `Name s ->
+       let* destination =
+         if depth > 0 && not first
+         then Buffy.W.write_small_string destination ",\""
+         else Buffy.W.write_char destination '"'
+       in
+       let* destination = Buffy.W.write_large_string destination s in
+       let* destination = Buffy.W.write_small_string destination "\":" in
+       write_lexemes (depth + 1) true destination lxms)
 ;;
 
 let write_lexemes destination lxms = write_lexemes 0 true destination lxms
@@ -341,7 +341,7 @@ let%expect_test _ =
 
 (* TODO: pbt tests *)
 let rec write
-    : type a. int -> bool -> Buffy.W.destination -> a Encoding.t -> a -> Buffy.W.written
+  : type a. int -> bool -> Buffy.W.destination -> a Encoding.t -> a -> Buffy.W.written
   =
  fun depth first destination encoding v ->
   match encoding with
@@ -352,14 +352,14 @@ let rec write
     else Buffy.W.write_small_string destination "{}"
   | Bool ->
     (match v with
-    | true ->
-      if depth > 0 && not first
-      then Buffy.W.write_small_string destination ",true"
-      else Buffy.W.write_small_string destination "true"
-    | false ->
-      if depth > 0 && not first
-      then Buffy.W.write_small_string destination ",false"
-      else Buffy.W.write_small_string destination "false")
+     | true ->
+       if depth > 0 && not first
+       then Buffy.W.write_small_string destination ",true"
+       else Buffy.W.write_small_string destination "true"
+     | false ->
+       if depth > 0 && not first
+       then Buffy.W.write_small_string destination ",false"
+       else Buffy.W.write_small_string destination "false")
   | Int64 ->
     let* destination =
       if depth > 0 && not first
@@ -412,8 +412,7 @@ let rec write
     write depth first destination encoding (serialisation v)
 
 and write_tuple
-    : type a.
-      int -> bool -> Buffy.W.destination -> a Encoding.tuple -> a -> Buffy.W.written
+  : type a. int -> bool -> Buffy.W.destination -> a Encoding.tuple -> a -> Buffy.W.written
   =
  fun depth first destination encoding v ->
   match encoding with
@@ -424,7 +423,7 @@ and write_tuple
     write_tuple depth false destination ts vs
 
 and write_object
-    : type a. int -> bool -> Buffy.W.destination -> a Encoding.obj -> a -> Buffy.W.written
+  : type a. int -> bool -> Buffy.W.destination -> a Encoding.obj -> a -> Buffy.W.written
   =
  fun depth first destination encoding v ->
   match encoding with
@@ -442,17 +441,17 @@ and write_object
     write_object depth false destination ts vs
   | Opt { encoding; name } :: ts ->
     (match v with
-    | None :: vs -> write_object depth first destination ts vs
-    | Some v :: vs ->
-      let* destination =
-        if depth > 0 && not first
-        then Buffy.W.write_small_string destination ",\""
-        else Buffy.W.write_char destination '"'
-      in
-      let* destination = Buffy.W.write_large_string destination name in
-      let* destination = Buffy.W.write_small_string destination "\":" in
-      let* destination = write depth true destination encoding v in
-      write_object depth false destination ts vs)
+     | None :: vs -> write_object depth first destination ts vs
+     | Some v :: vs ->
+       let* destination =
+         if depth > 0 && not first
+         then Buffy.W.write_small_string destination ",\""
+         else Buffy.W.write_char destination '"'
+       in
+       let* destination = Buffy.W.write_large_string destination name in
+       let* destination = Buffy.W.write_small_string destination "\":" in
+       let* destination = write depth true destination encoding v in
+       write_object depth false destination ts vs)
 ;;
 
 let write destination encoding v = write 0 true destination encoding v

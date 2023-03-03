@@ -52,32 +52,32 @@ let rec destruct : type a. a Encoding.t -> JSON.t -> (a, string) result =
   match encoding with
   | Unit ->
     (match json with
-    | `O [] -> Ok ()
-    | `Omap m when JSON.FieldMap.is_empty m -> Ok ()
-    | `Oseq seq when Seq.is_empty seq -> Ok ()
-    | other -> Error (Format.asprintf "Expected {}, got %a" PP.shape other))
+     | `O [] -> Ok ()
+     | `Omap m when JSON.FieldMap.is_empty m -> Ok ()
+     | `Oseq seq when Seq.is_empty seq -> Ok ()
+     | other -> Error (Format.asprintf "Expected {}, got %a" PP.shape other))
   | Bool ->
     (match json with
-    | `Bool b -> Ok b
-    | other -> Error (Format.asprintf "Expected bool, got %a" PP.shape other))
+     | `Bool b -> Ok b
+     | other -> Error (Format.asprintf "Expected bool, got %a" PP.shape other))
   | Int64 ->
     (match json with
-    | `String s ->
-      (match Int64.of_string_opt s with
-      | Some i64 -> Ok i64
-      | None -> Error (Format.asprintf "Expected int64 numeral, got %S" s))
-    | other -> Error (Format.asprintf "Expected {}, got %a" PP.shape other))
+     | `String s ->
+       (match Int64.of_string_opt s with
+        | Some i64 -> Ok i64
+        | None -> Error (Format.asprintf "Expected int64 numeral, got %S" s))
+     | other -> Error (Format.asprintf "Expected {}, got %a" PP.shape other))
   | String ->
     (match json with
-    | `String s -> Ok s
-    | other -> Error (Format.asprintf "Expected \"…\", got %a" PP.shape other))
+     | `String s -> Ok s
+     | other -> Error (Format.asprintf "Expected \"…\", got %a" PP.shape other))
   | Seq t -> destruct_seq t json
   | Tuple t -> destruct_tuple t json
   | Object t -> destruct_obj t json
   | Conv { serialisation = _; deserialisation; encoding } ->
     (match destruct encoding json with
-    | Error _ as err -> err
-    | Ok w -> deserialisation w (* TODO: wrap error message *))
+     | Error _ as err -> err
+     | Ok w -> deserialisation w (* TODO: wrap error message *))
 
 and destruct_seq : type a. a Encoding.t -> JSON.t -> (a Seq.t, string) result =
  fun t json ->
@@ -104,14 +104,14 @@ and destruct_tuple_seq : type a. a Encoding.tuple -> JSON.t Seq.t -> (a, string)
     else Error (Format.asprintf "Expected end-of-array, got additional entries")
   | t :: ts ->
     (match jsons () with
-    | Seq.Cons (json, jsons) ->
-      (match destruct t json with
-      | Error _ as err -> err
-      | Ok v ->
-        (match destruct_tuple_seq ts jsons with
+     | Seq.Cons (json, jsons) ->
+       (match destruct t json with
         | Error _ as err -> err
-        | Ok vs -> Ok (v :: vs)))
-    | Seq.Nil -> Error (Format.asprintf "Expected elements in array, got end of array"))
+        | Ok v ->
+          (match destruct_tuple_seq ts jsons with
+           | Error _ as err -> err
+           | Ok vs -> Ok (v :: vs)))
+     | Seq.Nil -> Error (Format.asprintf "Expected elements in array, got end of array"))
 
 and destruct_obj : type a. a Encoding.obj -> JSON.t -> (a, string) result =
  fun encoding json ->
@@ -122,7 +122,7 @@ and destruct_obj : type a. a Encoding.obj -> JSON.t -> (a, string) result =
   | other -> Error (Format.asprintf "Expected {..}, got %a" PP.shape other)
 
 and destruct_obj_map
-    : type a. a Encoding.obj -> JSON.t JSON.FieldMap.t -> (a, string) result
+  : type a. a Encoding.obj -> JSON.t JSON.FieldMap.t -> (a, string) result
   =
  fun encoding fields ->
   match encoding with
@@ -134,29 +134,29 @@ and destruct_obj_map
       Error (Format.asprintf "Expected end-of-object, got additional fields")
   | Req { encoding = t; name } :: ts ->
     (match JSON.FieldMap.find_opt name fields with
-    | None -> Error (Format.asprintf "Can't find expected field %S" name)
-    | Some json ->
-      let fields = JSON.FieldMap.remove name fields in
-      (match destruct t json with
-      | Error _ as err -> err
-      | Ok v ->
-        (match destruct_obj_map ts fields with
+     | None -> Error (Format.asprintf "Can't find expected field %S" name)
+     | Some json ->
+       let fields = JSON.FieldMap.remove name fields in
+       (match destruct t json with
         | Error _ as err -> err
-        | Ok vs -> Ok (v :: vs))))
+        | Ok v ->
+          (match destruct_obj_map ts fields with
+           | Error _ as err -> err
+           | Ok vs -> Ok (v :: vs))))
   | Opt { encoding = t; name } :: ts ->
     (match JSON.FieldMap.find_opt name fields with
-    | None ->
-      (match destruct_obj_map ts fields with
-      | Error _ as err -> err
-      | Ok vs -> Ok (None :: vs))
-    | Some json ->
-      let fields = JSON.FieldMap.remove name fields in
-      (match destruct t json with
-      | Error _ as err -> err
-      | Ok v ->
-        (match destruct_obj_map ts fields with
+     | None ->
+       (match destruct_obj_map ts fields with
         | Error _ as err -> err
-        | Ok vs -> Ok (Some v :: vs))))
+        | Ok vs -> Ok (None :: vs))
+     | Some json ->
+       let fields = JSON.FieldMap.remove name fields in
+       (match destruct t json with
+        | Error _ as err -> err
+        | Ok v ->
+          (match destruct_obj_map ts fields with
+           | Error _ as err -> err
+           | Ok vs -> Ok (Some v :: vs))))
 ;;
 
 let%expect_test _ =
@@ -229,12 +229,12 @@ let consume_q lxms f =
   | Seq.Nil -> Error "Unepxected end of lexeme sequence"
   | Seq.Cons (lxm, lxms) ->
     (match f lxm with
-    | Some v -> Ok (v, lxms)
-    | None -> Error "Unexpected lexeme in sequence")
+     | Some v -> Ok (v, lxms)
+     | None -> Error "Unexpected lexeme in sequence")
 ;;
 
 let rec destruct_lexemes
-    : type a. a Encoding.t -> JSON.lexemes -> (a * JSON.lexemes, string) result
+  : type a. a Encoding.t -> JSON.lexemes -> (a * JSON.lexemes, string) result
   =
  fun encoding lxms ->
   match encoding with
@@ -244,16 +244,16 @@ let rec destruct_lexemes
     Ok ((), lxms)
   | Bool ->
     consume_q lxms (function
-        | `Bool b -> Some b
-        | `Float _ | `String _ | `Null | `Name _ | `As | `Ae | `Os | `Oe -> None)
+      | `Bool b -> Some b
+      | `Float _ | `String _ | `Null | `Name _ | `As | `Ae | `Os | `Oe -> None)
   | Int64 ->
     consume_q lxms (function
-        | `String s -> Int64.of_string_opt s
-        | `Bool _ | `Float _ | `Null | `Name _ | `As | `Ae | `Os | `Oe -> None)
+      | `String s -> Int64.of_string_opt s
+      | `Bool _ | `Float _ | `Null | `Name _ | `As | `Ae | `Os | `Oe -> None)
   | String ->
     consume_q lxms (function
-        | `String s -> Some s
-        | `Bool _ | `Float _ | `Null | `Name _ | `As | `Ae | `Os | `Oe -> None)
+      | `String s -> Some s
+      | `Bool _ | `Float _ | `Null | `Name _ | `As | `Ae | `Os | `Oe -> None)
   | Seq e ->
     let* lxms = consume_1 lxms `As in
     destruct_lexemes_seq e lxms []
@@ -269,8 +269,8 @@ let rec destruct_lexemes
     Ok (w, lxms)
 
 and destruct_lexemes_seq
-    : type a.
-      a Encoding.t -> JSON.lexemes -> a list -> (a Seq.t * JSON.lexemes, string) result
+  : type a.
+    a Encoding.t -> JSON.lexemes -> a list -> (a Seq.t * JSON.lexemes, string) result
   =
  fun encoding lxms acc ->
   match lxms () with
@@ -281,7 +281,7 @@ and destruct_lexemes_seq
     destruct_lexemes_seq encoding lxms (elt :: acc)
 
 and destruct_lexemes_tuple
-    : type a. a Encoding.tuple -> JSON.lexemes -> (a * JSON.lexemes, string) result
+  : type a. a Encoding.tuple -> JSON.lexemes -> (a * JSON.lexemes, string) result
   =
  fun encoding lxms ->
   match encoding with
@@ -294,7 +294,7 @@ and destruct_lexemes_tuple
     Ok (Commons.Hlist.( :: ) (v, vs), lxms)
 
 and destruct_lexemes_obj_reached_the_end
-    : type a. a Encoding.obj -> JSON.t JSON.FieldMap.t -> (a, string) result
+  : type a. a Encoding.obj -> JSON.t JSON.FieldMap.t -> (a, string) result
   =
  fun encoding fields ->
   match encoding with
@@ -305,22 +305,22 @@ and destruct_lexemes_obj_reached_the_end
     else Error "Extraneous fields in object"
   | Req { encoding = t; name } :: ts ->
     (match JSON.FieldMap.find_opt name fields with
-    | None -> Error "Cannot find field"
-    | Some json ->
-      let* v = destruct t json in
-      let fields = JSON.FieldMap.remove name fields in
-      let* vs = destruct_lexemes_obj_reached_the_end ts fields in
-      Ok (Commons.Hlist.( :: ) (v, vs)))
+     | None -> Error "Cannot find field"
+     | Some json ->
+       let* v = destruct t json in
+       let fields = JSON.FieldMap.remove name fields in
+       let* vs = destruct_lexemes_obj_reached_the_end ts fields in
+       Ok (Commons.Hlist.( :: ) (v, vs)))
   | Opt { encoding = t; name } :: ts ->
     (match JSON.FieldMap.find_opt name fields with
-    | None ->
-      let* vs = destruct_lexemes_obj_reached_the_end ts fields in
-      Ok (Commons.Hlist.( :: ) (None, vs))
-    | Some json ->
-      let* v = destruct t json in
-      let fields = JSON.FieldMap.remove name fields in
-      let* vs = destruct_lexemes_obj_reached_the_end ts fields in
-      Ok (Commons.Hlist.( :: ) (Some v, vs)))
+     | None ->
+       let* vs = destruct_lexemes_obj_reached_the_end ts fields in
+       Ok (Commons.Hlist.( :: ) (None, vs))
+     | Some json ->
+       let* v = destruct t json in
+       let fields = JSON.FieldMap.remove name fields in
+       let* vs = destruct_lexemes_obj_reached_the_end ts fields in
+       Ok (Commons.Hlist.( :: ) (Some v, vs)))
 
 and destruct_lexemes_fields fields lxms =
   match lxms () with
@@ -344,7 +344,7 @@ and destruct_lexemes_fields fields lxms =
      as a sequence of lexemes
 *)
 and destruct_lexemes_obj
-    : type a. a Encoding.obj -> JSON.lexemes -> (a * JSON.lexemes, string) result
+  : type a. a Encoding.obj -> JSON.lexemes -> (a * JSON.lexemes, string) result
   =
  fun encoding lxms ->
   let* fields, lxms = destruct_lexemes_fields JSON.FieldMap.empty lxms in

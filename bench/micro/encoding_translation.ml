@@ -11,12 +11,12 @@ let commands =
   List.map
     (fun (name, Any encoding) ->
       Core_bench.Bench.Test.create ~name:("binary_of__" ^ name) (fun () ->
-          Anyb (Data_encoding.Encoding.to_binary encoding)))
+        Anyb (Data_encoding.Encoding.to_binary encoding)))
     inputs
   @ List.map
       (fun (name, Any encoding) ->
         Core_bench.Bench.Test.create ~name:("json_of__" ^ name) (fun () ->
-            Anyj (Data_encoding.Encoding.to_json encoding)))
+          Anyj (Data_encoding.Encoding.to_json encoding)))
       inputs
 ;;
 

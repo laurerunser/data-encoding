@@ -115,10 +115,10 @@ let rec size_of : type t. t Descr.t -> t -> (Optint.Int63.t, string) result =
     fold Optint.Int63.zero 0
   | Option encoding ->
     (match v with
-    | None -> Ok Optint.Int63.one
-    | Some v ->
-      let* size = size_of encoding v in
-      Ok (Optint.Int63.add Optint.Int63.one size))
+     | None -> Ok Optint.Int63.one
+     | Some v ->
+       let* size = size_of encoding v in
+       Ok (Optint.Int63.add Optint.Int63.one size))
   | Headered { mkheader; headerencoding; mkencoding; equal = _; maximum_size = _ } ->
     let* header = mkheader v in
     let* headersize = size_of headerencoding header in
@@ -134,10 +134,10 @@ let rec size_of : type t. t Descr.t -> t -> (Optint.Int63.t, string) result =
       | Seq.Nil -> Ok acc
       | Seq.Cons (chunk, s) ->
         (match size_of chunkencoding chunk with
-        | Ok chunksize ->
-          let acc = Optint.Int63.add acc chunksize in
-          fold acc s
-        | Error e -> Error e)
+         | Ok chunksize ->
+           let acc = Optint.Int63.add acc chunksize in
+           fold acc s
+         | Error e -> Error e)
     in
     fold Optint.Int63.zero chunks
   | Conv { serialisation; deserialisation = _; encoding } ->
@@ -153,10 +153,10 @@ let rec size_of : type t. t Descr.t -> t -> (Optint.Int63.t, string) result =
   | [] -> Ok Optint.Int63.zero
   | ehead :: etail ->
     (match v with
-    | vhead :: vtail ->
-      let* shead = size_of ehead vhead in
-      let* stail = size_of etail vtail in
-      Ok (Optint.Int63.add shead stail))
+     | vhead :: vtail ->
+       let* shead = size_of ehead vhead in
+       let* stail = size_of etail vtail in
+       Ok (Optint.Int63.add shead stail))
 ;;
 
 let%expect_test _ =
@@ -322,10 +322,10 @@ let rec pp_of : type t. t Descr.t -> Format.formatter -> t -> unit =
         (Array.to_seq v))
   | Option t ->
     (match v with
-    | None -> Format.fprintf fmt "None"
-    | Some v ->
-      let pp = pp_of t in
-      Format.fprintf fmt "Some(%a)" pp v)
+     | None -> Format.fprintf fmt "None"
+     | Some v ->
+       let pp = pp_of t in
+       Format.fprintf fmt "Some(%a)" pp v)
   | LSeq { length = _; elementencoding } ->
     let { Descr.seq; length = _ } = v in
     Format.fprintf
@@ -348,10 +348,10 @@ let rec pp_of : type t. t Descr.t -> Format.formatter -> t -> unit =
        let* encoding = mkencoding header in
        Ok encoding
      with
-    | Ok encoding ->
-      let pp = pp_of encoding in
-      Format.fprintf fmt "%a" pp v
-    | Error msg -> Format.fprintf fmt "Error: %s" msg)
+     | Ok encoding ->
+       let pp = pp_of encoding in
+       Format.fprintf fmt "%a" pp v
+     | Error msg -> Format.fprintf fmt "Error: %s" msg)
   | Fold
       { chunkencoding; chunkify; readinit = _; reducer = _; equal = _; maximum_size = _ }
     ->

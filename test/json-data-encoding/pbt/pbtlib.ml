@@ -16,7 +16,7 @@ let rec generator_of_encoding : type t. t Json_data_encoding.Encoding.t -> t QCh
       (generator_of_encoding encoding)
 
 and generator_of_encoding_tuple
-    : type t. t Json_data_encoding.Encoding.tuple -> t QCheck2.Gen.t
+  : type t. t Json_data_encoding.Encoding.tuple -> t QCheck2.Gen.t
   =
  fun t ->
   match t with
@@ -27,7 +27,7 @@ and generator_of_encoding_tuple
     QCheck2.Gen.map2 (fun h t -> Commons.Hlist.( :: ) (h, t)) head tail
 
 and generator_of_encoding_object
-    : type t. t Json_data_encoding.Encoding.obj -> t QCheck2.Gen.t
+  : type t. t Json_data_encoding.Encoding.obj -> t QCheck2.Gen.t
   =
  fun t ->
   match t with
@@ -57,7 +57,7 @@ let rec equal_of_encoding : type t. t Json_data_encoding.Encoding.t -> t -> t ->
     fun a b -> (equal_of_encoding encoding) (serialisation a) (serialisation b)
 
 and equal_of_encoding_tuple
-    : type t. t Json_data_encoding.Encoding.tuple -> t -> t -> bool
+  : type t. t Json_data_encoding.Encoding.tuple -> t -> t -> bool
   =
  fun t ->
   match t with
@@ -94,9 +94,9 @@ let to_test : type t. t Json_data_encoding.Encoding.t -> QCheck2.Test.t =
   let generator = generator_of_encoding encoding in
   let equal = equal_of_encoding encoding in
   QCheck2.Test.make generator (fun v ->
-      let* j = Json_data_encoding.Construct.construct encoding v in
-      let lxms = Json_data_encoding.JSON.lexemify j in
-      let* jj = Json_data_encoding.JSON.parse lxms in
-      let* vv = Json_data_encoding.Destruct.destruct encoding jj in
-      equal v vv)
+    let* j = Json_data_encoding.Construct.construct encoding v in
+    let lxms = Json_data_encoding.JSON.lexemify j in
+    let* jj = Json_data_encoding.JSON.parse lxms in
+    let* vv = Json_data_encoding.Destruct.destruct encoding jj in
+    equal v vv)
 ;;
