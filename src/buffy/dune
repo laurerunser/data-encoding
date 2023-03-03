@@ -1,6 +1,6 @@
 (library
- (name suspendable_buffers)
- (public_name suspendable-buffers)
+ (name buffy)
+ (public_name buffy)
  (js_of_ocaml)
  (inline_tests)
  (preprocess

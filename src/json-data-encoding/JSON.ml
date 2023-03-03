@@ -1,17 +1,18 @@
-type t =
-  [ `O of (string * t) Seq.t
-  | `A of t Seq.t
-  | `Bool of bool
+type literal =
+  [ `Bool of bool
   | `Float of float
   | `String of string
   | `Null
   ]
 
+type compat =
+  [ `O of (string * compat) list
+  | `A of compat list
+  | literal
+  ]
+
 type lexeme =
-  [ `Null
-  | `Bool of bool
-  | `String of string
-  | `Float of float
+  [ literal
   | `Name of string
   | `As
   | `Ae
@@ -19,17 +20,31 @@ type lexeme =
   | `Oe
   ]
 
-let rec append1 seq stop () =
-  match seq () with
-  | Seq.Nil -> Seq.Cons (stop, Seq.empty)
-  | Seq.Cons (x, seq) -> Seq.Cons (x, append1 seq stop)
-;;
+type lexemes = lexeme Seq.t
 
-let bracket start seq stop () = Seq.Cons (start, append1 seq stop)
+module FieldMap = Map.Make (String)
+
+type flex =
+  [ `O of (string * flex) list
+  | `Oseq of (string * flex) Seq.t
+  | `Omap of flex FieldMap.t
+  | `A of flex list
+  | `Aarray of flex array
+  | `Aseq of flex Seq.t
+  | literal
+  ]
+
+type t = flex
+
+open Commons.Sequtils
 
 let rec lexemify : t -> lexeme Seq.t = function
-  | `O fs -> bracket `Os (lexemify_object fs) `Oe
-  | `A ts -> bracket `As (lexemify_array ts) `Ae
+  | `Oseq fs -> bracket `Os (lexemify_object fs) `Oe
+  | `O fs -> lexemify (`Oseq (List.to_seq fs))
+  | `Omap fs -> lexemify (`Oseq (FieldMap.to_seq fs))
+  | `Aseq ts -> bracket `As (lexemify_array ts) `Ae
+  | `A ts -> lexemify (`Aseq (List.to_seq ts))
+  | `Aarray ts -> lexemify (`Aseq (Array.to_seq ts))
   | (`Bool _ | `Float _ | `String _ | `Null) as t -> Seq.return t
 
 and lexemify_object : (string * t) Seq.t -> lexeme Seq.t =
@@ -60,27 +75,29 @@ let rec parse : lexeme Seq.t -> (t * lexeme Seq.t, string) result =
 
 and parse_obj
     :  (string * t) list -> lexeme Seq.t
-    -> ((string * t) Seq.t * lexeme Seq.t, string) result
+    -> ((string * t) list * lexeme Seq.t, string) result
   =
  fun acc s ->
   match s () with
   | Seq.Nil -> Error "Unexpected end of lexeme"
-  | Seq.Cons (`Oe, s) -> Ok (List.to_seq (List.rev acc), s)
+  | Seq.Cons (`Oe, s) -> Ok (List.rev acc, s)
   | Seq.Cons (`Name name, s) ->
     let* t, s = parse s in
     parse_obj ((name, t) :: acc) s
   | Seq.Cons ((`Bool _ | `Os | `As | `Null | `Ae | `Float _ | `String _), _) ->
     Error "Unexpected lexeme, expected field name"
 
-and parse_array : t list -> lexeme Seq.t -> (t Seq.t * lexeme Seq.t, string) result =
+and parse_array : t list -> lexeme Seq.t -> (t list * lexeme Seq.t, string) result =
  fun acc s ->
   match s () with
   | Seq.Nil -> Error "Unexpected end of lexeme"
-  | Seq.Cons (`Ae, s) -> Ok (List.to_seq (List.rev acc), s)
+  | Seq.Cons (`Ae, s) -> Ok (List.rev acc, s)
   | Seq.Cons (lxm, s) ->
     let* t, s = parse (Seq.cons lxm s) in
     parse_array (t :: acc) s
 ;;
+
+let parse_partial s = parse s
 
 let parse s =
   let* t, s = parse s in
@@ -91,3 +108,17 @@ let parse s =
   in
   Ok t
 ;;
+
+(* TODO: optimise these conversions *)
+let rec compatify : t -> compat = function
+  | `O fs -> `O (List.map (fun (n, t) -> n, compatify t) fs)
+  | `Oseq fs -> `O (List.of_seq (Seq.map (fun (n, t) -> n, compatify t) fs))
+  | `Omap fs ->
+    `O (List.of_seq (Seq.map (fun (n, t) -> n, compatify t) (FieldMap.to_seq fs)))
+  | `A fs -> `A (List.map compatify fs)
+  | `Aarray fs -> `A (List.map compatify (Array.to_list fs))
+  | `Aseq fs -> `A (List.of_seq (Seq.map compatify fs))
+  | (`Bool _ | `Float _ | `String _ | `Null) as t -> t
+;;
+
+let flexify t = (t : compat :> flex)

@@ -1,59 +1,29 @@
-open Suspendable_buffers.Reading
+let ( let* ) = Buffy.R.( let* )
 
-let rec readk : type a. source -> a Descr.t -> a readed =
+let rec readk : type a. Buffy.R.source -> a Descr.t -> a Buffy.R.readed =
  fun source encoding ->
   assert (source.offset >= 0);
   assert (source.offset < String.length source.blob);
   match encoding with
-  | Unit -> Readed { source; value = () }
+  | Unit -> Buffy.R.Readed { source; value = () }
   | Bool ->
-    let* v, source = read1 source Size.bool Commons.Sizedints.Uint8.get in
+    let* v, source = Buffy.R.readf source Size.bool Commons.Sizedints.Uint8.get in
     if v = Magic.bool_true
-    then Readed { source; value = true }
+    then Buffy.R.Readed { source; value = true }
     else if v = Magic.bool_false
-    then Readed { source; value = false }
+    then Buffy.R.Readed { source; value = false }
     else Failed { source; error = "Unknown value for Bool" }
   | Numeral { numeral; endianness } -> read_numeral source numeral endianness
   | String n ->
-    (* TODO: support chunk reading of string so that it's possible to deserialise
-     a big blob from several small blobs *)
-    (* TODO: support for 32-bit machines: don't use `Int63.to_int`, maybe write1
+    (* TODO: support for 32-bit machines: don't use `Int63.to_int`, maybe writef
        should take an int63? *)
     let size = Optint.Int63.to_int (n :> Optint.Int63.t) in
-    let dest = Bytes.make size '\000' in
-    let rec chunkreader dest_offset blob offset maxreadsize =
-      let needsreading = size - dest_offset in
-      if needsreading = 0
-      then Finish (Bytes.unsafe_to_string dest, 0)
-      else if needsreading <= maxreadsize
-      then (
-        Bytes.blit_string blob offset dest dest_offset needsreading;
-        Finish (Bytes.unsafe_to_string dest, needsreading))
-      else (
-        Bytes.blit_string blob offset dest dest_offset maxreadsize;
-        K (maxreadsize, chunkreader maxreadsize))
-    in
-    readchunked source (chunkreader 0)
+    Buffy.R.read_large_string source size
   | Bytes n ->
-    (* TODO: support chunk reading of bytes so that it's possible to deserialise
-     a big blob from several small blobs *)
-    (* TODO: support for 32-bit machines: don't use `Int63.to_int`, maybe write1
+    (* TODO: support for 32-bit machines: don't use `Int63.to_int`, maybe writef
        should take an int63? *)
     let size = Optint.Int63.to_int (n :> Optint.Int63.t) in
-    let dest = Bytes.make size '\000' in
-    let rec chunkreader dest_offset blob offset maxreadsize =
-      let needsreading = size - dest_offset in
-      if needsreading = 0
-      then Finish (dest, 0)
-      else if needsreading <= maxreadsize
-      then (
-        Bytes.blit_string blob offset dest dest_offset needsreading;
-        Finish (dest, needsreading))
-      else (
-        Bytes.blit_string blob offset dest dest_offset maxreadsize;
-        K (maxreadsize, chunkreader maxreadsize))
-    in
-    readchunked source (chunkreader 0)
+    Buffy.R.read_large_bytes source size
   | LSeq { length; elementencoding } ->
     let intlength = Optint.Int63.to_int (length :> Optint.Int63.t) in
     let rec fold source reversed_list remaining_length =
@@ -61,29 +31,33 @@ let rec readk : type a. source -> a Descr.t -> a readed =
       then (
         let seq = List.to_seq (List.rev reversed_list) in
         let value = { Descr.seq; length = lazy length } in
-        Readed { source; value })
+        Buffy.R.Readed { source; value })
       else
         let* v, source = readk source elementencoding in
         fold source (v :: reversed_list) (remaining_length - 1)
     in
     fold source [] intlength
   | USeq { elementencoding } ->
-    (match source.stop_at_readed with
-    | [] ->
+    (match Buffy.R.peak_stop source with
+    | None ->
       (* TODO: support unsized USeq once we support lazy useq *)
       Failed { source; error = "unlengthed-seq without a size" }
-    | expected_stop :: _ ->
-      let rec fold source reversed_list =
+    | Some expected_stop ->
+      let rec fold (source : Buffy.R.source) reversed_list =
+        assert (source.offset + source.readed <= expected_stop);
+        (* reading fails otherwise *)
         if expected_stop = source.readed
-        then Readed { source; value = List.to_seq (List.rev reversed_list) }
+        then Buffy.R.Readed { source; value = List.to_seq (List.rev reversed_list) }
         else
+          (* TODO: in case of suspend, we have to recompute the expected_stop,
+             otherwise the expected stop is wrong, this is a bug *)
           let* v, source = readk source elementencoding in
           fold source (v :: reversed_list)
       in
       fold source [])
   | Array { length; elementencoding } ->
     if Optint.Int63.equal (length :> Optint.Int63.t) Optint.Int63.zero
-    then Readed { source; value = [||] }
+    then Buffy.R.Readed { source; value = [||] }
     else (
       let length =
         (* TODO: check for overflow *)
@@ -93,7 +67,7 @@ let rec readk : type a. source -> a Descr.t -> a readed =
       let array = Array.make length v in
       let rec fold source index =
         if index >= length
-        then Readed { source; value = array }
+        then Buffy.R.Readed { source; value = array }
         else
           let* v, source = readk source elementencoding in
           Array.set array index v;
@@ -101,13 +75,13 @@ let rec readk : type a. source -> a Descr.t -> a readed =
       in
       fold source 1)
   | Option t ->
-    let* tag, source = read1 source Size.uint8 Commons.Sizedints.Uint8.get in
+    let* tag, source = Buffy.R.readf source Size.uint8 Commons.Sizedints.Uint8.get in
     if tag = Magic.option_none_tag
-    then Readed { source; value = None }
+    then Buffy.R.Readed { source; value = None }
     else if tag = Magic.option_some_tag
     then
       let* v, source = readk source t in
-      Readed { source; value = Some v }
+      Buffy.R.Readed { source; value = Some v }
     else Failed { source; error = "Unknown tag for Option" }
   | Headered { mkheader = _; headerencoding; mkencoding; equal = _; maximum_size = _ } ->
     let* header, source = readk source headerencoding in
@@ -122,25 +96,27 @@ let rec readk : type a. source -> a Descr.t -> a readed =
       let* chunk, source = readk source chunkencoding in
       match reducer acc chunk with
       | K acc -> reduce acc source
-      | Finish value -> Readed { source; value }
+      | Finish value -> Buffy.R.Readed { source; value }
     in
     reduce readinit source
   | Conv { serialisation = _; deserialisation; encoding } ->
     let* v, source = readk source encoding in
     (match deserialisation v with
-    | Ok value -> Readed { source; value }
+    | Ok value -> Buffy.R.Readed { source; value }
     | Error error -> Failed { source; error })
   | Size_headered { size; encoding } ->
     let* readed_size, source = read_numeral source size Encoding.default_endianness in
     let readed_size = Query.int_of_numeral size readed_size in
     assert (readed_size >= 0);
-    (match push_stop source readed_size with
+    (match Buffy.R.push_stop source readed_size with
     | Ok source ->
       let* v, source = readk source encoding in
-      let expected_stop, source = pop_stop source in
-      if source.readed = expected_stop
-      then Readed { source; value = v }
-      else Failed { source; error = "read fewer bytes than expected-length" }
+      (match Buffy.R.pop_stop source with
+      | Ok (expected_stop, source) ->
+        if source.readed = expected_stop
+        then Buffy.R.Readed { source; value = v }
+        else Failed { source; error = "read fewer bytes than expected-length" }
+      | Error error -> Failed { source; error })
     | Error msg ->
       (* TODO: context of error message*)
       Failed { source; error = msg })
@@ -149,36 +125,41 @@ let rec readk : type a. source -> a Descr.t -> a readed =
       (* TODO: handle overflow *)
       min source.maximum_length (Optint.Int63.to_int (at_most :> Optint.Int63.t))
     in
-    let source = set_maximum_length source maximum_length in
+    let source = Buffy.R.set_maximum_length source maximum_length in
     readk source encoding
-  | [] -> Readed { source; value = [] }
+  | [] -> Buffy.R.Readed { source; value = [] }
   | t :: ts ->
     let* v, source = readk source t in
     let* vs, source = readk source ts in
-    Readed { source; value = Descr.Hlist.( :: ) (v, vs) }
+    Buffy.R.Readed { source; value = Descr.Hlist.( :: ) (v, vs) }
 
-and read_numeral : type n. source -> n Descr.numeral -> Descr.endianness -> n readed =
+and read_numeral
+    : type n. Buffy.R.source -> n Descr.numeral -> Descr.endianness -> n Buffy.R.readed
+  =
  fun source numeral endianness ->
   match numeral, endianness with
-  | Int64, Big_endian -> read1 source Size.int64 String.get_int64_be
-  | Int64, Little_endian -> read1 source Size.int64 String.get_int64_le
-  | Int32, Big_endian -> read1 source Size.int32 String.get_int32_be
-  | Int32, Little_endian -> read1 source Size.int32 String.get_int32_le
-  | UInt62, Big_endian -> read1 source Size.uint62 Commons.Sizedints.Uint62.get_be
-  | UInt62, Little_endian -> read1 source Size.uint62 Commons.Sizedints.Uint62.get_le
-  | UInt30, Big_endian -> read1 source Size.uint30 Commons.Sizedints.Uint30.get_be
-  | UInt30, Little_endian -> read1 source Size.uint30 Commons.Sizedints.Uint30.get_le
-  | UInt16, Big_endian -> read1 source Size.uint16 Commons.Sizedints.Uint16.get_be
-  | UInt16, Little_endian -> read1 source Size.uint16 Commons.Sizedints.Uint16.get_le
-  | UInt8, _ -> read1 source Size.uint8 Commons.Sizedints.Uint8.get
+  | Int64, Big_endian -> Buffy.R.readf source Size.int64 String.get_int64_be
+  | Int64, Little_endian -> Buffy.R.readf source Size.int64 String.get_int64_le
+  | Int32, Big_endian -> Buffy.R.readf source Size.int32 String.get_int32_be
+  | Int32, Little_endian -> Buffy.R.readf source Size.int32 String.get_int32_le
+  | UInt62, Big_endian -> Buffy.R.readf source Size.uint62 Commons.Sizedints.Uint62.get_be
+  | UInt62, Little_endian ->
+    Buffy.R.readf source Size.uint62 Commons.Sizedints.Uint62.get_le
+  | UInt30, Big_endian -> Buffy.R.readf source Size.uint30 Commons.Sizedints.Uint30.get_be
+  | UInt30, Little_endian ->
+    Buffy.R.readf source Size.uint30 Commons.Sizedints.Uint30.get_le
+  | UInt16, Big_endian -> Buffy.R.readf source Size.uint16 Commons.Sizedints.Uint16.get_be
+  | UInt16, Little_endian ->
+    Buffy.R.readf source Size.uint16 Commons.Sizedints.Uint16.get_le
+  | UInt8, _ -> Buffy.R.readf source Size.uint8 Commons.Sizedints.Uint8.get
 ;;
 
-let readk : type a. source -> a Descr.t -> a readed =
+let readk : type a. Buffy.R.source -> a Descr.t -> a Buffy.R.readed =
  fun source encoding ->
   if source.offset < 0
-  then Failed { source; error = "offset is negative" }
+  then Buffy.R.Failed { source; error = "offset is negative" }
   else if source.offset + source.length > String.length source.blob
-  then Failed { source; error = "length exceeds buffer size" }
+  then Buffy.R.Failed { source; error = "length exceeds buffer size" }
   else readk source encoding
 ;;
 
@@ -186,9 +167,9 @@ let read_strings : type a. (string * int * int) Seq.t -> a Descr.t -> (a, string
  fun sources e ->
   let rec loop (blob, offset, length) sources k =
     match k blob offset length with
-    | Readed { source = _; value } -> Ok value
-    | Failed { source = _; error } -> Error error
-    | Suspended { source = _; cont } ->
+    | Buffy.R.Readed { source = _; value } -> Ok value
+    | Buffy.R.Failed { source = _; error } -> Error error
+    | Buffy.R.Suspended { source = _; cont } ->
       (match sources () with
       | Seq.Nil -> Error "not enough inputs"
       | Seq.Cons (source, sources) -> loop source sources cont)
@@ -197,7 +178,7 @@ let read_strings : type a. (string * int * int) Seq.t -> a Descr.t -> (a, string
   | Seq.Nil -> Error "no inputs"
   | Seq.Cons (source, sources) ->
     loop source sources (fun blob offset length ->
-        let source = mk_source blob offset length in
+        let source = Buffy.R.mk_source blob offset length in
         readk source e)
 ;;
 
@@ -281,11 +262,11 @@ let read
     : type a. src:string -> offset:int -> length:int -> a Descr.t -> (a, string) result
   =
  fun ~src ~offset ~length encoding ->
-  let source = mk_source ~maximum_length:length src offset length in
+  let source = Buffy.R.mk_source ~maximum_length:length src offset length in
   match readk source encoding with
-  | Readed { source = _; value } -> Ok value
-  | Failed { source = _; error } -> Error error
-  | Suspended _ -> Error "one-shot reading does not support suspension"
+  | Buffy.R.Readed { source = _; value } -> Ok value
+  | Buffy.R.Failed { source = _; error } -> Error error
+  | Buffy.R.Suspended _ -> Error "one-shot reading does not support suspension"
 ;;
 
 let%expect_test _ =

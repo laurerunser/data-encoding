@@ -94,9 +94,9 @@ let to_test : type t. t Json_data_encoding.Encoding.t -> QCheck2.Test.t =
   let generator = generator_of_encoding encoding in
   let equal = equal_of_encoding encoding in
   QCheck2.Test.make generator (fun v ->
-      let* j = Json_data_encoding.Backend.construct encoding v in
+      let* j = Json_data_encoding.Construct.construct encoding v in
       let lxms = Json_data_encoding.JSON.lexemify j in
       let* jj = Json_data_encoding.JSON.parse lxms in
-      let* vv = Json_data_encoding.Backend.destruct encoding jj in
+      let* vv = Json_data_encoding.Destruct.destruct encoding jj in
       equal v vv)
 ;;
