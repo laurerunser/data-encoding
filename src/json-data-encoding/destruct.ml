@@ -91,6 +91,7 @@ let rec destruct : type a. a Encoding.t -> JSON.t -> (a, string) result =
            if Seq.is_empty fields
            then Ok (tag, payload)
            else Error "Expected a single field, got more")
+      | `String tag -> Ok (tag, `O [])
       | other ->
         Error (Format.asprintf "Expected {\"<tag>\":<payload>}, got %a" PP.shape other)
     in
@@ -287,15 +288,30 @@ let rec destruct_lexemes
     let* w = deserialisation w in
     Ok (w, lxms)
   | Union { cases = _; serialisation = _; deserialisation } ->
-    let* lxms = consume_1 lxms `Os in
-    let* tag, lxms =
+    let* q, lxms =
       consume_q lxms (function
-        | `Name tag -> Some tag
+        | `Os -> Some (Either.Left ())
+        | `String tag -> Some (Either.Right tag)
         | _ -> None)
     in
-    let* (AnyC { tag = _; encoding; inject }) = deserialisation tag in
-    let* p, lxms = destruct_lexemes encoding lxms in
-    Ok (inject p, lxms)
+    (match q with
+     | Either.Left () ->
+       let* tag, lxms =
+         consume_q lxms (function
+           | `Name tag -> Some tag
+           | _ -> None)
+       in
+       let* (AnyC { tag = _; encoding; inject }) = deserialisation tag in
+       (* TODO: a sanity check that encoding ≠ Unit *)
+       let* p, lxms = destruct_lexemes encoding lxms in
+       let* lxms = consume_1 lxms `Oe in
+       Ok (inject p, lxms)
+     | Either.Right tag ->
+       let* (AnyC { tag = _; encoding; inject }) = deserialisation tag in
+       (match encoding with
+        | Unit -> Ok (inject (), lxms)
+        | Bool | Int64 | String | Seq _ | Tuple _ | Object _ | Conv _ | Union _ ->
+          Error "Found payload-less case with a payload-full case encoding"))
 
 and destruct_lexemes_seq
   : type a.
