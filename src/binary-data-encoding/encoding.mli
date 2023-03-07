@@ -206,8 +206,8 @@ module Union : sig
     -> ('payload -> 'union)
     -> ('tag, 'payload, 'union) case_descr
 
-  (** [maximum_size] is the maximum size of the payload; it doesn't inlcude the
-      tag *)
+  val case_unit : 'tag -> (unit -> 'union) -> ('tag, unit, 'union) case_descr
+
   val union
     :  'tag t
     -> ('tag, 'a) anycase list

@@ -88,6 +88,7 @@ module Record : sig
 end
 
 module Union : sig
+  val case_unit : string -> (unit -> 'union) -> (unit, 'union) case_descr
   val case : string -> 'payload t -> ('payload -> 'union) -> ('payload, 'union) case_descr
 
   val union

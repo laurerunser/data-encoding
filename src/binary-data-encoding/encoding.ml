@@ -376,6 +376,7 @@ let ellastic_uint30 : Sizedints.Uint30.t t =
 
 module Union = struct
   let case tag encoding inject = { tag; encoding; inject }
+  let case_unit tag inject = { tag; encoding = Unit; inject }
 
   let union tag cases serialisation deserialisation =
     Union { tag; serialisation; deserialisation; cases }

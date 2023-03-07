@@ -159,6 +159,7 @@ let rec union_cases_has_duplicate_tag seen : _ anycase list -> bool = function
 
 module Union = struct
   let case tag encoding inject = { tag; encoding; inject }
+  let case_unit tag inject = { tag; encoding = Unit; inject }
 
   let union cases serialisation deserialisation =
     if union_cases_has_duplicate_tag FieldSet.empty cases
