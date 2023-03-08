@@ -12,9 +12,8 @@ let rec map_e f seq =
 let rec construct : type a. a Encoding.t -> a -> (JSON.t, string) result =
  fun encoding v ->
   match encoding with
-  | Unit ->
-    assert (v = ());
-    Ok (`O [])
+  | Unit -> Ok (`O [])
+  | Null -> Ok `Null
   | Bool -> Ok (`Bool v)
   | Int64 -> Ok (`String (Int64.to_string v))
   | String -> Ok (`String v) (* TODO check utf8 *)
@@ -130,13 +129,13 @@ let%expect_test _ =
 ;;
 
 let empty_obj : JSON.lexeme Seq.node = Seq.Cons (`Os, fun () -> Seq.Cons (`Oe, Seq.empty))
+let null : JSON.lexeme Seq.node = Seq.Cons (`Null, Seq.empty)
 
 let rec construct_lexemes : type a. a Encoding.t -> a -> JSON.lexeme Seq.t =
  fun encoding v () ->
   match encoding with
-  | Unit ->
-    assert (v = ());
-    empty_obj
+  | Unit -> empty_obj
+  | Null -> null
   | Bool -> Seq.Cons (`Bool v, Seq.empty)
   | Int64 -> Seq.Cons (`String (Int64.to_string v), Seq.empty)
   | String -> Seq.Cons (`String v (* TODO check utf8 *), Seq.empty)
@@ -367,10 +366,13 @@ let rec write
  fun depth first destination encoding v ->
   match encoding with
   | Unit ->
-    assert (v = ());
     if depth > 0 && not first
     then Buffy.W.write_small_string destination ",{}"
     else Buffy.W.write_small_string destination "{}"
+  | Null ->
+    if depth > 0 && not first
+    then Buffy.W.write_small_string destination ",null"
+    else Buffy.W.write_small_string destination "null"
   | Bool ->
     (match v with
      | true ->

@@ -17,6 +17,7 @@ type any_encoding = AnyE : _ Json_data_encoding.Encoding.t -> any_encoding
 
 let testables =
   [ AnyE Json_data_encoding.Encoding.unit
+  ; AnyE Json_data_encoding.Encoding.null
   ; AnyE Json_data_encoding.Encoding.bool
   ; AnyE Json_data_encoding.Encoding.int64
   ; AnyE Json_data_encoding.Encoding.string

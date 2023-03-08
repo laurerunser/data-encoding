@@ -4,6 +4,7 @@ module Hlist = Commons.Hlist
 
 type _ t =
   | Unit : unit t
+  | Null : unit t
   | Bool : bool t
   | Int64 : int64 t
   | String : string t
@@ -56,6 +57,7 @@ and 'a anycase = AnyC : (_, 'a) case_descr -> 'a anycase
 [@@@warning "+30"]
 
 val unit : unit t
+val null : unit t
 val bool : bool t
 val int64 : int64 t
 val string : string t

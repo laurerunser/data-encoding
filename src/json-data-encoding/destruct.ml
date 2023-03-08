@@ -56,6 +56,10 @@ let rec destruct : type a. a Encoding.t -> JSON.t -> (a, string) result =
      | `Omap m when JSON.FieldMap.is_empty m -> Ok ()
      | `Oseq seq when Seq.is_empty seq -> Ok ()
      | other -> Error (Format.asprintf "Expected {}, got %a" PP.shape other))
+  | Null ->
+    (match json with
+     | `Null -> Ok ()
+     | other -> Error (Format.asprintf "Expected null, got %a" PP.shape other))
   | Bool ->
     (match json with
      | `Bool b -> Ok b
@@ -262,6 +266,9 @@ let rec destruct_lexemes
     let* lxms = consume_1 lxms `Os in
     let* lxms = consume_1 lxms `Oe in
     Ok ((), lxms)
+  | Null ->
+    let* lxms = consume_1 lxms `Null in
+    Ok ((), lxms)
   | Bool ->
     consume_q lxms (function
       | `Bool b -> Some b
@@ -310,7 +317,7 @@ let rec destruct_lexemes
        let* (AnyC { tag = _; encoding; inject }) = deserialisation tag in
        (match encoding with
         | Unit -> Ok (inject (), lxms)
-        | Bool | Int64 | String | Seq _ | Tuple _ | Object _ | Conv _ | Union _ ->
+        | Null | Bool | Int64 | String | Seq _ | Tuple _ | Object _ | Conv _ | Union _ ->
           Error "Found payload-less case with a payload-full case encoding"))
 
 and destruct_lexemes_seq
