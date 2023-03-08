@@ -414,34 +414,25 @@ let rec pp_of : type t. t Descr.t -> Format.formatter -> t -> unit =
 ;;
 
 module Sizability = struct
-  type zero = Zero
-  type plus = Plus
+  type static =
+    | Zero
+    | Plus
 
-  type _ static =
-    | Zero : zero static
-    | Plus : plus static
+  type sizability =
+    | Static of static
+    | Dynamic
 
-  type dynamic = Dynamic
-
-  type _ sizability =
-    | Static : 'a static -> 'a static sizability
-    | Dynamic : dynamic sizability
-
-  type sizable = S : _ sizability -> sizable
-
-  let rec sizability : type a. a Descr.t -> sizable = function
-    | Unit -> S (Static Zero)
-    | Bool -> S (Static Plus)
+  let rec sizability : type a. a Descr.t -> sizability = function
+    | Unit -> Static Zero
+    | Bool -> Static Plus
     | Numeral
         { numeral = Int64 | Int32 | UInt62 | UInt30 | UInt16 | UInt8; endianness = _ } ->
-      S (Static Plus)
-    | String n ->
-      if n = Commons.Sizedints.Uint62.zero then S (Static Zero) else S (Static Plus)
-    | Bytes n ->
-      if n = Commons.Sizedints.Uint62.zero then S (Static Zero) else S (Static Plus)
+      Static Plus
+    | String n -> if n = Commons.Sizedints.Uint62.zero then Static Zero else Static Plus
+    | Bytes n -> if n = Commons.Sizedints.Uint62.zero then Static Zero else Static Plus
     | Array { length; elementencoding } ->
       if length = Commons.Sizedints.Uint62.zero
-      then S (Static Zero)
+      then Static Zero
       else
         (* the sizability of the whole array of strictly more than one element
            is the same as the sizability of the elements:
@@ -451,23 +442,23 @@ module Sizability = struct
            - [Dynamic]: if the elements take a statically-unknown amount of
              space then so does the array *)
         sizability elementencoding
-    | Option _ -> S Dynamic
+    | Option _ -> Dynamic
     | LSeq { length; elementencoding } ->
       (* Same as Array, just presented differently to the caller *)
       if length = Commons.Sizedints.Uint62.zero
-      then S (Static Zero)
+      then Static Zero
       else sizability elementencoding
     | USeq { elementencoding } ->
       (match sizability elementencoding with
-       | S (Static Zero) ->
+       | Static Zero ->
          raise (Failure "Non-lengthed sequences cannot have zero-size elements")
-       | S (Static Plus) | S Dynamic -> S Dynamic)
+       | Static Plus | Dynamic -> Dynamic)
     | Headered
         { mkheader = _; headerencoding; mkencoding = _; equal = _; maximum_size = _ } ->
       (* TODO? should we support zero-sized headers? I don't think we should *)
       (match sizability headerencoding with
-       | S (Static Zero) -> raise (Failure "Zero-size headers not supported")
-       | S (Static Plus) | S Dynamic -> S Dynamic)
+       | Static Zero -> raise (Failure "Zero-size headers not supported")
+       | Static Plus | Dynamic -> Dynamic)
     | Fold
         { chunkencoding
         ; chunkify = _
@@ -477,26 +468,25 @@ module Sizability = struct
         ; maximum_size = _
         } ->
       (match sizability chunkencoding with
-       | S (Static Zero) -> raise (Failure "Zero-size fold chunks not supported")
-       | S (Static Plus) | S Dynamic -> S Dynamic)
+       | Static Zero -> raise (Failure "Zero-size fold chunks not supported")
+       | Static Plus | Dynamic -> Dynamic)
     | Conv { serialisation = _; deserialisation = _; encoding } -> sizability encoding
     | Size_headered
         { size = Int64 | Int32 | UInt62 | UInt30 | UInt16 | UInt8; encoding = _ } ->
-      S Dynamic
+      Dynamic
     | Size_limit { at_most = _; encoding } -> sizability encoding
     | Union { tag; serialisation = _; deserialisation = _; cases = _ } ->
       (match sizability tag with
-       | S (Static Zero) -> raise (Failure "Zero-size union tag not supported")
-       | S (Static Plus) | S Dynamic -> S Dynamic)
-    | [] -> S (Static Zero)
-    | [ head ] -> sizability head
+       | Static Zero -> raise (Failure "Zero-size union tag not supported")
+       | Static Plus | Dynamic -> Dynamic)
+    | [] -> Static Zero
     | head :: tail ->
       (match sizability head with
-       | S (Static Zero) -> sizability tail
-       | S (Static Plus) ->
+       | Static Zero -> sizability tail
+       | Static Plus ->
          (match sizability tail with
-          | S (Static (Zero | Plus)) -> S (Static Plus)
-          | S Dynamic -> S Dynamic)
-       | S Dynamic -> S Dynamic)
+          | Static (Zero | Plus) -> Static Plus
+          | Dynamic -> Dynamic)
+       | Dynamic -> Dynamic)
   ;;
 end

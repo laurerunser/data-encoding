@@ -259,9 +259,9 @@ let seq size_spec encoding =
 
 let seq_with_size sizeencoding elementencoding =
   match Query.Sizability.sizability elementencoding with
-  | S (Static Zero) ->
+  | Static Zero ->
     raise (Invalid_argument "zero-size elements in sized (rather than lengthed) seq")
-  | S (Static Plus) | S Dynamic ->
+  | Static Plus | Dynamic ->
     with_size_header ~sizeencoding ~encoding:(USeq { elementencoding })
 ;;
 

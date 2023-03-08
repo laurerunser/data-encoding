@@ -9,19 +9,13 @@ val equal_of : 'a Descr.t -> 'a -> 'a -> bool
 val pp_of : 'a Descr.t -> Format.formatter -> 'a -> unit
 
 module Sizability : sig
-  type zero = Zero
-  type plus = Plus
-  type dynamic = Dynamic
+  type static =
+    | Zero
+    | Plus
 
-  type _ static =
-    | Zero : zero static
-    | Plus : plus static
+  type sizability =
+    | Static of static
+    | Dynamic
 
-  type _ sizability =
-    | Static : 'a static -> 'a static sizability
-    | Dynamic : dynamic sizability
-
-  type sizable = S : _ sizability -> sizable
-
-  val sizability : _ Descr.t -> sizable
+  val sizability : _ Descr.t -> sizability
 end

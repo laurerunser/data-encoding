@@ -53,10 +53,10 @@ let sequences : any_encoding Seq.t -> any_encoding Seq.t =
     in
     let l =
       match Binary_data_encoding.Query.Sizability.sizability e with
-      | S (Static Zero) ->
+      | Static Zero ->
         (* We cannot apply [seq_with_size] to zero-length elements *)
         l
-      | S (Static Plus | Dynamic) ->
+      | Static Plus | Dynamic ->
         AnyE (Format.asprintf "sequ[ui16](%s)" s, seq_with_size `UInt16 e) :: l
     in
     List.to_seq l)
