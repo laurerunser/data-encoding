@@ -2,6 +2,9 @@
  (name data_encoding)
  (public_name data-encoding)
  (js_of_ocaml)
+ (inline_tests)
+ (preprocess
+  (pps ppx_expect))
  (libraries
   data-encoding.commons
   optint

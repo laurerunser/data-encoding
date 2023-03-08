@@ -16,6 +16,12 @@ type _ t =
       ; encoding : 'b t
       }
       -> 'a t
+  | Union :
+      { cases : 'a anycase list
+      ; serialisation : 'a -> 'a anycaseandpayload
+      ; deserialisation : string -> ('a anycase, string) result
+      }
+      -> 'a t
 
 and _ tuple =
   | [] : unit Hlist.t tuple
@@ -36,6 +42,16 @@ and _ field =
       ; name : string
       }
       -> 'a option field
+
+and ('payload, 'union) case_descr =
+  { tag : string
+  ; encoding : 'payload t
+  ; inject : 'payload -> 'union
+  }
+
+and ('p, 'a) case_and_payload = ('p, 'a) case_descr * 'p
+and 'a anycaseandpayload = AnyP : (_, 'a) case_and_payload -> 'a anycaseandpayload
+and 'a anycase = AnyC : (_, 'a) case_descr -> 'a anycase
 
 [@@@warning "+30"]
 
@@ -69,4 +85,17 @@ module Record : sig
         -> ('a -> 'mk, 'a * 'prod, 'r) fields
 
   val record : 'mk -> ('mk, 'prod, 'r) fields -> 'r t
+end
+
+module Union : sig
+  val case_unit : string -> (unit -> 'union) -> (unit, 'union) case_descr
+  val case : string -> 'payload t -> ('payload -> 'union) -> ('payload, 'union) case_descr
+
+  val union
+    :  'a anycase list
+    -> ('a -> 'a anycaseandpayload)
+    -> (string -> ('a anycase, string) result)
+    -> 'a t
+
+  val either : 'a t -> 'b t -> ('a, 'b) Either.t t
 end

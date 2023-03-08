@@ -28,6 +28,9 @@ let testables =
   ; AnyE
       Json_data_encoding.Encoding.(
         conv ~serialisation:Int64.succ ~deserialisation:(fun v -> Ok (Int64.pred v)) int64)
+  ; AnyE Json_data_encoding.Encoding.(Union.either bool string)
+  ; AnyE Json_data_encoding.Encoding.(Union.either unit unit)
+  ; AnyE Json_data_encoding.Encoding.(array (Union.either int64 (seq bool)))
   ]
 ;;
 

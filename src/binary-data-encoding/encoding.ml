@@ -90,8 +90,29 @@ type 'a t = 'a Descr.t =
       ; encoding : 'a t
       }
       -> 'a t
+  | Union :
+      { tag : 'tag t
+      ; serialisation : 'a -> ('tag, 'a) anycaseandpayload
+      ; deserialisation : 'tag -> (('tag, 'a) anycase, string) result
+      ; cases : ('tag, 'a) anycase list
+      }
+      -> 'a t
   | [] : unit Hlist.t t
   | ( :: ) : 'a t * 'b Hlist.t t -> ('a * 'b) Hlist.t t
+
+and ('tag, 'payload, 'union) case_descr = ('tag, 'payload, 'union) Descr.case_descr =
+  { tag : 'tag
+  ; encoding : 'payload t
+  ; inject : 'payload -> 'union
+  }
+
+and ('tag, 'p, 'a) case_and_payload = ('tag, 'p, 'a) case_descr * 'p
+
+and ('tag, 'a) anycaseandpayload = ('tag, 'a) Descr.anycaseandpayload =
+  | AnyP : ('tag, _, 'a) case_and_payload -> ('tag, 'a) anycaseandpayload
+
+and ('tag, 'a) anycase = ('tag, 'a) Descr.anycase =
+  | AnyC : ('tag, _, 'a) case_descr -> ('tag, 'a) anycase
 
 let unit = Unit
 let bool = Bool
@@ -352,3 +373,28 @@ let ellastic_uint30 : Sizedints.Uint30.t t =
     ~equal:(fun a b -> Int.equal (a :> int) (b :> int))
     ~maximum_size:(Optint.Int63.of_int 5)
 ;;
+
+module Union = struct
+  let case tag encoding inject = { tag; encoding; inject }
+  let case_unit tag inject = { tag; encoding = Unit; inject }
+
+  let union tag cases serialisation deserialisation =
+    Union { tag; serialisation; deserialisation; cases }
+  ;;
+
+  let either l r =
+    let cl = case true l Either.left in
+    let anycl = AnyC cl in
+    let cr = case false r Either.right in
+    let anycr = AnyC cr in
+    union
+      bool
+      [ anycl; anycr ]
+      (function
+       | Either.Left l -> AnyP (cl, l)
+       | Either.Right r -> AnyP (cr, r))
+      (function
+       | true -> Ok anycl
+       | false -> Ok anycr)
+  ;;
+end

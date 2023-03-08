@@ -24,8 +24,17 @@ let rec construct : type a. a Encoding.t -> a -> (JSON.t, string) result =
   | Tuple t -> construct_tuple t v
   | Object o -> construct_obj o v
   | Conv { serialisation; deserialisation = _; encoding } ->
+    (* TODO exception handling?? *)
     construct encoding (serialisation v)
-(* TODO exception handling?? *)
+  | Union { cases = _; serialisation; deserialisation = _ } ->
+    let (AnyP ({ tag; encoding; inject = _ }, p)) = serialisation v in
+    (match encoding with
+     | Unit ->
+       (* special case: cases without a payload are represented as strings *)
+       Ok (`String tag)
+     | _ ->
+       let* jsonp = construct encoding p in
+       Ok (`O [ tag, jsonp ]))
 
 and construct_tuple : type a. a Encoding.tuple -> a -> (JSON.t, string) result =
  fun encoding v ->
@@ -135,8 +144,20 @@ let rec construct_lexemes : type a. a Encoding.t -> a -> JSON.lexeme Seq.t =
   | Tuple t -> Commons.Sequtils.bracket `As (construct_tuple_lexemes t v) `Ae ()
   | Object o -> Commons.Sequtils.bracket `Os (construct_obj_lexemes o v) `Oe ()
   | Conv { serialisation; deserialisation = _; encoding } ->
+    (* TODO exception handling?? *)
     construct_lexemes encoding (serialisation v) ()
-(* TODO exception handling?? *)
+  | Union { cases = _; serialisation; deserialisation = _ } ->
+    let (AnyP ({ tag; encoding; inject = _ }, p)) = serialisation v in
+    (match encoding with
+     | Unit ->
+       (* special case: cases without a payload are represented as strings *)
+       Seq.Cons (`String tag, Seq.empty)
+     | _ ->
+       Commons.Sequtils.bracket
+         `Os
+         (Seq.cons (`Name tag) (construct_lexemes encoding p))
+         `Oe
+         ())
 
 and construct_tuple_lexemes : type a. a Encoding.tuple -> a -> JSON.lexeme Seq.t =
  fun encoding v () ->
@@ -410,6 +431,28 @@ let rec write
   | Conv { serialisation; deserialisation = _; encoding } ->
     (* TODO: exn management in serialisation function *)
     write depth first destination encoding (serialisation v)
+  | Union { cases = _; serialisation; deserialisation = _ } ->
+    let (AnyP ({ tag; encoding; inject = _ }, p)) = serialisation v in
+    (match encoding with
+     | Unit ->
+       (* special case: cases without a payload are represented as strings *)
+       let* destination =
+         if depth > 0 && not first
+         then Buffy.W.write_small_string destination ",\""
+         else Buffy.W.write_char destination '"'
+       in
+       let* destination = Buffy.W.write_large_string destination tag in
+       Buffy.W.write_char destination '"'
+     | _ ->
+       let* destination =
+         if depth > 0 && not first
+         then Buffy.W.write_small_string destination ",{\""
+         else Buffy.W.write_small_string destination "{\""
+       in
+       let* destination = Buffy.W.write_large_string destination tag in
+       let* destination = Buffy.W.write_small_string destination "\":" in
+       let* destination = write (depth + 1) true destination encoding p in
+       Buffy.W.write_char destination '}')
 
 and write_tuple
   : type a. int -> bool -> Buffy.W.destination -> a Encoding.tuple -> a -> Buffy.W.written
