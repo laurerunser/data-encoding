@@ -137,22 +137,13 @@ let to_test
   in
   let equal = Binary_data_encoding.Query.equal_of encoding in
   let print = print_of_encoding encoding in
-  let offset = 0 in
-  (* TODO: adapt length to encoding *)
-  let buffer_size = 32768 in
-  let dst = Bytes.make buffer_size '\x00' in
   QCheck2.Test.make ~name ~print generator (fun v ->
-    let* written_size =
-      Binary_data_encoding.Writer.write ~dst ~offset ~length:buffer_size encoding v
-    in
+    let* s = Binary_data_encoding.Writer.string_of encoding v in
     let* queried_size = Binary_data_encoding.Query.size_of encoding v in
     let queried_size = Optint.Int63.to_int queried_size in
-    if written_size <> queried_size
+    if String.length s <> queried_size
     then failwith "Computed size inconsistent with written size";
-    let src = Bytes.to_string dst in
-    let* vv =
-      Binary_data_encoding.Reader.read ~src ~offset ~length:written_size encoding
-    in
+    let* vv = Binary_data_encoding.Reader.read_string s encoding in
     if not (equal v vv)
     then
       Format.kasprintf
