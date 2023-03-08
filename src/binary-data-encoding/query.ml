@@ -144,8 +144,10 @@ let rec size_of : type t. t Descr.t -> t -> (Optint.Int63.t, string) result =
     size_of encoding (serialisation v)
   | Size_headered { size; encoding } ->
     let sizesize = size_of_numeral size in
-    let* size = size_of encoding v in
-    Ok (Optint.Int63.add sizesize size)
+    let* payloadsize = size_of encoding v in
+    if Optint.Int63.compare payloadsize (max_int_of size :> Optint.Int63.t) > 0
+    then Error "Oversized payload for size header"
+    else Ok (Optint.Int63.add sizesize payloadsize)
   | Size_limit { at_most; encoding } ->
     let* size = size_of encoding v in
     (* TODO: earlier failing ? *)

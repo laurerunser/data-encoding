@@ -156,6 +156,8 @@ let rec writek : type a. Buffy.W.destination -> a Descr.t -> a -> Buffy.W.writte
              (* TODO: wrap error message *)
              Failed { destination; error = s }
            | Ok actual_size ->
+             (* NOTE: actual_size fits in the size header otherwise
+                [Query.size_of] returns [Error] *)
              let actual_size =
                Query.numeral_of_int size (Optint.Int63.to_int actual_size)
              in
