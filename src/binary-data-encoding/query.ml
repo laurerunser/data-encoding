@@ -412,3 +412,91 @@ let rec pp_of : type t. t Descr.t -> Format.formatter -> t -> unit =
     let ppt = pp_of tail in
     Format.fprintf fmt "%a;%a" pph v ppt vs
 ;;
+
+module Sizability = struct
+  type zero = Zero
+  type plus = Plus
+
+  type _ static =
+    | Zero : zero static
+    | Plus : plus static
+
+  type dynamic = Dynamic
+
+  type _ sizability =
+    | Static : 'a static -> 'a static sizability
+    | Dynamic : dynamic sizability
+
+  type sizable = S : _ sizability -> sizable
+
+  let rec sizability : type a. a Descr.t -> sizable = function
+    | Unit -> S (Static Zero)
+    | Bool -> S (Static Plus)
+    | Numeral
+        { numeral = Int64 | Int32 | UInt62 | UInt30 | UInt16 | UInt8; endianness = _ } ->
+      S (Static Plus)
+    | String n ->
+      if n = Commons.Sizedints.Uint62.zero then S (Static Zero) else S (Static Plus)
+    | Bytes n ->
+      if n = Commons.Sizedints.Uint62.zero then S (Static Zero) else S (Static Plus)
+    | Array { length; elementencoding } ->
+      if length = Commons.Sizedints.Uint62.zero
+      then S (Static Zero)
+      else
+        (* the sizability of the whole array of strictly more than one element
+           is the same as the sizability of the elements:
+           - [Static Zero]: if the elements take no space then neither does the
+             array
+           - [Static Plus]: if the elements take space then so does the array
+           - [Dynamic]: if the elements take a statically-unknown amount of
+             space then so does the array *)
+        sizability elementencoding
+    | Option _ -> S Dynamic
+    | LSeq { length; elementencoding } ->
+      (* Same as Array, just presented differently to the caller *)
+      if length = Commons.Sizedints.Uint62.zero
+      then S (Static Zero)
+      else sizability elementencoding
+    | USeq { elementencoding } ->
+      (match sizability elementencoding with
+       | S (Static Zero) ->
+         raise (Failure "Non-lengthed sequences cannot have zero-size elements")
+       | S (Static Plus) | S Dynamic -> S Dynamic)
+    | Headered
+        { mkheader = _; headerencoding; mkencoding = _; equal = _; maximum_size = _ } ->
+      (* TODO? should we support zero-sized headers? I don't think we should *)
+      (match sizability headerencoding with
+       | S (Static Zero) -> raise (Failure "Zero-size headers not supported")
+       | S (Static Plus) | S Dynamic -> S Dynamic)
+    | Fold
+        { chunkencoding
+        ; chunkify = _
+        ; readinit = _
+        ; reducer = _
+        ; equal = _
+        ; maximum_size = _
+        } ->
+      (match sizability chunkencoding with
+       | S (Static Zero) -> raise (Failure "Zero-size fold chunks not supported")
+       | S (Static Plus) | S Dynamic -> S Dynamic)
+    | Conv { serialisation = _; deserialisation = _; encoding } -> sizability encoding
+    | Size_headered
+        { size = Int64 | Int32 | UInt62 | UInt30 | UInt16 | UInt8; encoding = _ } ->
+      S Dynamic
+    | Size_limit { at_most = _; encoding } -> sizability encoding
+    | Union { tag; serialisation = _; deserialisation = _; cases = _ } ->
+      (match sizability tag with
+       | S (Static Zero) -> raise (Failure "Zero-size union tag not supported")
+       | S (Static Plus) | S Dynamic -> S Dynamic)
+    | [] -> S (Static Zero)
+    | [ head ] -> sizability head
+    | head :: tail ->
+      (match sizability head with
+       | S (Static Zero) -> sizability tail
+       | S (Static Plus) ->
+         (match sizability tail with
+          | S (Static (Zero | Plus)) -> S (Static Plus)
+          | S Dynamic -> S Dynamic)
+       | S Dynamic -> S Dynamic)
+  ;;
+end

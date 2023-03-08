@@ -44,13 +44,22 @@ let four = Option.get @@ Commons.Sizedints.Uint62.of_int64 4L
 let sequences : any_encoding Seq.t -> any_encoding Seq.t =
   let open Binary_data_encoding.Encoding in
   Seq.flat_map (fun (AnyE (s, e)) ->
-    List.to_seq
+    let l : any_encoding list =
       [ AnyE (Format.asprintf "array[ui8](%s)" s, array `UInt8 e)
       ; AnyE (Format.asprintf "array[4](%s)" s, array (`Fixed four) e)
       ; AnyE (Format.asprintf "seql[ui8](%s)" s, seq_with_length `UInt8 e)
       ; AnyE (Format.asprintf "seql[4](%s)" s, seq_with_length (`Fixed four) e)
-      ; AnyE (Format.asprintf "sequ[ui16](%s)" s, seq_with_size `UInt16 e)
-      ])
+      ]
+    in
+    let l =
+      match Binary_data_encoding.Query.Sizability.sizability e with
+      | S (Static Zero) ->
+        (* We cannot apply [seq_with_size] to zero-length elements *)
+        l
+      | S (Static Plus | Dynamic) ->
+        AnyE (Format.asprintf "sequ[ui16](%s)" s, seq_with_size `UInt16 e) :: l
+    in
+    List.to_seq l)
 ;;
 
 let either : any_encoding Seq.t -> any_encoding Seq.t -> any_encoding Seq.t =

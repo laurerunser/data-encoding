@@ -7,3 +7,21 @@ val size_of : 'a Descr.t -> 'a -> (Optint.Int63.t, string) result
 val maximum_size_of : 'a Descr.t -> Optint.Int63.t
 val equal_of : 'a Descr.t -> 'a -> 'a -> bool
 val pp_of : 'a Descr.t -> Format.formatter -> 'a -> unit
+
+module Sizability : sig
+  type zero = Zero
+  type plus = Plus
+  type dynamic = Dynamic
+
+  type _ static =
+    | Zero : zero static
+    | Plus : plus static
+
+  type _ sizability =
+    | Static : 'a static -> 'a static sizability
+    | Dynamic : dynamic sizability
+
+  type sizable = S : _ sizability -> sizable
+
+  val sizability : _ Descr.t -> sizable
+end
