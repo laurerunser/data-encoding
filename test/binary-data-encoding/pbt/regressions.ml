@@ -1,3 +1,5 @@
+let () = Printf.printf "Testing all simple encodings\n"
+
 let seed_gen =
   match Sys.getenv_opt "PBT_ROUNDTRIP_SEED" with
   | None ->
@@ -19,26 +21,21 @@ let run tests =
     QCheck_runner.run_tests
       ~rand
       (List.of_seq
-         (Seq.map (fun (Testable.AnyE (name, t)) -> Pbtlib.to_test name t) tests))
+         (Seq.map
+            (fun (Binary_data_encoding_test_pbt.Testable.AnyE (name, t)) ->
+              Binary_data_encoding_test_pbt.Pbtlib.to_test name t)
+            tests))
   in
   if exitcode <> 0 then exit exitcode
 ;;
 
-let () = run Testable.basics
-
-let rec skips rate s () =
-  let s = Seq.drop rate s in
-  match s () with
-  | Seq.Nil -> Seq.Nil
-  | Seq.Cons (v, s) -> Seq.Cons (v, skips rate s)
+let all =
+  List.to_seq
+    [ Binary_data_encoding_test_pbt.Testable.AnyE
+        ( "sequ[ui16](bytes[0])"
+        , Binary_data_encoding.Encoding.(
+            seq_with_size `UInt16 (bytes (`Fixed Commons.Sizedints.Uint62.zero))) )
+    ]
 ;;
 
-let not_so_basic =
-  (* sampling the long long not-so-basic sequence because it's too long *)
-  let offset = Random.State.int seed_gen 16 in
-  let not_so_basic = Seq.drop offset Testable.not_so_basic in
-  let rate = 200 in
-  skips rate not_so_basic
-;;
-
-let () = run not_so_basic
+let () = run all

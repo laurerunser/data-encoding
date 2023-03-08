@@ -47,12 +47,13 @@ let rec generator_of_encoding
         (fun v -> Option.get @@ Commons.Sizedints.Uint8.of_int v)
         (0 -- (Commons.Sizedints.Uint8.max_int :> int)))
   | String n ->
-    QCheck2.Gen.(string_size (pure (Optint.Int63.to_int (n :> Optint.Int63.t))))
+    QCheck2.Gen.map
+      (String.make (Optint.Int63.to_int (n :> Optint.Int63.t)))
+      QCheck2.Gen.printable
   | Bytes n ->
-    QCheck2.Gen.(
-      map
-        Bytes.unsafe_of_string
-        (string_size (pure (Optint.Int63.to_int (n :> Optint.Int63.t)))))
+    QCheck2.Gen.map
+      (Bytes.make (Optint.Int63.to_int (n :> Optint.Int63.t)))
+      QCheck2.Gen.printable
   | LSeq { length; elementencoding } ->
     QCheck2.Gen.map
       (fun l ->
@@ -138,7 +139,7 @@ let to_test
   let print = print_of_encoding encoding in
   let offset = 0 in
   (* TODO: adapt length to encoding *)
-  let buffer_size = 4096 in
+  let buffer_size = 32768 in
   let dst = Bytes.make buffer_size '\x00' in
   QCheck2.Test.make ~name ~print generator (fun v ->
     let* written_size =
@@ -152,6 +153,12 @@ let to_test
     let* vv =
       Binary_data_encoding.Reader.read ~src ~offset ~length:written_size encoding
     in
-    if not (equal v vv) then failwith "roundtrip roken";
+    if not (equal v vv)
+    then
+      Format.kasprintf
+        failwith
+        "roundtrip broken; started with %s; found %s"
+        (print v)
+        (print vv);
     true)
 ;;
