@@ -269,6 +269,10 @@ let%expect_test _ =
   ()
 ;;
 
+let read_string : type a. string -> a Descr.t -> (a, string) result =
+ fun s e -> read_strings (Seq.return (s, 0, String.length s)) e
+;;
+
 let read
   : type a. src:string -> offset:int -> length:int -> a Descr.t -> (a, string) result
   =

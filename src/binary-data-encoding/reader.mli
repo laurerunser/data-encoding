@@ -31,4 +31,5 @@ val readk : Buffy.R.source -> 'a Encoding.t -> 'a Buffy.R.readed
 (** {2: High-level readers} *)
 
 val read : src:string -> offset:int -> length:int -> 'a Encoding.t -> ('a, string) result
+val read_string : string -> 'a Encoding.t -> ('a, string) result
 val read_strings : (string * int * int) Seq.t -> 'a Encoding.t -> ('a, string) result
