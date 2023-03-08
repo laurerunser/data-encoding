@@ -3,7 +3,7 @@ let ( let* ) = Buffy.R.( let* )
 let rec readk : type a. Buffy.R.source -> a Descr.t -> a Buffy.R.readed =
  fun source encoding ->
   assert (source.offset >= 0);
-  assert (source.offset < String.length source.blob);
+  assert (source.offset <= String.length source.blob);
   match encoding with
   | Unit -> Buffy.R.Readed { source; value = () }
   | Bool ->
