@@ -38,6 +38,8 @@ let rec skips rate s () =
   | Seq.Cons (v, s) -> Seq.Cons (v, skips rate s)
 ;;
 
+let sample rate s = skips rate (Seq.drop (Random.int rate) s)
+
 let base =
   let open Binary_data_encoding_test_pbt.Testable in
   let all = all_ground_encodings in
@@ -46,15 +48,9 @@ let base =
 ;;
 
 let tuple_encodings =
-  let open Binary_data_encoding_test_pbt.Testable in
-  tuples (List.to_seq [ skips 10 base; skips 10 base; skips 10 base ])
+  let base_sample = sample 10 base in
+  Binary_data_encoding_test_pbt.Testable.tuples (Seq.take 3 (Seq.repeat base_sample))
 ;;
 
-let tuple_encoding_sample =
-  (* sampling the long long not-so-basic sequence because it's too long *)
-  let offset = Random.State.int seed_gen 32 in
-  let rate = 100 in
-  skips rate (Seq.drop offset tuple_encodings)
-;;
-
+let tuple_encoding_sample = sample 100 tuple_encodings
 let () = run tuple_encoding_sample
