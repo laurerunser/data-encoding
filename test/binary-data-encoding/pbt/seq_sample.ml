@@ -42,11 +42,9 @@ let sample rate s = skips rate (Seq.drop (Random.int rate) s)
 
 let all =
   let open Binary_data_encoding_test_pbt.Testable in
-  let all = all_ground_encodings in
-  let all = sequences all in
-  let all = sequences all in
-  let all = sequences all in
-  all
+  let small = sequences all_ground_encodings in
+  let large = large_sequences (large_sequences small) in
+  Seq.append small large
 ;;
 
-let () = run (sample 100 all)
+let () = run (sample 15 all)

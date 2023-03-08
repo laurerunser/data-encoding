@@ -77,7 +77,16 @@ let rec generator_of_encoding
     let t = generator_of_encoding t in
     QCheck2.Gen.option t
   | Headered { mkheader; headerencoding; mkencoding; equal = _; maximum_size = _ } ->
-    let headert = generator_of_encoding headerencoding in
+    let headert =
+      match headerencoding with
+      | Numeral { numeral; endianness = _ } ->
+        (* large int-sizes are generally for large collections which take too long
+         to test in PBT *)
+        QCheck2.Gen.map
+          (Binary_data_encoding.Query.numeral_of_int numeral)
+          (QCheck2.Gen.int_range 0 20)
+      | headerencoding -> generator_of_encoding headerencoding
+    in
     QCheck2.Gen.bind headert (fun header ->
       let* payloadencoding = mkencoding header in
       QCheck2.Gen.map

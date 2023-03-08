@@ -62,6 +62,15 @@ let sequences : any_encoding Seq.t -> any_encoding Seq.t =
     List.to_seq l)
 ;;
 
+let large_sequences : any_encoding Seq.t -> any_encoding Seq.t =
+  let open Binary_data_encoding.Encoding in
+  Seq.flat_map (fun (AnyE (s, e)) ->
+    List.to_seq
+      [ AnyE (Format.asprintf "array[ui30](%s)" s, array `UInt30 e)
+      ; AnyE (Format.asprintf "seql[ui30](%s)" s, seq_with_length `UInt30 e)
+      ])
+;;
+
 let either : any_encoding Seq.t -> any_encoding Seq.t -> any_encoding Seq.t =
   let open Binary_data_encoding.Encoding in
   Seq.map_product (fun (AnyE (s1, e1)) (AnyE (s2, e2)) ->

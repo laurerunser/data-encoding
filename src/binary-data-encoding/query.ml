@@ -48,7 +48,9 @@ let int_of_numeral : type n. n Descr.numeral -> n -> int =
   | UInt30 -> (i :> int)
   | UInt62 -> Optint.Int63.to_int (i :> Optint.Int63.t)
   | Int32 -> Int32.to_int i
-  | Int64 -> Int64.to_int i
+  | Int64 ->
+    (* TODO: handle overflow *)
+    Int64.to_int i
 ;;
 
 let ( let* ) = Result.bind
