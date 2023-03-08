@@ -253,19 +253,20 @@ let rec writechunked destination write =
       raise
         (Failure "Suspendable_buffers.Writing.writechunked: chunkwriter exceeded limit");
     let destination = bump_written destination written in
-    Suspended
-      { destination
-      ; cont =
-          (fun buffer offset length ->
-            let destination =
-              mk_destination
-                ~maximum_length:(destination.maximum_length - destination.written)
-                buffer
-                offset
-                length
-            in
-            writechunked destination write)
-      }
+    let maximum_length = destination.maximum_length - destination.written in
+    assert (maximum_length >= 0);
+    if maximum_length = 0
+    then
+      Failed
+        { destination; error = "maximum-length reached but chunk-writer is not finished" }
+    else
+      Suspended
+        { destination
+        ; cont =
+            (fun buffer offset length ->
+              let destination = mk_destination ~maximum_length buffer offset length in
+              writechunked destination write)
+        }
 ;;
 
 let write_large_string destination s =
