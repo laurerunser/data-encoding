@@ -32,7 +32,7 @@
     Depending on your use-case, you can provide [cont] with a fresh buffer, or
     you can re-use the buffer in [destination] (after you extract whatever
     information you need from it). *)
-val writek : Buffy.W.destination -> 'a Encoding.t -> 'a -> Buffy.W.written
+val writek : Buffy.W.destination -> ('s, 'a) Descr.t -> 'a -> Buffy.W.written
 
 (** {2: High-level writers} *)
 
@@ -40,8 +40,19 @@ val write
   :  dst:bytes
   -> offset:int
   -> length:int
+  -> ('s, 'a) Descr.t
+  -> 'a
+  -> (int, int * string) result
+
+val string_of : ?buffer_size:int -> ('s, 'a) Descr.t -> 'a -> (string, string) result
+
+(* TODO: find a better UI *)
+val write_e
+  :  dst:bytes
+  -> offset:int
+  -> length:int
   -> 'a Encoding.t
   -> 'a
   -> (int, int * string) result
 
-val string_of : ?buffer_size:int -> 'a Encoding.t -> 'a -> (string, string) result
+val string_of_e : ?buffer_size:int -> 'a Encoding.t -> 'a -> (string, string) result

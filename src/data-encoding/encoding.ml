@@ -82,7 +82,8 @@ let rec to_json_tuple : type a. a tuple -> a Json_data_encoding.Encoding.tuple =
     Json_data_encoding.Encoding.( :: ) (t, ts)
 ;;
 
-let rec to_binary_tuple : type a. a tuple -> a Binary_data_encoding.Encoding.t = function
+let rec to_binary_tuple : type a. a tuple -> a Binary_data_encoding.Encoding.tuple
+  = function
   | [] -> Binary_data_encoding.Encoding.[]
   | t :: ts ->
     let t = to_binary t in
@@ -92,7 +93,7 @@ let rec to_binary_tuple : type a. a tuple -> a Binary_data_encoding.Encoding.t =
 
 let tuple p =
   { json = Json_data_encoding.Encoding.tuple (to_json_tuple p)
-  ; binary = to_binary_tuple p
+  ; binary = Binary_data_encoding.Encoding.tuple (to_binary_tuple p)
   }
 ;;
 
@@ -108,7 +109,7 @@ let rec to_json_obj : type a. a obj -> a Json_data_encoding.Encoding.obj = funct
     Json_data_encoding.Encoding.( :: ) (Opt { encoding = t; name }, ts)
 ;;
 
-let rec to_binary_obj : type a. a obj -> a Binary_data_encoding.Encoding.t = function
+let rec to_binary_obj : type a. a obj -> a Binary_data_encoding.Encoding.tuple = function
   | [] -> Binary_data_encoding.Encoding.[]
   | Req { encoding = t; name = _ } :: ts ->
     let t = to_binary t in
@@ -121,7 +122,9 @@ let rec to_binary_obj : type a. a obj -> a Binary_data_encoding.Encoding.t = fun
 ;;
 
 let obj p =
-  { json = Json_data_encoding.Encoding.obj (to_json_obj p); binary = to_binary_obj p }
+  { json = Json_data_encoding.Encoding.obj (to_json_obj p)
+  ; binary = Binary_data_encoding.Encoding.tuple (to_binary_obj p)
+  }
 ;;
 
 let req name encoding = Req { encoding; name }
@@ -142,7 +145,7 @@ module Union = struct
 
   let case binary_tag json_tag (encoding : _ t) inject =
     { json = Json_data_encoding.Encoding.Union.case json_tag encoding.json inject
-    ; binary = Binary_data_encoding.Encoding.Union.case binary_tag encoding.binary inject
+    ; binary = Binary_data_encoding.Encoding.case binary_tag encoding.binary inject
     }
   ;;
 
@@ -163,18 +166,19 @@ module Union = struct
           | Error _ as error -> error)
     in
     let binary =
-      Binary_data_encoding.Encoding.Union.union
+      Binary_data_encoding.Encoding.union
         tag_encoding
         (List.map
-           (fun (AnyC { json = _; binary }) -> Binary_data_encoding.Encoding.AnyC binary)
+           (fun (AnyC { json = _; binary }) ->
+             Binary_data_encoding.Encoding.anycase binary)
            cases)
         (fun x ->
           let (AnyP ({ json = _; binary }, p)) = serialisation x in
-          Binary_data_encoding.Encoding.AnyP (binary, p))
+          Binary_data_encoding.Encoding.case_and_payload binary p)
         (fun tag ->
           match tag_selection tag with
           | Ok (AnyC { json = _; binary }) ->
-            Ok (Binary_data_encoding.Encoding.AnyC binary)
+            Ok (Binary_data_encoding.Encoding.anycase binary)
           | Error _ as error -> error)
     in
     ({ json; binary } : _ t)
@@ -182,14 +186,17 @@ module Union = struct
 
   let either (l : 'a t) (r : 'b t) : ('a, 'b) Either.t t =
     { json = Json_data_encoding.Encoding.Union.either l.json r.json
-    ; binary = Binary_data_encoding.Encoding.Union.either l.binary r.binary
+    ; binary = Binary_data_encoding.Encoding.either l.binary r.binary
     }
   ;;
 end
 
 let%expect_test _ =
   let w e v =
-    let s = Binary_data_encoding.Writer.string_of e.binary v in
+    let (E binary_descr) =
+      Binary_data_encoding.Encoding.Advanced_low_level.introspect e.binary
+    in
+    let s = Binary_data_encoding.Writer.string_of binary_descr v in
     let s = Result.get_ok s in
     Format.printf
       "%a\n"
@@ -216,5 +223,9 @@ let%expect_test _ =
   w (Union.either unit bool) (Either.Right true);
   [%expect {|
     00ff
-    {"Right":true} |}]
+    {"Right":true} |}];
+  w (Union.either unit (Union.either bool bool)) (Either.Right (Either.Left true));
+  [%expect {|
+    00ffff
+    {"Right":{"Left":true}} |}]
 ;;

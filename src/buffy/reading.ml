@@ -1,4 +1,6 @@
 (* TODO: expect tests *)
+(* TODO? remove offset, only leave readed: the valid window shrinks *)
+(* TODO? add a [read_in_previous_sources] to accumulate the successive readeds, don't shift stop_hints and maximum_length; or maybe we replace [string] with some other form and we don't have this problem anymore *)
 
 type source =
   { blob : string
@@ -65,6 +67,8 @@ let set_maximum_length source maximum_length =
 (* TODO: there needs to be more tests for stop hints in conjunction with
    suspend-resume *)
 
+(* STOP HINTS are only related to readed (not to offset) *)
+
 let push_stop source length =
   assert (length >= 0);
   if source.readed + length > source.maximum_length
@@ -91,6 +95,17 @@ let pop_stop source =
   match source.stop_hints with
   | [] -> Error "expected an expected-stop but found none"
   | stop :: stop_hints -> Ok (stop, { source with stop_hints })
+;;
+
+let bring_first_stop_forward source delta =
+  assert (delta >= 0);
+  match source.stop_hints with
+  | [] -> raise (Invalid_argument "no stop to bring forward")
+  | stop :: stop_hints ->
+    let new_stop = stop - delta in
+    if new_stop < 0
+    then raise (Invalid_argument "stop is too forward")
+    else { source with stop_hints = new_stop :: stop_hints }
 ;;
 
 type 'a readed =

@@ -13,7 +13,8 @@ let%expect_test _ =
   in
   let w : type a. int -> int -> a Encoding.t -> a -> unit =
    fun initread morereads e v ->
-    match Writer.string_of e v with
+    let (E descr) = Binary_data_encoding.Encoding.Advanced_low_level.introspect e in
+    match Writer.string_of descr v with
     | Error _ -> assert false
     | Ok blob ->
       Format.printf
@@ -23,8 +24,8 @@ let%expect_test _ =
            (fun fmt c -> Format.fprintf fmt "%02x" c))
         (String.to_seq blob |> Seq.map Char.code);
       let initread = min initread (String.length blob) in
-      let source = Buffy.R.mk_source blob 0 initread in
-      (match Reader.readk source e with
+      let source = Buffy.R.mk_source (String.sub blob 0 initread) 0 initread in
+      (match Reader.readk source descr with
        | Failed { error; source } ->
          Format.printf
            "Error: %S, Readed: %d, Stops: %a\n"
@@ -34,7 +35,7 @@ let%expect_test _ =
            source
        | Readed { value; source } ->
          Format.printf "Ok, Readed: %d, Stops: %a\n" source.readed print_stops source;
-         assert (Query.equal_of e v value)
+         assert (Query.equal_of descr v value)
        | Suspended { cont; source } ->
          Format.printf
            "Suspended, Readed: %d, Stops: %a\n"
@@ -43,7 +44,8 @@ let%expect_test _ =
            source;
          let rec go offset (cont : string -> int -> int -> a Buffy.R.readed) =
            let length = min (String.length blob - offset) morereads in
-           match cont blob offset length with
+           let blob = String.sub blob offset length in
+           match cont blob 0 length with
            | Failed { error; source } ->
              Format.printf
                "Error: %S, Readed: %d, Stops: %a\n"
@@ -53,7 +55,7 @@ let%expect_test _ =
                source
            | Readed { value; source } ->
              Format.printf "Ok, Readed: %d, Stops: %a\n" source.readed print_stops source;
-             assert (Query.equal_of e v value)
+             assert (Query.equal_of descr v value)
            | Suspended { cont; source } ->
              Format.printf
                "Suspended, Readed: %d, Stops: %a\n"
@@ -64,74 +66,20 @@ let%expect_test _ =
          in
          go initread cont)
   in
-  (* A simple test with a lot of size-header but no substance *)
+  (* a complex encoding with some nesting structure *)
   let encoding =
     let open Encoding in
-    with_size_header
-      ~sizeencoding:`UInt62
-      ~encoding:
-        (with_size_header
-           ~sizeencoding:`UInt62
-           ~encoding:
-             (with_size_header
-                ~sizeencoding:`UInt62
-                ~encoding:
-                  (with_size_header
-                     ~sizeencoding:`UInt62
-                     ~encoding:
-                       (with_size_header
-                          ~sizeencoding:`UInt62
-                          ~encoding:
-                            (with_size_header
-                               ~sizeencoding:`UInt62
-                               ~encoding:
-                                 (with_size_header
-                                    ~sizeencoding:`UInt62
-                                    ~encoding:
-                                      (with_size_header
-                                         ~sizeencoding:`UInt62
-                                         ~encoding:uint62)))))))
-  in
-  (* The test with very friendly cuts of buffer *)
-  w 8 8 encoding (Option.get @@ Encoding.Sizedints.Uint62.of_int64 0L);
-  [%expect
-    {|
-    Blob: 000000000000004000000000000000380000000000000030000000000000002800000000000000200000000000000018000000000000001000000000000000080000000000000000
-    Suspended, Readed: 8, Stops: 72
-    Suspended, Readed: 8, Stops: 64-64
-    Suspended, Readed: 8, Stops: 56-56-56
-    Suspended, Readed: 8, Stops: 48-48-48-48
-    Suspended, Readed: 8, Stops: 40-40-40-40-40
-    Suspended, Readed: 8, Stops: 32-32-32-32-32-32
-    Suspended, Readed: 8, Stops: 24-24-24-24-24-24-24
-    Suspended, Readed: 8, Stops: 16-16-16-16-16-16-16-16
-    Ok, Readed: 8, Stops: |}];
-  (* The test but with less friendly cuts of buffer *)
-  w 7 9 encoding (Option.get @@ Encoding.Sizedints.Uint62.of_int64 0L);
-  [%expect
-    {|
-    Blob: 000000000000004000000000000000380000000000000030000000000000002800000000000000200000000000000018000000000000001000000000000000080000000000000000
-    Suspended, Readed: 0, Stops:
-    Suspended, Readed: 9, Stops: 65-65
-    Suspended, Readed: 8, Stops: 56-56-56
-    Suspended, Readed: 7, Stops: 47-47-47-47
-    Suspended, Readed: 6, Stops: 38-38-38-38-38
-    Suspended, Readed: 5, Stops: 29-29-29-29-29-29
-    Suspended, Readed: 4, Stops: 20-20-20-20-20-20-20
-    Suspended, Readed: 3, Stops: 11-11-11-11-11-11-11-11
-    Ok, Readed: 2, Stops: |}];
-  (* a slightly more complex with some nesting structure *)
-  let encoding =
-    let open Encoding in
-    let base = with_size_header ~sizeencoding:`UInt8 ~encoding:uint16 in
-    let tup = with_size_header ~sizeencoding:`UInt8 ~encoding:[ base; base ] in
+    let base = With_size.seq_with_size `UInt8 uint16 in
+    let tup = With_size.seq_with_size `UInt8 (tuple [ base; base ]) in
     let arr = array `UInt30 tup in
     arr
   in
-  let uint16 n = Option.get @@ Encoding.Sizedints.Uint16.of_int n in
+  let uint16 n = Seq.return (Option.get @@ Encoding.Sizedints.Uint16.of_int n) in
   let v =
     let open Encoding.Hlist in
-    [| [ uint16 0xdead; uint16 0xbeef ]; [ uint16 0xfeed; uint16 0xbeef ] |]
+    [| Seq.return [ uint16 0xdead; uint16 0xbeef ]
+     ; Seq.return [ uint16 0xfeed; uint16 0xbeef ]
+    |]
   in
   (* full all-in-one read (with [-1] to ensure crash otherwise) *)
   w 18 (-1) encoding v;
@@ -145,67 +93,50 @@ let%expect_test _ =
     {|
     Blob: 000000020602dead02beef0602feed02beef
     Suspended, Readed: 9, Stops: 11-11
-    Suspended, Readed: 6, Stops: 8-8
-    Ok, Readed: 2, Stops: |}];
+    Error: "expected-stop point exceeded", Readed: 1, Stops: 1-1 |}];
   (* unfriendly cuts *)
   w 6 5 encoding v;
   [%expect
     {|
     Blob: 000000020602dead02beef0602feed02beef
     Suspended, Readed: 6, Stops: 8-11
-    Suspended, Readed: 5, Stops:
-    Suspended, Readed: 5, Stops: 7-7
-    Ok, Readed: 2, Stops: |}];
+    Error: "expected-stop point exceeded", Readed: 2, Stops: 2-5 |}];
   (* a more complex test mixing in strings which use chunkread *)
   let encoding =
     let open Encoding in
     let tup =
-      with_size_header
-        ~sizeencoding:`UInt8
-        ~encoding:
-          [ with_size_header ~sizeencoding:`UInt8 ~encoding:uint16
-          ; string `UInt8
-          ; string `UInt8
-          ]
+      With_size.seq_with_size
+        `UInt8
+        (tuple [ With_size.seq_with_size `UInt8 uint16; string `UInt8; string `UInt8 ])
     in
-    let arr = array `UInt30 tup in
-    with_size_header ~sizeencoding:`UInt30 ~encoding:arr
+    array `UInt30 tup
   in
   let v =
     let open Encoding.Hlist in
-    [| [ uint16 0xdead; "\xee\xee"; "\xff\xff\xff\xff\xff" ]
-     ; [ uint16 0xfeed; "\xee\xee"; "\xee\xee" ]
+    [| Seq.return [ uint16 0xdead; "\xee\xee"; "\xff\xff\xff\xff\xff" ]
+     ; Seq.return [ uint16 0xfeed; "\xee\xee"; "\xee\xee" ]
     |]
   in
   w 10 6 encoding v;
   [%expect
     {|
-    Blob: 0000001b000000020c02dead02eeee05ffffffffff0902feed02eeee02eeee
-    Suspended, Readed: 10, Stops: 12-21-31
-    Suspended, Readed: 6, Stops: 11-21
-    Suspended, Readed: 6, Stops: 15-15
-    Suspended, Readed: 6, Stops: 9-9
-    Ok, Readed: 3, Stops: |}];
+    Blob: 000000020c02dead02eeee05ffffffffff0902feed02eeee02eeee
+    Suspended, Readed: 10, Stops: 17
+    Suspended, Readed: 6, Stops: 7
+    Error: "expected-stop point exceeded", Readed: 1, Stops: 1 |}];
   w 6 5 encoding v;
   [%expect
     {|
-    Blob: 0000001b000000020c02dead02eeee05ffffffffff0902feed02eeee02eeee
-    Suspended, Readed: 4, Stops: 31
-    Suspended, Readed: 4, Stops: 6-15-25
-    Suspended, Readed: 5, Stops: 10-20
-    Suspended, Readed: 5, Stops: 15
-    Suspended, Readed: 5, Stops: 10-10
-    Ok, Readed: 5, Stops: |}];
+    Blob: 000000020c02dead02eeee05ffffffffff0902feed02eeee02eeee
+    Suspended, Readed: 6, Stops: 8-17
+    Error: "expected-stop point exceeded", Readed: 2, Stops: 2-11 |}];
   w 3 5 encoding v;
   [%expect
     {|
-    Blob: 0000001b000000020c02dead02eeee05ffffffffff0902feed02eeee02eeee
+    Blob: 000000020c02dead02eeee05ffffffffff0902feed02eeee02eeee
     Suspended, Readed: 0, Stops:
-    Suspended, Readed: 5, Stops: 28
-    Suspended, Readed: 5, Stops: 13-23
-    Suspended, Readed: 5, Stops: 8-18
-    Suspended, Readed: 5, Stops: 7-13-13
-    Suspended, Readed: 5, Stops: 8-8
-    Ok, Readed: 3, Stops: |}];
+    Suspended, Readed: 5, Stops: 14
+    Suspended, Readed: 5, Stops: 9
+    Error: "expected-stop point exceeded", Readed: 4, Stops: 4 |}];
   ()
 ;;
