@@ -4,12 +4,12 @@
 open Binary_data_encoding
 
 let%expect_test _ =
-  let print_stops fmt (source : Buffy.R.source) =
+  let print_stops fmt (state : Buffy.R.state) =
     Format.pp_print_list
       ~pp_sep:(fun fmt () -> Format.pp_print_char fmt '-')
       Format.pp_print_int
       fmt
-      source.stop_hints
+      state.stop_hints
   in
   let w : type a. int -> int -> a Encoding.t -> a -> unit =
    fun initread morereads e v ->
@@ -24,44 +24,42 @@ let%expect_test _ =
            (fun fmt c -> Format.fprintf fmt "%02x" c))
         (String.to_seq blob |> Seq.map Char.code);
       let initread = min initread (String.length blob) in
-      let source = Buffy.R.mk_source (String.sub blob 0 initread) 0 initread in
-      (match Reader.readk source descr with
-       | Failed { error; source } ->
+      let state =
+        Buffy.R.mk_state (Buffy.Src.of_string blob ~offset:0 ~length:initread)
+      in
+      (match Reader.readk state descr with
+       | Failed { error; state } ->
          Format.printf
            "Error: %S, Readed: %d, Stops: %a\n"
            error
-           source.readed
+           state.readed
            print_stops
-           source
-       | Readed { value; source } ->
-         Format.printf "Ok, Readed: %d, Stops: %a\n" source.readed print_stops source;
+           state
+       | Readed { value; state } ->
+         Format.printf "Ok, Readed: %d, Stops: %a\n" state.readed print_stops state;
          assert (Query.equal_of descr v value)
-       | Suspended { cont; source } ->
-         Format.printf
-           "Suspended, Readed: %d, Stops: %a\n"
-           source.readed
-           print_stops
-           source;
-         let rec go offset (cont : string -> int -> int -> a Buffy.R.readed) =
+       | Suspended { cont; state } ->
+         Format.printf "Suspended, Readed: %d, Stops: %a\n" state.readed print_stops state;
+         let rec go offset (cont : Buffy.Src.t -> a Buffy.R.readed) =
            let length = min (String.length blob - offset) morereads in
-           let blob = String.sub blob offset length in
-           match cont blob 0 length with
-           | Failed { error; source } ->
+           let source = Buffy.Src.of_string blob ~offset ~length in
+           match cont source with
+           | Failed { error; state } ->
              Format.printf
                "Error: %S, Readed: %d, Stops: %a\n"
                error
-               source.readed
+               state.readed
                print_stops
-               source
-           | Readed { value; source } ->
-             Format.printf "Ok, Readed: %d, Stops: %a\n" source.readed print_stops source;
+               state
+           | Readed { value; state } ->
+             Format.printf "Ok, Readed: %d, Stops: %a\n" state.readed print_stops state;
              assert (Query.equal_of descr v value)
-           | Suspended { cont; source } ->
+           | Suspended { cont; state } ->
              Format.printf
                "Suspended, Readed: %d, Stops: %a\n"
-               source.readed
+               state.readed
                print_stops
-               source;
+               state;
              go (offset + length) cont
          in
          go initread cont)
@@ -92,7 +90,7 @@ let%expect_test _ =
   [%expect
     {|
     Blob: 000000020602dead02beef0602feed02beef
-    Suspended, Readed: 9, Stops: 11-11
+    Suspended, Readed: 10, Stops: 11-11
     Error: "expected-stop point exceeded", Readed: 1, Stops: 1-1 |}];
   (* unfriendly cuts *)
   w 6 5 encoding v;
@@ -134,7 +132,7 @@ let%expect_test _ =
   [%expect
     {|
     Blob: 000000020c02dead02eeee05ffffffffff0902feed02eeee02eeee
-    Suspended, Readed: 0, Stops:
+    Suspended, Readed: 3, Stops:
     Suspended, Readed: 5, Stops: 14
     Suspended, Readed: 5, Stops: 9
     Error: "expected-stop point exceeded", Readed: 4, Stops: 4 |}];

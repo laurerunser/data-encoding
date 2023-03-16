@@ -8,5 +8,6 @@
     but these wrappers are not compulsory.) The design of Buffy aims to avoid
     all major-heap allocations within the library. *)
 
+module Src = Src
 module R = Reading
 module W = Writing

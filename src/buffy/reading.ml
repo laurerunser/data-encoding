@@ -2,17 +2,12 @@
 (* TODO? remove offset, only leave readed: the valid window shrinks *)
 (* TODO? add a [read_in_previous_sources] to accumulate the successive readeds, don't shift stop_hints and maximum_length; or maybe we replace [string] with some other form and we don't have this problem anymore *)
 
-type source =
-  { blob : string
-  ; offset : int
-  ; length : int
+type state =
+  { source : Src.t
   ; readed : int (* [read] is ambiguous so we make it unambiguously past as [readed] *)
   ; stop_hints : int list
       (* this list is grown when there is a size-header in the encoded binary data *)
   ; maximum_length : int
-      (* the [maximum_length] is the maximum number of bytes to be read
-           through all the buffer for the whole reading, it is a property passed
-           from one source to the next during suspensions *)
   }
 
 let rec check_stop_hints base stops maximum_length =
@@ -22,21 +17,17 @@ let rec check_stop_hints base stops maximum_length =
     base <= stop && stop <= maximum_length && check_stop_hints stop stops maximum_length
 ;;
 
-let mk_source ?(maximum_length = max_int) ?(stop_hints = []) blob offset length =
-  if offset < 0 then failwith "Buffy.R.mk_source: negative offset";
-  if length < 0 then failwith "Buffy.R.mk_source: negative length";
-  if offset + length > String.length blob
-  then failwith "Buffy.R.mk_source: offset+length overflow";
+let mk_state ?(maximum_length = max_int) ?(stop_hints = []) source =
   if not (check_stop_hints 0 stop_hints maximum_length)
-  then failwith "Buffy.R.mk_source: stops out of bounds or out of order";
-  { blob; offset; length; readed = 0; stop_hints; maximum_length }
+  then failwith "Buffy.R.mk_state: stops out of bounds or out of order";
+  { source; readed = 0; stop_hints; maximum_length }
 ;;
 
-let bump_readed source reading =
-  let readed = source.readed + reading in
-  assert (readed <= source.length);
-  assert (readed <= source.maximum_length);
-  { source with readed }
+let bump_readed state reading =
+  let readed = state.readed + reading in
+  assert (readed <= Src.length state.source);
+  assert (readed <= state.maximum_length);
+  { state with readed }
 ;;
 
 let rec check_last_stop stops maximum_length =
@@ -50,51 +41,49 @@ let rec check_last_stop stops maximum_length =
     check_last_stop stops maximum_length
 ;;
 
-let set_maximum_length source maximum_length =
+let set_maximum_length state maximum_length =
   if maximum_length < 0
   then raise (Invalid_argument "Buffy.R.set_maximum_length: negative length");
-  if maximum_length > source.maximum_length
+  if maximum_length > state.maximum_length
   then
     raise (Invalid_argument "Buffy.R.set_maximum_length: cannot increase maximum length");
-  if not (check_last_stop source.stop_hints maximum_length)
+  if not (check_last_stop state.stop_hints maximum_length)
   then
     raise
       (Invalid_argument
          "Buffy.R.set_maximum_length: cannot set maximum length lower than expected stop");
-  { source with maximum_length }
+  { state with maximum_length }
 ;;
 
 (* TODO: there needs to be more tests for stop hints in conjunction with
    suspend-resume *)
 
-(* STOP HINTS are only related to readed (not to offset) *)
-
-let push_stop source length =
+let push_stop state length =
   assert (length >= 0);
-  if source.readed + length > source.maximum_length
+  if state.readed + length > state.maximum_length
   then Error "expected-stop exceeds maximum-length"
   else (
-    let requested_stop = source.readed + length in
-    match source.stop_hints with
-    | [] -> Ok { source with stop_hints = [ requested_stop ] }
+    let requested_stop = state.readed + length in
+    match state.stop_hints with
+    | [] -> Ok { state with stop_hints = [ requested_stop ] }
     | previously_requested_stop :: _ ->
       if requested_stop > previously_requested_stop
       then Error "expected-stop exceeds previously requested stop"
-      else Ok { source with stop_hints = requested_stop :: source.stop_hints })
+      else Ok { state with stop_hints = requested_stop :: state.stop_hints })
 ;;
 
-let peak_stop source =
-  match source.stop_hints with
+let peek_stop state =
+  match state.stop_hints with
   | [] -> None
   | stop :: _ -> Some stop
 ;;
 
 (* TODO? return a [unit readed] instead? With a failed if the stop is different
    from the readed? *)
-let pop_stop source =
-  match source.stop_hints with
+let pop_stop state =
+  match state.stop_hints with
   | [] -> Error "expected an expected-stop but found none"
-  | stop :: stop_hints -> Ok (stop, { source with stop_hints })
+  | stop :: stop_hints -> Ok (stop, { state with stop_hints })
 ;;
 
 let bring_first_stop_forward source delta =
@@ -110,539 +99,471 @@ let bring_first_stop_forward source delta =
 
 type 'a readed =
   | Readed of
-      { source : source
+      { state : state
       ; value : 'a
       }
   | Failed of
-      { source : source
+      { state : state
       ; error : string
       }
   | Suspended of
-      { source : source
+      { state : state
           (* TODO? add a field to indicate number of chars read from previous buffer *)
           (* TODO? add a field for the buffer that's used as the bridge reading *)
-      ; cont : string -> int -> int -> 'a readed
+      ; cont : Src.t -> 'a readed
       }
 
-let source_too_small_to_continue_message = "new source blob is too small to continue"
+let rec ( let* ) x f =
+  match x with
+  | Readed { state; value } -> f (value, state)
+  | Failed { state; error } -> Failed { state; error }
+  | Suspended { state; cont } ->
+    let cont source =
+      let* x = cont source in
+      f x
+    in
+    Suspended { state; cont }
+;;
 
-let readf source reading read =
-  assert (reading >= 0);
-  if source.readed + reading > source.maximum_length
-  then Failed { source; error = "maximum-length exceeded" }
-  else if match source.stop_hints with
-          | [] -> false
-          | stop :: _ -> source.readed + reading > stop
-  then Failed { source; error = "expected-stop point exceeded" }
-  else if source.readed + reading <= source.length
+let rec unsafe_read_copy scratch scratch_offset state =
+  let reading = Bytes.length scratch - scratch_offset in
+  let readable = Src.length state.source - state.readed in
+  if reading <= readable
   then (
-    let value = read source.blob (source.offset + source.readed) in
-    let source = bump_readed source reading in
-    Readed { source; value })
-  else if source.readed = source.length
+    Src.blit_onto_bytes state.source state.readed scratch scratch_offset reading;
+    let state = bump_readed state reading in
+    Readed { state; value = () })
+  else (
+    let reading = readable in
+    Src.blit_onto_bytes state.source state.readed scratch scratch_offset reading;
+    let state = bump_readed state reading in
+    let scratch_offset = scratch_offset + reading in
+    let maximum_length = state.maximum_length - state.readed in
+    let stop_hints = List.map (fun stop -> stop - state.readed) state.stop_hints in
+    Suspended
+      { state
+      ; cont =
+          (fun source ->
+            let state = mk_state ~maximum_length ~stop_hints source in
+            unsafe_read_copy scratch scratch_offset state)
+      })
+;;
+
+let readf state reading read =
+  assert (reading >= 0);
+  if state.readed + reading > state.maximum_length
+  then Failed { state; error = "maximum-length exceeded" }
+  else if match state.stop_hints with
+          | [] -> false
+          | stop :: _ -> state.readed + reading > stop
+  then Failed { state; error = "expected-stop point exceeded" }
+  else if state.readed + reading <= Src.length state.source
+  then (
+    let value = read state.source state.readed in
+    let state = bump_readed state reading in
+    Readed { state; value })
+  else if state.readed = Src.length state.source
   then (
     (* the source was fully consumed, we do a simple continuation *)
     (* To avoid the continuation capturing the [source] we compute some values immediately *)
-    let maximum_length = source.maximum_length - source.readed in
-    let stop_hints = List.map (fun stop -> stop - source.readed) source.stop_hints in
+    let maximum_length = state.maximum_length - state.readed in
+    let stop_hints = List.map (fun stop -> stop - state.readed) state.stop_hints in
     Suspended
-      { source
+      { state
       ; cont =
-          (fun blob offset length ->
-            let source = mk_source ~maximum_length ~stop_hints blob offset length in
-            if reading > length
-            then Failed { source; error = source_too_small_to_continue_message }
+          (fun source ->
+            if reading > Src.length source
+            then (
+              let state = mk_state ~maximum_length ~stop_hints source in
+              let scratch = Bytes.make reading '\x00' in
+              let scratch_offset = 0 in
+              let* (), state = unsafe_read_copy scratch scratch_offset state in
+              let value = read (Src.of_bytes scratch) 0 in
+              Readed { value; state })
             else (
-              let value = read source.blob source.offset in
-              let source = bump_readed source reading in
-              Readed { source; value }))
+              let state = mk_state ~maximum_length ~stop_hints source in
+              let value = read state.source state.readed in
+              let state = bump_readed state reading in
+              Readed { state; value }))
       })
   else (
-    (* the source has left-over bytes, do a two-step continuation to use those *)
-    (* TODO? provide a [copy_threshold] to let the user control when
-         the partial read of the remaining of the previous source is
+    (* the state has left-over bytes *)
+    (* TODO? provide a wrapper with a [copy_threshold] to let the user control
+         when the partial read of the remaining of the previous source is
          copied and when is it kept a reference of. *)
     (* TODO? provide a copy_limit and return [Failed] if going over *)
     let split_reading_buffer = Bytes.make reading '\x00' in
-    let split_reading_left_length = source.length - source.readed in
+    let split_reading_left_length = Src.length state.source - state.readed in
     assert (split_reading_left_length > 0);
-    Bytes.blit_string
-      source.blob
-      (source.offset + source.readed)
+    Src.blit_onto_bytes
+      state.source
+      state.readed
       split_reading_buffer
       0
       split_reading_left_length;
-    let split_reading_right_length = reading - split_reading_left_length in
-    assert (split_reading_right_length > 0);
-    let maximum_length = source.maximum_length - source.readed in
-    let stop_hints = List.map (fun stop -> stop - source.readed) source.stop_hints in
+    let state = bump_readed state split_reading_left_length in
+    let maximum_length = state.maximum_length - state.readed in
+    let stop_hints = List.map (fun stop -> stop - state.readed) state.stop_hints in
     Suspended
-      { source
+      { state
       ; cont =
-          (fun blob offset length ->
-            (* First check that the current here readf has enough data *)
-            if reading > split_reading_left_length + length
-            then (
-              (* TODO: what source should we return here? *)
-              let source = mk_source "DUMMYTODO" 0 0 in
-              Failed { source; error = source_too_small_to_continue_message })
-            else (
-              (* prepare for this small here readf *)
-              Bytes.blit_string
-                blob
-                offset
-                split_reading_buffer
-                split_reading_left_length
-                split_reading_right_length;
-              let source =
-                mk_source
-                  ~maximum_length
-                  ~stop_hints
-                  (Bytes.unsafe_to_string split_reading_buffer)
-                  0
-                  reading
-              in
-              (* actually do this small here read *)
-              let value = read source.blob source.offset in
-              (* Second prepare the source for giving back *)
-              let maximum_length = source.maximum_length - split_reading_left_length in
-              let stop_hints =
-                List.map (fun stop -> stop - split_reading_left_length) source.stop_hints
-              in
-              let source = mk_source ~maximum_length ~stop_hints blob offset length in
-              let source = bump_readed source split_reading_right_length in
-              Readed { source; value }))
+          (fun source ->
+            let state = mk_state ~maximum_length ~stop_hints source in
+            let* (), state =
+              unsafe_read_copy split_reading_buffer split_reading_left_length state
+            in
+            let value = read (Src.of_bytes split_reading_buffer) 0 in
+            Readed { value; state })
       })
 ;;
 
 let%expect_test _ =
-  let pp_source_state fmt source =
+  let pp_state fmt state =
     Format.fprintf
       fmt
-      "blob: %S, offset: %d, length: %d, readed: %d, stops: [%a], maxlen: %d"
-      source.blob
-      source.offset
-      source.length
-      source.readed
+      "source: %S, readed: %d, stops: [%a], maxlen: %d"
+      (Src.to_string state.source)
+      state.readed
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
          Format.pp_print_int)
-      source.stop_hints
-      source.maximum_length
+      state.stop_hints
+      state.maximum_length
   in
-  let w source ls =
-    Format.printf "Source: %a\n" pp_source_state source;
+  let w state ls =
+    Format.printf "State: %a\n" pp_state state;
     match
       List.fold_left
-        (fun source l ->
-          match readf source l (fun b o -> String.sub b o l) with
+        (fun state l ->
+          match readf state l (fun s -> Src.get_string s l) with
           | Suspended _ ->
             Format.printf "Suspended!\n";
             raise Exit
-          | Failed { error; source } ->
-            Format.printf "Error: %S\nSource: %a\n" error pp_source_state source;
-            source
-          | Readed { value; source } ->
-            Format.printf "Ok: %S\nSource: %a\n" value pp_source_state source;
-            source)
-        source
+          | Failed { error; state } ->
+            Format.printf "Error: %S\nState: %a\n" error pp_state state;
+            state
+          | Readed { value; state } ->
+            Format.printf "Ok: %S\nState: %a\n" value pp_state state;
+            state)
+        state
         ls
     with
     | exception Exit -> ()
     | _ -> ()
   in
-  let source = mk_source "foobarbaz" 0 9 in
-  w source [ 3; 0; 6; 1 ];
+  let full_source = Src.of_string "foobarbaz" in
+  let state = mk_state full_source in
+  w state [ 3; 0; 6; 1 ];
   [%expect
     {|
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 0, stops: [], maxlen: 4611686018427387903
-    Ok: "foo"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 4611686018427387903
+    State: source: "foobarbaz", readed: 0, stops: [], maxlen: 4611686018427387903
     Ok: ""
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 4611686018427387903
-    Ok: "barbaz"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 9, stops: [], maxlen: 4611686018427387903
+    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 4611686018427387903
+    Ok: "foo"
+    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 4611686018427387903
+    Ok: "baz"
+    State: source: "foobarbaz", readed: 9, stops: [], maxlen: 4611686018427387903
     Suspended! |}];
-  let source = mk_source "foobarbaz" ~maximum_length:6 0 9 in
-  w source [ 3; 0; 6; 3; 1 ];
+  let state = mk_state ~maximum_length:6 full_source in
+  w state [ 3; 0; 6; 3; 1 ];
   [%expect
     {|
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 0, stops: [], maxlen: 6
-    Ok: "foo"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
+    State: source: "foobarbaz", readed: 0, stops: [], maxlen: 6
     Ok: ""
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
+    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 6
+    Ok: "foo"
+    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 6
     Error: "maximum-length exceeded"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
+    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 6
     Ok: "bar"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 6, stops: [], maxlen: 6
+    State: source: "foobarbaz", readed: 6, stops: [], maxlen: 6
     Error: "maximum-length exceeded"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 6, stops: [], maxlen: 6 |}];
+    State: source: "foobarbaz", readed: 6, stops: [], maxlen: 6 |}];
   ()
 ;;
 
-let read_small_string source len =
-  readf source len (fun src off -> String.sub src off len)
-;;
-
-let%expect_test _ =
-  let pp_source_state fmt source =
-    Format.fprintf
-      fmt
-      "blob: %S, offset: %d, length: %d, readed: %d, stops: [%a], maxlen: %d"
-      source.blob
-      source.offset
-      source.length
-      source.readed
-      (Format.pp_print_list
-         ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
-         Format.pp_print_int)
-      source.stop_hints
-      source.maximum_length
-  in
-  let w source ls =
-    Format.printf "Source: %a\n" pp_source_state source;
-    match
-      List.fold_left
-        (fun source l ->
-          match read_small_string source l with
-          | Suspended _ ->
-            Format.printf "Suspended!\n";
-            raise Exit
-          | Failed { error; source } ->
-            Format.printf "Error: %S\nSource: %a\n" error pp_source_state source;
-            source
-          | Readed { value; source } ->
-            Format.printf "Ok: %S\nSource: %a\n" value pp_source_state source;
-            source)
-        source
-        ls
-    with
-    | exception Exit -> ()
-    | _ -> ()
-  in
-  let source = mk_source "foobarbaz" 0 9 in
-  w source [ 3; 0; 6; 1 ];
-  [%expect
-    {|
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 0, stops: [], maxlen: 4611686018427387903
-    Ok: "foo"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 4611686018427387903
-    Ok: ""
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 4611686018427387903
-    Ok: "barbaz"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 9, stops: [], maxlen: 4611686018427387903
-    Suspended! |}];
-  let source = mk_source "foobarbaz" ~maximum_length:6 0 9 in
-  w source [ 3; 0; 6; 3; 1 ];
-  [%expect
-    {|
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 0, stops: [], maxlen: 6
-    Ok: "foo"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
-    Ok: ""
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
-    Error: "maximum-length exceeded"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
-    Ok: "bar"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 6, stops: [], maxlen: 6
-    Error: "maximum-length exceeded"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 6, stops: [], maxlen: 6 |}];
-  ()
-;;
-
-let read_char source =
-  if source.readed + 1 > source.maximum_length
-  then Failed { source; error = "maximum-length exceeded" }
-  else if match source.stop_hints with
+let read_copy scratch state =
+  let reading = Bytes.length scratch in
+  if state.readed + reading > state.maximum_length
+  then Failed { state; error = "maximum-length exceeded" }
+  else if match state.stop_hints with
           | [] -> false
-          | stop :: _ -> source.readed + 1 > stop
-  then Failed { source; error = "expected-stop point exceeded" }
-  else if source.readed + 1 > source.length
-  then
+          | stop :: _ -> state.readed + reading > stop
+  then Failed { state; error = "expected-stop point exceeded" }
+  else unsafe_read_copy scratch 0 state
+;;
+
+let read_char state =
+  if state.readed + 1 > state.maximum_length
+  then Failed { state; error = "maximum-length exceeded" }
+  else if match state.stop_hints with
+          | [] -> false
+          | stop :: _ -> state.readed + 1 > stop
+  then Failed { state; error = "expected-stop point exceeded" }
+  else if state.readed + 1 > Src.length state.source
+  then (
+    assert (state.readed = Src.length state.source);
     Suspended
-      { source
+      { state
       ; cont =
-          (fun blob offset length ->
-            assert (source.readed <= source.length);
-            assert (source.readed = source.length);
+          (fun source ->
             (* we are reading 1 char, so we can't have left over from before *)
-            let source =
-              mk_source
-                ~maximum_length:(source.maximum_length - 1)
-                ~stop_hints:(List.map (fun stop -> stop - 1) source.stop_hints)
-                blob
-                offset
-                length
+            let state =
+              mk_state
+                ~maximum_length:(state.maximum_length - 1)
+                ~stop_hints:(List.map (fun stop -> stop - 1) state.stop_hints)
+                source
             in
-            assert (length > 0);
-            let value = String.get source.blob source.offset in
-            let source = bump_readed source 1 in
-            Readed { source; value })
-      }
+            assert (Src.length source > 0);
+            let value = Src.get source state.readed in
+            let state = bump_readed state 1 in
+            Readed { state; value })
+      })
   else (
-    let value = String.get source.blob (source.offset + source.readed) in
-    let source = bump_readed source 1 in
-    Readed { source; value })
+    let value = Src.get state.source state.readed in
+    let state = bump_readed state 1 in
+    Readed { state; value })
 ;;
 
 let%expect_test _ =
-  let pp_source_state fmt source =
+  let pp_state fmt state =
     Format.fprintf
       fmt
-      "blob: %S, offset: %d, length: %d, readed: %d, stops: [%a], maxlen: %d"
-      source.blob
-      source.offset
-      source.length
-      source.readed
+      "source: %S, readed: %d, stops: [%a], maxlen: %d"
+      (Src.to_string state.source)
+      state.readed
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
          Format.pp_print_int)
-      source.stop_hints
-      source.maximum_length
+      state.stop_hints
+      state.maximum_length
   in
-  let w source =
-    Format.printf "Source: %a\n" pp_source_state source;
-    let rec go source =
-      match read_char source with
+  let w state =
+    Format.printf "State: %a\n" pp_state state;
+    let rec go state =
+      match read_char state with
       | Suspended _ ->
         Format.printf "Suspended!\n";
         ()
-      | Failed { error; source } ->
-        Format.printf "Error: %S\nSource: %a\n" error pp_source_state source;
+      | Failed { error; state } ->
+        Format.printf "Error: %S\nState: %a\n" error pp_state state;
         ()
-      | Readed { value; source } ->
-        Format.printf "Ok: %c\nSource: %a\n" value pp_source_state source;
-        go source
+      | Readed { value; state } ->
+        Format.printf "Ok: %c\nState: %a\n" value pp_state state;
+        go state
     in
-    go source
+    go state
   in
-  let source = mk_source "foobarbaz" 3 3 in
-  w source;
+  let state = mk_state (Src.of_string "foobarbaz" ~offset:3 ~length:3) in
+  w state;
   [%expect
     {|
-    Source: blob: "foobarbaz", offset: 3, length: 3, readed: 0, stops: [], maxlen: 4611686018427387903
+    State: source: "bar", readed: 0, stops: [], maxlen: 4611686018427387903
     Ok: b
-    Source: blob: "foobarbaz", offset: 3, length: 3, readed: 1, stops: [], maxlen: 4611686018427387903
+    State: source: "bar", readed: 1, stops: [], maxlen: 4611686018427387903
     Ok: a
-    Source: blob: "foobarbaz", offset: 3, length: 3, readed: 2, stops: [], maxlen: 4611686018427387903
+    State: source: "bar", readed: 2, stops: [], maxlen: 4611686018427387903
     Ok: r
-    Source: blob: "foobarbaz", offset: 3, length: 3, readed: 3, stops: [], maxlen: 4611686018427387903
+    State: source: "bar", readed: 3, stops: [], maxlen: 4611686018427387903
     Suspended! |}];
-  let source = mk_source "foobarbaz" ~maximum_length:3 0 9 in
-  w source;
+  let state = mk_state ~maximum_length:3 (Src.of_string "foobarbaz") in
+  w state;
   [%expect
     {|
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 0, stops: [], maxlen: 3
+    State: source: "foobarbaz", readed: 0, stops: [], maxlen: 3
     Ok: f
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 1, stops: [], maxlen: 3
+    State: source: "foobarbaz", readed: 1, stops: [], maxlen: 3
     Ok: o
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 2, stops: [], maxlen: 3
+    State: source: "foobarbaz", readed: 2, stops: [], maxlen: 3
     Ok: o
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 3
+    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 3
     Error: "maximum-length exceeded"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 3 |}];
+    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 3 |}];
   ()
 ;;
 
-type 'a chunkreader = string -> int -> int -> 'a chunkreaded
+type 'a chunkreader = Src.t -> 'a chunkreaded
 
+(* similar to [readed] but the state is just the readed count *)
 and 'a chunkreaded =
-  | K of int * 'a chunkreader
-  | Finish of 'a * int
+  | CSuspended of
+      { readed : int
+      ; cont : 'a chunkreader
+      }
+  | CReaded of
+      { readed : int
+      ; value : 'a
+      }
+  | CFailed of
+      { readed : int
+      ; error : string
+      }
 
-let rec readchunked : type a. source -> a chunkreader -> a readed =
- fun source read ->
-  let hard_limit = source.maximum_length - source.readed in
+let rec readchunked : type a. state -> a chunkreader -> a readed =
+ fun state read ->
+  let hard_limit = state.maximum_length - state.readed in
   let hard_limit =
-    match source.stop_hints with
+    match state.stop_hints with
     | [] -> hard_limit
-    | stop :: _ -> min hard_limit (stop - source.readed)
+    | stop :: _ -> min hard_limit (stop - state.readed)
   in
-  let suspendable_limit = source.length - source.readed in
+  let suspendable_limit = Src.length state.source - state.readed in
   let reading = min hard_limit suspendable_limit in
   assert (reading <= hard_limit);
   assert (reading >= 0);
-  match read source.blob (source.offset + source.readed) reading with
-  | Finish (value, readed) ->
+  match read (Src.of_src state.source ~offset:state.readed ~length:reading) with
+  | CReaded { value; readed } ->
     assert (readed <= reading);
-    let source = bump_readed source readed in
-    Readed { source; value }
-  | K (readed, read) ->
+    let state = bump_readed state readed in
+    Readed { state; value }
+  | CSuspended { readed; cont } ->
     assert (readed <= reading);
     if readed = hard_limit
     then (
-      let error = "chunkreader requires more bytes but hard limit was reached" in
-      Failed { error; source })
+      let error = "chunkreader requests more bytes but hard limit was reached" in
+      Failed { error; state })
     else (
-      let source = bump_readed source readed in
+      let state = bump_readed state readed in
       Suspended
-        { source
+        { state
         ; cont =
-            (fun blob offset length ->
-              let source =
-                mk_source
-                  ~maximum_length:(source.maximum_length - source.readed)
+            (fun source ->
+              let state =
+                mk_state
+                  ~maximum_length:(state.maximum_length - state.readed)
                   ~stop_hints:
-                    (List.map (fun stop -> stop - source.readed) source.stop_hints)
-                  blob
-                  offset
-                  length
+                    (List.map (fun stop -> stop - state.readed) state.stop_hints)
+                  source
               in
-              readchunked source read)
+              readchunked state cont)
         })
+  | CFailed { readed; error } ->
+    let state = bump_readed state readed in
+    let error = "Error in chunk-reader: " ^ error in
+    Failed { state; error }
 ;;
 
-(* TODO: have the user pass the buffer for [read_large_bytes] to avoid major
+(* TODO: have the user pass the buffer for [read_bytes] to avoid major
    allocation. *)
 
-let read_large_bytes source len =
-  let dest = Bytes.make len '\000' in
-  let rec chunkreader dest_offset blob offset maxreadsize =
-    let needsreading = len - dest_offset in
-    if needsreading = 0
-    then Finish (dest, 0)
-    else if needsreading <= maxreadsize
-    then (
-      Bytes.blit_string blob offset dest dest_offset needsreading;
-      Finish (dest, needsreading))
-    else (
-      Bytes.blit_string blob offset dest dest_offset maxreadsize;
-      K (maxreadsize, chunkreader maxreadsize))
-  in
-  readchunked source (chunkreader 0)
+let read_bytes state len =
+  let scratch = Bytes.make len '\000' in
+  let* (), state = read_copy scratch state in
+  Readed { value = scratch; state }
 ;;
 
-(* TODO: have a large-string variant which returns [(string*int*int)list] to
-   avoid allocations. *)
-(* TODO: have a large-string variant which takes [(string*int*int)->unit] to let
-   the user control the copying/use. *)
-
-let read_large_string source len =
-  let dest = Bytes.make len '\000' in
-  let rec chunkreader dest_offset blob offset maxreadsize =
-    let needsreading = len - dest_offset in
-    if needsreading = 0
-    then Finish (Bytes.unsafe_to_string dest, 0)
-    else if needsreading <= maxreadsize
-    then (
-      Bytes.blit_string blob offset dest dest_offset needsreading;
-      Finish (Bytes.unsafe_to_string dest, needsreading))
-    else (
-      Bytes.blit_string blob offset dest dest_offset maxreadsize;
-      K (maxreadsize, chunkreader maxreadsize))
-  in
-  readchunked source (chunkreader 0)
+let read_string state len =
+  let scratch = Bytes.make len '\000' in
+  let* (), state = read_copy scratch state in
+  Readed { value = Bytes.unsafe_to_string scratch; state }
 ;;
 
 let%expect_test _ =
-  let pp_source_state fmt source =
+  let pp_state fmt state =
     Format.fprintf
       fmt
-      "blob: %S, offset: %d, length: %d, readed: %d, stops: [%a], maxlen: %d"
-      source.blob
-      source.offset
-      source.length
-      source.readed
+      "source: %S, readed: %d, stops: [%a], maxlen: %d"
+      (Src.to_string state.source)
+      state.readed
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
          Format.pp_print_int)
-      source.stop_hints
-      source.maximum_length
+      state.stop_hints
+      state.maximum_length
   in
-  let w source ls =
-    Format.printf "Source: %a\n" pp_source_state source;
+  let w state ls =
+    Format.printf "State: %a\n" pp_state state;
     match
       List.fold_left
-        (fun source l ->
-          match read_large_string source l with
+        (fun state l ->
+          match read_string state l with
           | Suspended _ ->
             Format.printf "Suspended!\n";
             raise Exit
-          | Failed { error; source } ->
-            Format.printf "Error: %S\nSource: %a\n" error pp_source_state source;
-            source
-          | Readed { value; source } ->
-            Format.printf "Ok: %S\nSource: %a\n" value pp_source_state source;
-            source)
-        source
+          | Failed { error; state } ->
+            Format.printf "Error: %S\nState: %a\n" error pp_state state;
+            state
+          | Readed { value; state } ->
+            Format.printf "Ok: %S\nState: %a\n" value pp_state state;
+            state)
+        state
         ls
     with
     | exception Exit -> ()
     | _ -> ()
   in
-  let source = mk_source "foobarbaz" 0 9 in
-  w source [ 3; 0; 6; 1 ];
+  let state = mk_state (Src.of_string "foobarbaz") in
+  w state [ 3; 0; 6; 1 ];
   [%expect
     {|
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 0, stops: [], maxlen: 4611686018427387903
+    State: source: "foobarbaz", readed: 0, stops: [], maxlen: 4611686018427387903
     Ok: "foo"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 4611686018427387903
+    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 4611686018427387903
     Ok: ""
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 4611686018427387903
+    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 4611686018427387903
     Ok: "barbaz"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 9, stops: [], maxlen: 4611686018427387903
+    State: source: "foobarbaz", readed: 9, stops: [], maxlen: 4611686018427387903
     Suspended! |}];
-  let source = mk_source "foobarbaz" ~maximum_length:6 0 9 in
-  w source [ 3; 0; 6; 3; 1 ];
+  let state = mk_state ~maximum_length:6 (Src.of_string "foobarbaz") in
+  w state [ 3; 0; 6; 3; 1 ];
   [%expect
     {|
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 0, stops: [], maxlen: 6
+    State: source: "foobarbaz", readed: 0, stops: [], maxlen: 6
     Ok: "foo"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
+    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 6
     Ok: ""
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
-    Error: "chunkreader requires more bytes but hard limit was reached"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 3, stops: [], maxlen: 6
+    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 6
+    Error: "maximum-length exceeded"
+    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 6
     Ok: "bar"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 6, stops: [], maxlen: 6
-    Error: "chunkreader requires more bytes but hard limit was reached"
-    Source: blob: "foobarbaz", offset: 0, length: 9, readed: 6, stops: [], maxlen: 6 |}];
+    State: source: "foobarbaz", readed: 6, stops: [], maxlen: 6
+    Error: "maximum-length exceeded"
+    State: source: "foobarbaz", readed: 6, stops: [], maxlen: 6 |}];
   ();
   let w ss ls =
     let rec go ss cont =
       match cont () with
-      | Suspended { source; cont } ->
-        Format.printf "Suspended!\nSource: %a\n" pp_source_state source;
+      | Suspended { state; cont } ->
+        Format.printf "Suspended!\nState: %a\n" pp_state state;
         let s = List.hd ss in
         let ss = List.tl ss in
-        go ss (fun () -> cont s 0 (String.length s))
-      | Failed { error; source } as failed ->
-        Format.printf "Error: %S\nSource: %a\n" error pp_source_state source;
-        failed, source, ss
-      | Readed { value; source } as readed ->
-        Format.printf "Ok: %S\nSource: %a\n" value pp_source_state source;
-        readed, source, ss
+        go ss (fun () -> cont (Src.of_string s))
+      | Failed { error; state } as failed ->
+        Format.printf "Error: %S\nState: %a\n" error pp_state state;
+        failed, state, ss
+      | Readed { value; state } as readed ->
+        Format.printf "Ok: %S\nState: %a\n" value pp_state state;
+        readed, state, ss
     in
-    let rec reads source ss ls =
+    let rec reads state ss ls =
       match ls with
       | [] -> ()
       | l :: ls ->
-        (match go ss (fun () -> read_large_string source l) with
+        (match go ss (fun () -> read_string state l) with
          | Suspended _, _, _ -> assert false
-         | (Failed _ | Readed _), source, ss -> reads source ss ls)
+         | (Failed _ | Readed _), state, ss -> reads state ss ls)
     in
     let s = List.hd ss in
     let ss = List.tl ss in
-    let source = mk_source s 0 (String.length s) in
-    Format.printf "Start!\nSource: %a\n" pp_source_state source;
-    reads source ss ls
+    let state = mk_state (Src.of_string s) in
+    Format.printf "Start!\nState: %a\n" pp_state state;
+    reads state ss ls
   in
   w [ "foo"; "bar"; "baz" ] [ 3; 0; 6 ];
   [%expect
     {|
     Start!
-    Source: blob: "foo", offset: 0, length: 3, readed: 0, stops: [], maxlen: 4611686018427387903
+    State: source: "foo", readed: 0, stops: [], maxlen: 4611686018427387903
     Ok: "foo"
-    Source: blob: "foo", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387903
+    State: source: "foo", readed: 3, stops: [], maxlen: 4611686018427387903
     Ok: ""
-    Source: blob: "foo", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387903
+    State: source: "foo", readed: 3, stops: [], maxlen: 4611686018427387903
     Suspended!
-    Source: blob: "foo", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387903
+    State: source: "foo", readed: 3, stops: [], maxlen: 4611686018427387903
     Suspended!
-    Source: blob: "bar", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387900
+    State: source: "bar", readed: 3, stops: [], maxlen: 4611686018427387900
     Ok: "barbaz"
-    Source: blob: "baz", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387897 |}];
+    State: source: "baz", readed: 3, stops: [], maxlen: 4611686018427387897 |}];
   w
     (let rec xs = "xyz" :: xs in
      xs)
@@ -650,47 +571,35 @@ let%expect_test _ =
   [%expect
     {|
     Start!
-    Source: blob: "xyz", offset: 0, length: 3, readed: 0, stops: [], maxlen: 4611686018427387903
+    State: source: "xyz", readed: 0, stops: [], maxlen: 4611686018427387903
     Suspended!
-    Source: blob: "xyz", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387903
+    State: source: "xyz", readed: 3, stops: [], maxlen: 4611686018427387903
     Ok: "xyzx"
-    Source: blob: "xyz", offset: 0, length: 3, readed: 1, stops: [], maxlen: 4611686018427387900
+    State: source: "xyz", readed: 1, stops: [], maxlen: 4611686018427387900
     Suspended!
-    Source: blob: "xyz", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387900
+    State: source: "xyz", readed: 3, stops: [], maxlen: 4611686018427387900
     Ok: "yzxy"
-    Source: blob: "xyz", offset: 0, length: 3, readed: 2, stops: [], maxlen: 4611686018427387897
+    State: source: "xyz", readed: 2, stops: [], maxlen: 4611686018427387897
     Suspended!
-    Source: blob: "xyz", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387897
+    State: source: "xyz", readed: 3, stops: [], maxlen: 4611686018427387897
     Ok: "zxyz"
-    Source: blob: "xyz", offset: 0, length: 3, readed: 3, stops: [], maxlen: 4611686018427387894 |}];
+    State: source: "xyz", readed: 3, stops: [], maxlen: 4611686018427387894 |}];
   ()
 ;;
 
-let rec ( let* ) x f =
-  match x with
-  | Readed { source; value } -> f (value, source)
-  | Failed { source; error } -> Failed { source; error }
-  | Suspended { source; cont } ->
-    let cont blob offset length =
-      let* x = cont blob offset length in
-      f x
-    in
-    Suspended { source; cont }
-;;
-
 (* TODO: avoid so many calls to [read_char] and [let*] to speed up reading *)
-let read_utf8_uchar source =
-  let* c, source = read_char source in
+let read_utf8_uchar state =
+  let* c, state = read_char state in
   let c = Char.code c in
   if c land 0b1000_0000 = 0b0000_0000
   then (
     (* length 1 *)
     let value = Uchar.of_int c in
-    Readed { source; value })
+    Readed { state; value })
   else if c land 0b1110_0000 = 0b1100_0000
   then
     (* length 2 *)
-    let* c1, source = read_char source in
+    let* c1, state = read_char state in
     let c1 = Char.code c1 in
     if c1 land 0b1100_0000 = 0b1000_0000
     then (
@@ -698,16 +607,16 @@ let read_utf8_uchar source =
       let c1 = c1 land 0b0011_1111 in
       let point = c lor c1 in
       let value = Uchar.of_int point in
-      Readed { source; value })
+      Readed { state; value })
     else (
       let error = "Invalid UTF8 byte" in
-      Failed { source; error })
+      Failed { state; error })
   else if c land 0b1111_0000 = 0b1110_0000
   then
     (* length 3 *)
-    let* c1, source = read_char source in
+    let* c1, state = read_char state in
     let c1 = Char.code c1 in
-    let* c2, source = read_char source in
+    let* c2, state = read_char state in
     let c2 = Char.code c2 in
     if c1 land 0b1100_0000 = 0b1000_0000 && c2 land 0b1100_0000 = 0b1000_0000
     then (
@@ -716,18 +625,18 @@ let read_utf8_uchar source =
       let c2 = c2 land 0b0011_1111 in
       let point = c lor c1 lor c2 in
       let value = Uchar.of_int point in
-      Readed { source; value })
+      Readed { state; value })
     else (
       let error = "Invalid UTF8 byte" in
-      Failed { source; error })
+      Failed { state; error })
   else if c land 0b1111_1000 = 0b1111_0000
   then
     (* length 4 *)
-    let* c1, source = read_char source in
+    let* c1, state = read_char state in
     let c1 = Char.code c1 in
-    let* c2, source = read_char source in
+    let* c2, state = read_char state in
     let c2 = Char.code c2 in
-    let* c3, source = read_char source in
+    let* c3, state = read_char state in
     let c3 = Char.code c3 in
     if c1 land 0b1100_0000 = 0b1000_0000
        && c2 land 0b1100_0000 = 0b1000_0000
@@ -739,24 +648,24 @@ let read_utf8_uchar source =
       let c3 = c3 land 0b0011_1111 in
       let point = c lor c1 lor c2 lor c3 in
       let value = Uchar.of_int point in
-      Readed { source; value })
+      Readed { state; value })
     else (
       let error = "Invalid UTF8 byte" in
-      Failed { source; error })
+      Failed { state; error })
   else (
     let error = "Invalid UTF8 leading byte" in
-    Failed { source; error })
+    Failed { state; error })
 ;;
 
 let%expect_test _ =
   let w s =
-    let rec loop acc source =
-      match read_utf8_uchar source with
-      | Readed { value; source } -> loop (value :: acc) source
-      | Failed { error; source = _ } -> Error error
-      | Suspended { source = _; cont = _ } -> Ok (List.rev acc)
+    let rec loop acc state =
+      match read_utf8_uchar state with
+      | Readed { value; state } -> loop (value :: acc) state
+      | Failed { error; state = _ } -> Error error
+      | Suspended { state = _; cont = _ } -> Ok (List.rev acc)
     in
-    match loop [] (mk_source s 0 (String.length s)) with
+    match loop [] (mk_state (Src.of_string s)) with
     | Ok uchars ->
       Format.printf
         "%a\n"
@@ -783,34 +692,36 @@ let%expect_test _ =
   ()
 ;;
 
+let read_uint8 state = readf state 1 Src.get_uint8
+
 let of_string read s =
-  let source = mk_source s 0 (String.length s) in
-  match read source with
-  | Readed { source; value } ->
-    assert (source.readed <= source.length);
-    if source.readed < source.length then Error "Too many bytes" else Ok value
-  | Failed { source = _; error } -> Error error
-  | Suspended { source = _; cont = _ } -> Error "Not enough bytes"
+  let state = mk_state (Src.of_string s) in
+  match read state with
+  | Readed { state; value } ->
+    assert (state.readed <= Src.length state.source);
+    if state.readed < Src.length state.source then Error "Too many bytes" else Ok value
+  | Failed { state = _; error } -> Error error
+  | Suspended { state = _; cont = _ } -> Error "Not enough bytes"
 ;;
 
 let rec of_string_seq_loop seq cont =
   match seq () with
   | Seq.Nil -> Error "Not enough chunks or bytes"
   | Seq.Cons (s, seq) ->
-    (match cont s 0 (String.length s) with
-     | Readed { source; value } ->
-       assert (source.readed <= source.length);
-       if source.readed < source.length
+    (match cont (Src.of_string s) with
+     | Readed { state; value } ->
+       assert (state.readed <= Src.length state.source);
+       if state.readed < Src.length state.source
        then Error "Too many bytes"
        else if Seq.is_empty seq
        then Ok value
        else Error "Too many chunks"
-     | Failed { source = _; error } -> Error error
-     | Suspended { source = _; cont } -> of_string_seq_loop seq cont)
+     | Failed { state = _; error } -> Error error
+     | Suspended { state = _; cont } -> of_string_seq_loop seq cont)
 ;;
 
 let of_string_seq read s =
-  of_string_seq_loop s (fun s off len ->
-    let source = mk_source s off len in
-    read source)
+  of_string_seq_loop s (fun source ->
+    let state = mk_state source in
+    read state)
 ;;

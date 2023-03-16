@@ -66,7 +66,16 @@ module Uint30 = struct
   let min_int = 0
   let zero = 0
   let max_int = 0x3f_ff_ff_ff
+  let max_intl = 0x3f_ff_ff_ffl
   let of_int v = if min_int <= v && v <= max_int then Some v else None
+
+  let of_int32 v =
+    if Int32.compare 0l v <= 0 && Int32.compare v max_intl <= 0
+    then Some (Int32.to_int v)
+    else None
+  ;;
+
+  let unsafe_of_int = Fun.id
   let to_uint62 v = Optint.Int63.of_int v
   let set_be b o v = Bytes.set_int32_be b o (Int32.of_int (v :> int))
   let set_le b o v = Bytes.set_int32_le b o (Int32.of_int (v :> int))
@@ -91,6 +100,7 @@ module Uint16 = struct
   let zero = 0
   let max_int = 0xff_ff
   let of_int v = if min_int <= v && v <= max_int then Some v else None
+  let unsafe_of_int = Fun.id
   let to_uint62 v = Optint.Int63.of_int v
   let set_be = Bytes.set_uint16_be
   let set_le = Bytes.set_uint16_le
@@ -106,6 +116,7 @@ module Uint8 = struct
   let one = 1
   let max_int = 0xff
   let of_int v = if min_int <= v && v <= max_int then Some v else None
+  let unsafe_of_int = Fun.id
   let to_uint62 v = Optint.Int63.of_int v
   let get = String.get_uint8
 end

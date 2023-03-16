@@ -12,23 +12,19 @@
     operation in order to allow for concurrency cooperation points even if all
     of the data is available. *)
 
-(** {2: Sources} *)
+(** {2: State} *)
 
-(** A [source] is a value that the [readk] function uses to read bytes from. It
-    is a stateful wrapper around a [string] blob. *)
-type source = private
-  { blob : string
-  ; offset : int
-  ; length : int
+(** A state is a value that tracks indexes and limits whilst reading. *)
+type state =
+  { source : Src.t
   ; readed : int (* [read] is ambiguous so we make it unambiguously past as [readed] *)
   ; stop_hints : int list
       (* this list is grown when there is a size-header in the encoded binary data *)
   ; maximum_length : int
   }
 
-(** [mk_source blob offset length] is a source. With such a source, the [readk]
-    function can read from the bytes of [blob] from [offset] up to [length]
-    bytes.
+(** [mk_state source] is a reading [state]. With such a state, the [readk]
+    function can read from the bytes of [source].
 
     @param ?maximum_length is a limit on the maximum number of bytes
     read. [maximum_length] is a limit for a whole deserialisation procedure
@@ -37,83 +33,59 @@ type source = private
     @raise Failure if [offset] and [length] do not form a valid slice of
     [blob]. Specifically if
     [ offset<0 || length<0 || offset+length>String.length blob ]. *)
-val mk_source
-  :  ?maximum_length:int
-  -> ?stop_hints:int list
-  -> string
-  -> int
-  -> int
-  -> source
+val mk_state : ?maximum_length:int -> ?stop_hints:int list -> Src.t -> state
 
-(** [push_stop source o] adds a stop hint [o] bytes ahead in the reading buffer.
+(** [push_stop state o] adds a stop hint [o] bytes ahead in the reading buffer.
 
     A stop hint is a location in the buffer that a reader is marking so that it
     can later stop at this position. This is primarily intended for binary
     serialisation formats which include size headers: when encountering a
     size header the reader pushes a stop hint; during deserialisation the
-    reader peaks at the recorded stop hint (via [peak_stop]); after reaching the
+    reader peeks at the recorded stop hint (via [peek_stop]); after reaching the
     stop hint the reader pops the recorded stop hint (via [pop_stop]).
 
     Note that the position [o] is relative to the current position in the
-    [source].
+    [state].
 
     Returns an [Error] if the pushed stop hint is beyond the
-    [maximum_length] limit of the [source].
+    [maximum_length] limit of the [state].
 
     Returns an [Error] if the pushed stop hint is beyond an already placed
     stop hint. This means that the stops must be nested correctly like
     delimiters.
  *)
-val push_stop : source -> int -> (source, string) result
+val push_stop : state -> int -> (state, string) result
 
-(** [peak_stop source] is the next stop hint offset (if any have been set). The
-    stop hint is relative to [source.offset]. In practical terms, it means there
-    are [peak_stop source - source.readed] bytes left to read before reaching
-    the stop hint. And as a special case, the stop hint is reached when
-    [peak_stop source = source.readed].
+(** [peek_stop state] is the next stop hint offset (if any have been set).
+    In practical terms, it means there are [peek_stop state - state.readed]
+    bytes left to read before reaching the stop hint. And as a special case,
+    the stop hint is reached when [peek_stop state = state.readed].
 
     Returns [None] if there are no stop hints. *)
-val peak_stop : source -> int option
+val peek_stop : state -> int option
 
-(** [pop_stop source] removes and returns the next stop hint.
+(** [pop_stop state] removes and returns the next stop hint.
 
     Returns an [Error] if there are no stop hints. *)
-val pop_stop : source -> (int * source, string) result
+val pop_stop : state -> (int * state, string) result
 
 (** [bring_first_stop_forward]
 
     @raise Invalid_argument *)
-val bring_first_stop_forward : source -> int -> source
+val bring_first_stop_forward : state -> int -> state
 
-(** [set_maximum_length source maximum_length] is a source identical
-    to [source] but with the [maximum_length] field set to
+(** [set_maximum_length state maximum_length] is a state identical
+    to [state] but with the [maximum_length] field set to
     [maximum_length].
 
-    @raise Invalid_argument if [maximum_length > source.maximum_length].
+    @raise Invalid_argument if [maximum_length > state.maximum_length].
     I.e., if this function is used to increase the limit.
 
     @raise Invalid_argument if [maximum_length < 0].
 
     @raise Invalid_argument if [maximum_length] is before any of the pushed stop
     hints (see [push_stop]). *)
-val set_maximum_length : source -> int -> source
-
-(** [source_too_small_to_continue_message] is an error message used when a
-    suspended source is provided with a new blob which is too small to
-    resume the suspended read.
-
-    There are two approaches to avoiding this error.
-
-    {ul
-      {li You can provide larger and larger blobs until the suspension is
-          successfully resumed.}
-      {li You can make sure that you never call [readf] with sizes larger than
-          the provided blobs. When reading a large value on the buffer, use
-          [readchunked] instead. }
-    }
-
-    *)
-val source_too_small_to_continue_message : string
+val set_maximum_length : state -> int -> state
 
 (** A [readed] is a value returned by [readk] in order to indicate the status of
     the deserialisation operation.
@@ -123,20 +95,20 @@ val source_too_small_to_continue_message : string
     is misspelt into {e readed}. *)
 type 'a readed =
   | Readed of
-      { source : source
+      { state : state
       ; value : 'a
           (** The deserialisation was successful and complete. The [value] is
                 available. *)
       }
   | Failed of
-      { source : source
+      { state : state
       ; error : string
           (** [error] carries a human-readable message indicating the reason
                 for the failure. *)
       }
   | Suspended of
-      { source : source
-      ; cont : string -> int -> int -> 'a readed
+      { state : state
+      ; cont : Src.t -> 'a readed
           (** The deserialisation is suspeneded because it ran out of bytes to
                 read from. Use [cont blob offset length] to provide one more
                 slice that the deserialisation can read from. *)
@@ -144,47 +116,52 @@ type 'a readed =
 
 (** {2: Simple reading functions} *)
 
-(* [readf source reading f] is for reading [reading] bytes from [source]. If
+(* [readf state reading f] is for reading [reading] bytes from [state]. If
    enough bytes are available, it calls [f blob offset] allowing the actual read
    to take place.
 
-   Returns [Failed] if reading exceeds the [maximum_length] of the [source].
+   Returns [Failed] if reading exceeds the [maximum_length] of the [state].
 
    Returns [Failed] if the next stop hint is exceeded. (See [push_stop],
    [peak_stop] and [pop_stop].)
 
-   If there are not enough bytes available in [source], then
-   [readf source reading f] will allocate a buffer of [reading] bytes which it
-   uses to copy the bytes remaining in the current source and proceed with the
+   If there are not enough bytes available in [state], then
+   [readf state reading f] will allocate a buffer of [reading] bytes which it
+   uses to copy the bytes remaining in the current state and proceed with the
    reading when more bytes are given to the suspension.
 
    It is recommended to use [readf] with values of [reading] which are small.
    One of the reason being this allocation which might be performed here.
-   Another is detailed in the documentation of
-   {!source_too_small_to_continue_message}. Check out chunk readers (below) if
-   you need to read large values. *)
-val readf : source -> int -> (string -> int -> 'a) -> 'a readed
+   Check out chunk readers (below) if you need to read large values. *)
+val readf : state -> int -> (Src.t -> int -> 'a) -> 'a readed
+val read_copy : bytes -> state -> unit readed
 
 (** {2: Chunked writing functions} *)
 
 (** [chunkreader] is the type of readers that can be used to read a single value
     spread over multiple chunks. See the documentation of [readchunked] below. *)
-type 'a chunkreader = string -> int -> int -> 'a chunkreaded
+type 'a chunkreader = Src.t -> 'a chunkreaded
 
 and 'a chunkreaded =
-  | K of int * 'a chunkreader
-      (** [K (r, cr)] indicates that the chunkreader has
-          read [r] bytes and has more bytes to read still. *)
-  | Finish of 'a * int
-      (** [Finish (v, r)] indicates that the chunkreader has
-          finished reading. *)
+  | CSuspended of
+      { readed : int
+      ; cont : 'a chunkreader
+      }
+  | CReaded of
+      { readed : int
+      ; value : 'a
+      }
+  | CFailed of
+      { readed : int
+      ; error : string
+      }
 
-(** [readchunked source r] interleaves calls to [r] within the suspend-resume
-    mechanism of the [source], allowing the user to read more bytes than is
+(** [readchunked state r] interleaves calls to [r] within the suspend-resume
+    mechanism of the [state], allowing the user to read more bytes than is
     available in a single blob, or to spread the reading into multiple chunks.
 
-    [readchunked source r] calls [r b o l] where [b] is the underlying blob of
-    [source], [o] is the offset [r] should read at, and [l] is the maximum
+    [readchunked state r] calls [r b o l] where [b] is the underlying blob of
+    [state], [o] is the offset [r] should read at, and [l] is the maximum
     number of bytes that [r] should read.
 
     - If [r] needs to read [ll] bytes with [ll<=l] then it should read [ll]
@@ -197,20 +174,18 @@ and 'a chunkreaded =
 
     As a caller, it is your responsibility to ensure that [r] behaves as
     documentated here. *)
-val readchunked : source -> 'a chunkreader -> 'a readed
+val readchunked : state -> 'a chunkreader -> 'a readed
 
 (** {2: OCaml base-type readers} *)
 
 (* TODO? place those in their own module? *)
-(* TODO? type [('a, 'b) reader = 'a -> source -> 'b readed] *)
+(* TODO? type [('a, 'b) reader = 'a -> state -> 'b readed] *)
 
-(* TODO the possible failure may be dangerous bc fed from potentially slow
-   network, maybe relax this *)
-val read_small_string : source -> int -> string readed
-val read_large_string : source -> int -> string readed
-val read_large_bytes : source -> int -> bytes readed
-val read_char : source -> char readed
-val read_utf8_uchar : source -> Uchar.t readed
+val read_string : state -> int -> string readed
+val read_bytes : state -> int -> bytes readed
+val read_char : state -> char readed
+val read_utf8_uchar : state -> Uchar.t readed
+val read_uint8 : state -> int readed
 (* TODO? list/array/seq writing combinator? other combinators? *)
 (* TODO? uint8, uint16, etc. reading functions (wrapping [Bytes.*]) *)
 
@@ -220,13 +195,13 @@ val read_utf8_uchar : source -> Uchar.t readed
     functions. It handles failures and suspensions. E.g.,
 
 {[
-let source = mk_source … in
-let* c, source = read_char source in
+let state = mk_state … in
+let* c, state = read_char state in
 let n = Char.code c in
-let* s, source = read_large_string source n in
+let* s, state = read_string state n in
 …
 ]} *)
-val ( let* ) : 'a readed -> ('a * source -> 'b readed) -> 'b readed
+val ( let* ) : 'a readed -> ('a * state -> 'b readed) -> 'b readed
 
 (** {2: Wrapping reading functions} *)
 
@@ -237,7 +212,7 @@ val ( let* ) : 'a readed -> ('a * source -> 'b readed) -> 'b readed
 
     @raise Invalid_argument if [s] contains more bytes than needed to perform
     [read]. *)
-val of_string : (source -> 'a readed) -> string -> ('a, string) result
+val of_string : (state -> 'a readed) -> string -> ('a, string) result
 
 (** [of_string_seq read s] performs [read] on the bytes carried by the sequence
     of strings [s].
@@ -247,4 +222,4 @@ val of_string : (source -> 'a readed) -> string -> ('a, string) result
 
     @raise Invalid_argument if [s] contains more bytes than needed to perform
     [read]. *)
-val of_string_seq : (source -> 'a readed) -> string Seq.t -> ('a, string) result
+val of_string_seq : (state -> 'a readed) -> string Seq.t -> ('a, string) result

@@ -8,25 +8,25 @@
     block intended primarily for defining high-level functions. The next
     section offers some of these high-level wrappers. *)
 
-(** [readk source encoding] deserialise a value as per the [encoding]. (See
+(** [readk state encoding] deserialise a value as per the [encoding]. (See
     documentation of [Encoding] for information about encodings.
 
-    If [readk] has enough bytes available in [source] to complete the
+    If [readk] has enough bytes available in [state] to complete the
     deserialisation, it returns [Readed].
 
     If [readk] encounters an error, it returns [Failed]. One possible error is
     for the deserialisation process to go over the [maximum_length] limit set
-    via [mk_source]. Other errors are mismatches between [encoding] and the
-    content of [source].
+    via [mk_state]. Other errors are mismatches between [encoding] and the
+    content of [state].
 
-    If [readk] runs out of available bytes in [source], it returns [Suspended].
+    If [readk] runs out of available bytes in [state], it returns [Suspended].
     In this case,, you can use the returned [cont]inuation to provide further
     bytes to read from.
 
     When you call the [cont]inuation, the [maximum_length] carries over so that
     the maximum number of bytes read by the call to [readk] and all the
     subsequent calls to [cont]s never exceeds this limit. *)
-val readk : Buffy.R.source -> ('s, 'a) Descr.t -> 'a Buffy.R.readed
+val readk : Buffy.R.state -> ('s, 'a) Descr.t -> 'a Buffy.R.readed
 
 (** {2: High-level readers} *)
 

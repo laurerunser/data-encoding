@@ -21,6 +21,8 @@ module Uint30 : sig
   val zero : t
   val max_int : t
   val of_int : int -> t option
+  val unsafe_of_int : int -> t
+  val of_int32 : int32 -> t option
   val to_uint62 : t -> Uint62.t
   val set_be : bytes -> int -> t -> unit
   val set_le : bytes -> int -> t -> unit
@@ -35,6 +37,7 @@ module Uint16 : sig
   val zero : t
   val max_int : t
   val of_int : int -> t option
+  val unsafe_of_int : int -> t
   val to_uint62 : t -> Uint62.t
   val set_be : bytes -> int -> t -> unit
   val set_le : bytes -> int -> t -> unit
@@ -50,6 +53,7 @@ module Uint8 : sig
   val one : t
   val max_int : t
   val of_int : int -> t option
+  val unsafe_of_int : int -> t
   val to_uint62 : t -> Uint62.t
   val get : string -> int -> t
 end
