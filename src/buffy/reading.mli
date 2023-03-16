@@ -143,10 +143,6 @@ val read_copy : bytes -> state -> unit readed
 type 'a chunkreader = Src.t -> 'a chunkreaded
 
 and 'a chunkreaded =
-  | CSuspended of
-      { readed : int
-      ; cont : 'a chunkreader
-      }
   | CReaded of
       { readed : int
       ; value : 'a
@@ -154,6 +150,10 @@ and 'a chunkreaded =
   | CFailed of
       { readed : int
       ; error : string
+      }
+  | CSuspended of
+      { readed : int
+      ; cont : 'a chunkreader
       }
 
 (** [readchunked state r] interleaves calls to [r] within the suspend-resume

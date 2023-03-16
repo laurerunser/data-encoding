@@ -43,7 +43,7 @@ let wrap_getter getter width { blob; offset; length } index =
   getter blob (offset + index)
 ;;
 
-let get = wrap_getter String.get 1
+let get_char = wrap_getter String.get 1
 let get_uint8 = wrap_getter String.get_uint8 1
 let get_int8 = wrap_getter String.get_int8 1
 let get_uint16_be = wrap_getter String.get_uint16_be 2
@@ -57,9 +57,9 @@ let get_int64_le = wrap_getter String.get_int64_le 8
 let get_string t o l = wrap_getter (fun s o -> String.sub s o l) l t o
 
 let blit_onto_bytes source soff dest doff len =
-  if soff < 0 then failwith "Buffy.Source: underflow";
-  if soff + len > source.length then failwith "Buffy.Source: overflow";
-  if doff < 0 then failwith "Buffy.Source: blit underflow";
-  if doff + len > Bytes.length dest then failwith "Buffy.Source: blit overflow";
+  if soff < 0 then failwith "Buffy.Src: underflow";
+  if soff + len > source.length then failwith "Buffy.Src: overflow";
+  if doff < 0 then failwith "Buffy.Src: blit underflow";
+  if doff + len > Bytes.length dest then failwith "Buffy.Src: blit overflow";
   Bytes.blit_string source.blob (source.offset + soff) dest doff len
 ;;

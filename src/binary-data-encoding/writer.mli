@@ -32,7 +32,7 @@
     Depending on your use-case, you can provide [cont] with a fresh buffer, or
     you can re-use the buffer in [destination] (after you extract whatever
     information you need from it). *)
-val writek : Buffy.W.destination -> ('s, 'a) Descr.t -> 'a -> Buffy.W.written
+val writek : Buffy.W.state -> ('s, 'a) Descr.t -> 'a -> Buffy.W.written
 
 (** {2: High-level writers} *)
 

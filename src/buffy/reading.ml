@@ -315,12 +315,12 @@ let read_char state =
                 source
             in
             assert (Src.length source > 0);
-            let value = Src.get source state.readed in
+            let value = Src.get_char source state.readed in
             let state = bump_readed state 1 in
             Readed { state; value })
       })
   else (
-    let value = Src.get state.source state.readed in
+    let value = Src.get_char state.source state.readed in
     let state = bump_readed state 1 in
     Readed { state; value })
 ;;
@@ -386,10 +386,6 @@ type 'a chunkreader = Src.t -> 'a chunkreaded
 
 (* similar to [readed] but the state is just the readed count *)
 and 'a chunkreaded =
-  | CSuspended of
-      { readed : int
-      ; cont : 'a chunkreader
-      }
   | CReaded of
       { readed : int
       ; value : 'a
@@ -397,6 +393,10 @@ and 'a chunkreaded =
   | CFailed of
       { readed : int
       ; error : string
+      }
+  | CSuspended of
+      { readed : int
+      ; cont : 'a chunkreader
       }
 
 let rec readchunked : type a. state -> a chunkreader -> a readed =

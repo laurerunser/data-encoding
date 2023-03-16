@@ -239,94 +239,95 @@ let%expect_test _ =
 let ( let* ) = Buffy.W.( let* )
 
 (* TODO: pbt tests *)
-let rec write_lexemes depth first destination (lxms : JSON.lexeme Seq.t) =
+let rec write_lexemes depth first state (lxms : JSON.lexeme Seq.t) =
   match lxms () with
   | exception exc ->
     let error = "Error whilst serialising: " ^ Printexc.to_string exc in
-    Buffy.W.Failed { destination; error }
-  | Seq.Nil -> Buffy.W.Written { destination }
+    Buffy.W.Failed { state; error }
+  | Seq.Nil -> Buffy.W.Written { state }
   | Seq.Cons (lxm, lxms) ->
     (match lxm with
      | `Bool true ->
-       let* destination =
+       let* state =
          if depth > 0 && not first
-         then Buffy.W.write_small_string destination ",true"
-         else Buffy.W.write_small_string destination "true"
+         then Buffy.W.write_string state ",true"
+         else Buffy.W.write_string state "true"
        in
-       write_lexemes depth false destination lxms
+       write_lexemes depth false state lxms
      | `Bool false ->
-       let* destination =
+       let* state =
          if depth > 0 && not first
-         then Buffy.W.write_small_string destination ",false"
-         else Buffy.W.write_small_string destination "false"
+         then Buffy.W.write_string state ",false"
+         else Buffy.W.write_string state "false"
        in
-       write_lexemes depth false destination lxms
+       write_lexemes depth false state lxms
      | `Float f ->
        (* TODO: more tractable representation of float *)
        let literal = Float.to_string f in
        let literal = if depth > 0 && not first then "," ^ literal else literal in
-       let* destination = Buffy.W.write_small_string destination literal in
-       write_lexemes depth false destination lxms
+       let* state = Buffy.W.write_string state literal in
+       write_lexemes depth false state lxms
      | `String s ->
        (* TODO: check for UTF8 validity *)
-       let* destination =
+       let* state =
          if depth > 0 && not first
-         then Buffy.W.write_small_string destination ",\""
-         else Buffy.W.write_char destination '"'
+         then Buffy.W.write_string state ",\""
+         else Buffy.W.write_char state '"'
        in
-       let* destination = Buffy.W.write_large_string destination s in
-       let* destination = Buffy.W.write_char destination '"' in
-       write_lexemes depth false destination lxms
+       let* state = Buffy.W.write_string state s in
+       let* state = Buffy.W.write_char state '"' in
+       write_lexemes depth false state lxms
      | `Null ->
-       let* destination =
+       let* state =
          if depth > 0 && not first
-         then Buffy.W.write_small_string destination ",null"
-         else Buffy.W.write_small_string destination "null"
+         then Buffy.W.write_string state ",null"
+         else Buffy.W.write_string state "null"
        in
-       write_lexemes depth false destination lxms
+       write_lexemes depth false state lxms
      | `As ->
-       let* destination =
+       let* state =
          if depth > 0 && not first
-         then Buffy.W.write_small_string destination ",["
-         else Buffy.W.write_char destination '['
+         then Buffy.W.write_string state ",["
+         else Buffy.W.write_char state '['
        in
-       write_lexemes (depth + 1) true destination lxms
+       write_lexemes (depth + 1) true state lxms
      | `Ae ->
-       let* destination = Buffy.W.write_char destination ']' in
-       write_lexemes (depth - 1) false destination lxms
+       let* state = Buffy.W.write_char state ']' in
+       write_lexemes (depth - 1) false state lxms
      | `Os ->
-       let* destination =
+       let* state =
          if depth > 0 && not first
-         then Buffy.W.write_small_string destination ",{"
-         else Buffy.W.write_char destination '{'
+         then Buffy.W.write_string state ",{"
+         else Buffy.W.write_char state '{'
        in
-       write_lexemes (depth + 1) true destination lxms
+       write_lexemes (depth + 1) true state lxms
      | `Oe ->
-       let* destination = Buffy.W.write_char destination '}' in
-       write_lexemes (depth - 1) false destination lxms
+       let* state = Buffy.W.write_char state '}' in
+       write_lexemes (depth - 1) false state lxms
      | `Name s ->
-       let* destination =
+       let* state =
          if depth > 0 && not first
-         then Buffy.W.write_small_string destination ",\""
-         else Buffy.W.write_char destination '"'
+         then Buffy.W.write_string state ",\""
+         else Buffy.W.write_char state '"'
        in
-       let* destination = Buffy.W.write_large_string destination s in
-       let* destination = Buffy.W.write_small_string destination "\":" in
-       write_lexemes (depth + 1) true destination lxms)
+       let* state = Buffy.W.write_string state s in
+       let* state = Buffy.W.write_string state "\":" in
+       write_lexemes (depth + 1) true state lxms)
 ;;
 
-let write_lexemes destination lxms = write_lexemes 0 true destination lxms
+let write_lexemes state lxms = write_lexemes 0 true state lxms
 
 let%expect_test _ =
   let scratch = String.make 20 ' ' in
   let w : JSON.lexeme Seq.t -> unit =
    fun lxms ->
-    let destination = Buffy.W.mk_destination (Bytes.of_string scratch) 1 18 in
-    match write_lexemes destination lxms with
-    | Buffy.W.Written { destination } ->
-      Format.printf "Ok: %s\n" (Bytes.unsafe_to_string destination.buffer)
-    | Buffy.W.Failed { destination; error } ->
-      Format.printf "Error: %s (%S)" error (Bytes.unsafe_to_string destination.buffer)
+    let scratch = Bytes.of_string scratch in
+    let destination = Buffy.Dst.of_bytes scratch ~offset:1 ~length:18 in
+    let state = Buffy.W.mk_state destination in
+    match write_lexemes state lxms with
+    | Buffy.W.Written _ -> Format.printf "Ok: %s\n" (Bytes.unsafe_to_string scratch)
+    | Buffy.W.Failed { state = _; error } ->
+      Format.printf "Error: %s (%S)" error (Bytes.unsafe_to_string scratch)
     | Buffy.W.Suspended _ -> assert false
    (* not possible in these small tests *)
   in
@@ -361,156 +362,157 @@ let%expect_test _ =
 
 (* TODO: pbt tests *)
 let rec write
-  : type a. int -> bool -> Buffy.W.destination -> a Encoding.t -> a -> Buffy.W.written
+  : type a. int -> bool -> Buffy.W.state -> a Encoding.t -> a -> Buffy.W.written
   =
- fun depth first destination encoding v ->
+ fun depth first state encoding v ->
   match encoding with
   | Unit ->
     if depth > 0 && not first
-    then Buffy.W.write_small_string destination ",{}"
-    else Buffy.W.write_small_string destination "{}"
+    then Buffy.W.write_string state ",{}"
+    else Buffy.W.write_string state "{}"
   | Null ->
     if depth > 0 && not first
-    then Buffy.W.write_small_string destination ",null"
-    else Buffy.W.write_small_string destination "null"
+    then Buffy.W.write_string state ",null"
+    else Buffy.W.write_string state "null"
   | Bool ->
     (match v with
      | true ->
        if depth > 0 && not first
-       then Buffy.W.write_small_string destination ",true"
-       else Buffy.W.write_small_string destination "true"
+       then Buffy.W.write_string state ",true"
+       else Buffy.W.write_string state "true"
      | false ->
        if depth > 0 && not first
-       then Buffy.W.write_small_string destination ",false"
-       else Buffy.W.write_small_string destination "false")
+       then Buffy.W.write_string state ",false"
+       else Buffy.W.write_string state "false")
   | Int64 ->
-    let* destination =
+    let* state =
       if depth > 0 && not first
-      then Buffy.W.write_char destination ','
-      else Buffy.W.Written { destination }
+      then Buffy.W.write_char state ','
+      else Buffy.W.Written { state }
     in
     let s = Int64.to_string v in
-    Buffy.W.write_small_string destination s
+    Buffy.W.write_string state s
   | String ->
-    let* destination =
+    let* state =
       if depth > 0 && not first
-      then Buffy.W.write_small_string destination ",\""
-      else Buffy.W.write_char destination '"'
+      then Buffy.W.write_string state ",\""
+      else Buffy.W.write_char state '"'
     in
-    let* destination = Buffy.W.write_large_string destination v in
-    Buffy.W.write_char destination '"'
+    let* state = Buffy.W.write_string state v in
+    Buffy.W.write_char state '"'
   | Seq t ->
-    let* destination =
+    let* state =
       if depth > 0 && not first
-      then Buffy.W.write_small_string destination ",["
-      else Buffy.W.write_char destination '['
+      then Buffy.W.write_string state ",["
+      else Buffy.W.write_char state '['
     in
-    let rec go first destination s =
+    let rec go first state s =
       match s () with
-      | Seq.Nil -> Buffy.W.Written { destination }
+      | Seq.Nil -> Buffy.W.Written { state }
       | Seq.Cons (v, s) ->
-        let* destination = write (depth + 1) first destination t v in
-        go false destination s
+        let* state = write (depth + 1) first state t v in
+        go false state s
     in
-    let* destination = go true destination v in
-    Buffy.W.write_char destination ']'
+    let* state = go true state v in
+    Buffy.W.write_char state ']'
   | Tuple t ->
-    let* destination =
+    let* state =
       if depth > 0 && not first
-      then Buffy.W.write_small_string destination ",["
-      else Buffy.W.write_char destination '['
+      then Buffy.W.write_string state ",["
+      else Buffy.W.write_char state '['
     in
-    let* destination = write_tuple (depth + 1) true destination t v in
-    Buffy.W.write_char destination ']'
+    let* state = write_tuple (depth + 1) true state t v in
+    Buffy.W.write_char state ']'
   | Object o ->
-    let* destination =
+    let* state =
       if depth > 0 && not first
-      then Buffy.W.write_small_string destination ",{"
-      else Buffy.W.write_char destination '{'
+      then Buffy.W.write_string state ",{"
+      else Buffy.W.write_char state '{'
     in
-    let* destination = write_object (depth + 1) true destination o v in
-    Buffy.W.write_char destination '}'
+    let* state = write_object (depth + 1) true state o v in
+    Buffy.W.write_char state '}'
   | Conv { serialisation; deserialisation = _; encoding } ->
     (* TODO: exn management in serialisation function *)
-    write depth first destination encoding (serialisation v)
+    write depth first state encoding (serialisation v)
   | Union { cases = _; serialisation; deserialisation = _ } ->
     let (AnyP ({ tag; encoding; inject = _ }, p)) = serialisation v in
     (match encoding with
      | Unit ->
        (* special case: cases without a payload are represented as strings *)
-       let* destination =
+       let* state =
          if depth > 0 && not first
-         then Buffy.W.write_small_string destination ",\""
-         else Buffy.W.write_char destination '"'
+         then Buffy.W.write_string state ",\""
+         else Buffy.W.write_char state '"'
        in
-       let* destination = Buffy.W.write_large_string destination tag in
-       Buffy.W.write_char destination '"'
+       let* state = Buffy.W.write_string state tag in
+       Buffy.W.write_char state '"'
      | _ ->
-       let* destination =
+       let* state =
          if depth > 0 && not first
-         then Buffy.W.write_small_string destination ",{\""
-         else Buffy.W.write_small_string destination "{\""
+         then Buffy.W.write_string state ",{\""
+         else Buffy.W.write_string state "{\""
        in
-       let* destination = Buffy.W.write_large_string destination tag in
-       let* destination = Buffy.W.write_small_string destination "\":" in
-       let* destination = write (depth + 1) true destination encoding p in
-       Buffy.W.write_char destination '}')
+       let* state = Buffy.W.write_string state tag in
+       let* state = Buffy.W.write_string state "\":" in
+       let* state = write (depth + 1) true state encoding p in
+       Buffy.W.write_char state '}')
 
 and write_tuple
-  : type a. int -> bool -> Buffy.W.destination -> a Encoding.tuple -> a -> Buffy.W.written
+  : type a. int -> bool -> Buffy.W.state -> a Encoding.tuple -> a -> Buffy.W.written
   =
- fun depth first destination encoding v ->
+ fun depth first state encoding v ->
   match encoding with
-  | [] -> Buffy.W.Written { destination }
+  | [] -> Buffy.W.Written { state }
   | t :: ts ->
     let (v :: vs) = v in
-    let* destination = write depth first destination t v in
-    write_tuple depth false destination ts vs
+    let* state = write depth first state t v in
+    write_tuple depth false state ts vs
 
 and write_object
-  : type a. int -> bool -> Buffy.W.destination -> a Encoding.obj -> a -> Buffy.W.written
+  : type a. int -> bool -> Buffy.W.state -> a Encoding.obj -> a -> Buffy.W.written
   =
- fun depth first destination encoding v ->
+ fun depth first state encoding v ->
   match encoding with
-  | [] -> Buffy.W.Written { destination }
+  | [] -> Buffy.W.Written { state }
   | Req { encoding; name } :: ts ->
     let (v :: vs) = v in
-    let* destination =
+    let* state =
       if depth > 0 && not first
-      then Buffy.W.write_small_string destination ",\""
-      else Buffy.W.write_char destination '"'
+      then Buffy.W.write_string state ",\""
+      else Buffy.W.write_char state '"'
     in
-    let* destination = Buffy.W.write_large_string destination name in
-    let* destination = Buffy.W.write_small_string destination "\":" in
-    let* destination = write depth true destination encoding v in
-    write_object depth false destination ts vs
+    let* state = Buffy.W.write_string state name in
+    let* state = Buffy.W.write_string state "\":" in
+    let* state = write depth true state encoding v in
+    write_object depth false state ts vs
   | Opt { encoding; name } :: ts ->
     (match v with
-     | None :: vs -> write_object depth first destination ts vs
+     | None :: vs -> write_object depth first state ts vs
      | Some v :: vs ->
-       let* destination =
+       let* state =
          if depth > 0 && not first
-         then Buffy.W.write_small_string destination ",\""
-         else Buffy.W.write_char destination '"'
+         then Buffy.W.write_string state ",\""
+         else Buffy.W.write_char state '"'
        in
-       let* destination = Buffy.W.write_large_string destination name in
-       let* destination = Buffy.W.write_small_string destination "\":" in
-       let* destination = write depth true destination encoding v in
-       write_object depth false destination ts vs)
+       let* state = Buffy.W.write_string state name in
+       let* state = Buffy.W.write_string state "\":" in
+       let* state = write depth true state encoding v in
+       write_object depth false state ts vs)
 ;;
 
-let write destination encoding v = write 0 true destination encoding v
+let write state encoding v = write 0 true state encoding v
 
 let%expect_test _ =
   let scratch = String.make 20 ' ' in
   let w : type a. a Encoding.t -> a -> unit =
    fun enc v ->
-    let destination = Buffy.W.mk_destination (Bytes.of_string scratch) 1 18 in
-    match write destination enc v with
-    | Buffy.W.Written { destination } ->
-      Format.printf "Ok: %s\n" (Bytes.unsafe_to_string destination.buffer)
-    | Buffy.W.Failed { destination; error } ->
-      Format.printf "Error: %s (%S)" error (Bytes.unsafe_to_string destination.buffer)
+    let scratch = Bytes.of_string scratch in
+    let destination = Buffy.Dst.of_bytes scratch ~offset:1 ~length:18 in
+    let state = Buffy.W.mk_state destination in
+    match write state enc v with
+    | Buffy.W.Written _ -> Format.printf "Ok: %s\n" (Bytes.unsafe_to_string scratch)
+    | Buffy.W.Failed { state = _; error } ->
+      Format.printf "Error: %s (%S)" error (Bytes.unsafe_to_string scratch)
     | Buffy.W.Suspended _ -> assert false
    (* not possible in these small tests *)
   in

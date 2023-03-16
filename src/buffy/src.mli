@@ -5,7 +5,7 @@
 type t
 
 val length : t -> int
-val get : t -> int -> char
+val get_char : t -> int -> char
 val get_uint8 : t -> int -> int
 val get_int8 : t -> int -> int
 val get_uint16_be : t -> int -> int

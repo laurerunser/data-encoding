@@ -4,19 +4,16 @@
 
 let ( let* ) = Buffy.W.( let* )
 
-let rec writek : type s a. Buffy.W.destination -> (s, a) Descr.t -> a -> Buffy.W.written =
- fun destination encoding v ->
-  assert (destination.offset >= 0);
-  assert (destination.length >= 0);
-  assert (destination.offset + destination.length <= Bytes.length destination.buffer);
+let rec writek : type s a. Buffy.W.state -> (s, a) Descr.t -> a -> Buffy.W.written =
+ fun state encoding v ->
   match encoding with
-  | Unit -> Written { destination }
+  | Unit -> Written { state }
   | Bool ->
-    Buffy.W.writef destination Size.bool (fun buffer offset ->
+    Buffy.W.writef state Size.bool (fun destination offset ->
       if v
-      then Bytes.set_uint8 buffer offset (Magic.bool_true :> int)
-      else Bytes.set_uint8 buffer offset (Magic.bool_false :> int))
-  | Numeral { numeral; endianness } -> write_numeral destination numeral endianness v
+      then Buffy.Dst.set_uint8 destination offset (Magic.bool_true :> int)
+      else Buffy.Dst.set_uint8 destination offset (Magic.bool_false :> int))
+  | Numeral { numeral; endianness } -> write_numeral state numeral endianness v
   | String n ->
     (* TODO: support chunk writing of strings so that it's possible to serialise
      a big blob onto several small buffers *)
@@ -27,8 +24,8 @@ let rec writek : type s a. Buffy.W.destination -> (s, a) Descr.t -> a -> Buffy.W
        should take an int63? *)
     if Optint.Int63.compare (Optint.Int63.of_int (String.length v)) (n :> Optint.Int63.t)
        <> 0
-    then Failed { destination; error = "inconsistent length of string" }
-    else Buffy.W.write_large_string destination v
+    then Failed { state; error = "inconsistent length of string" }
+    else Buffy.W.write_string state v
   | Bytes n ->
     (* TODO: support chunk writing of bytes so that it's possible to serialise
      a big blob onto several small buffers *)
@@ -39,110 +36,106 @@ let rec writek : type s a. Buffy.W.destination -> (s, a) Descr.t -> a -> Buffy.W
        should take an int63? *)
     if Optint.Int63.compare (Optint.Int63.of_int (Bytes.length v)) (n :> Optint.Int63.t)
        <> 0
-    then Failed { destination; error = "inconsistent length of bytes" }
-    else Buffy.W.write_large_bytes destination v
+    then Failed { state; error = "inconsistent length of bytes" }
+    else Buffy.W.write_bytes state v
   | LSeq { length; elementencoding } ->
     let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
-    let rec fold destination s length =
+    let rec fold state s length =
       match s () with
       | Seq.Nil ->
         if length = 0
-        then Buffy.W.Written { destination }
-        else Buffy.W.Failed { destination; error = "inconsistent length of seq" }
+        then Buffy.W.Written { state }
+        else Buffy.W.Failed { state; error = "inconsistent length of seq" }
       | Seq.Cons (elt, s) ->
         if length <= 0
-        then Buffy.W.Failed { destination; error = "inconsistent length of seq" }
+        then Buffy.W.Failed { state; error = "inconsistent length of seq" }
         else
-          let* destination = writek destination elementencoding elt in
-          fold destination s (length - 1)
+          let* state = writek state elementencoding elt in
+          fold state s (length - 1)
     in
-    fold destination v.seq length
+    fold state v.seq length
   | USeq { elementencoding } ->
-    let rec fold destination s =
+    let rec fold state s =
       match s () with
-      | Seq.Nil -> Buffy.W.Written { destination }
+      | Seq.Nil -> Buffy.W.Written { state }
       | Seq.Cons (elt, s) ->
-        let* destination = writek destination elementencoding elt in
-        fold destination s
+        let* state = writek state elementencoding elt in
+        fold state s
     in
-    fold destination v
+    fold state v
   | Array { length; elementencoding } ->
     if Option.get @@ Commons.Sizedints.Uint62.of_int64 (Int64.of_int (Array.length v))
        <> length
-    then Buffy.W.Failed { destination; error = "inconsistent array length" }
+    then Buffy.W.Failed { state; error = "inconsistent array length" }
     else (
       let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
-      let rec fold destination index =
+      let rec fold state index =
         if index >= length
-        then Buffy.W.Written { destination }
+        then Buffy.W.Written { state }
         else
-          let* destination = writek destination elementencoding (Array.get v index) in
-          fold destination (index + 1)
+          let* state = writek state elementencoding (Array.get v index) in
+          fold state (index + 1)
       in
-      fold destination 0)
+      fold state 0)
   | Option (_, t) ->
     (match v with
      | None ->
-       let* destination =
-         Buffy.W.writef destination Size.uint8 (fun buffer offset ->
-           Bytes.set_uint8 buffer offset (Magic.option_none_tag :> int))
+       let* state =
+         Buffy.W.writef state Size.uint8 (fun destination offset ->
+           Buffy.Dst.set_uint8 destination offset (Magic.option_none_tag :> int))
        in
-       Buffy.W.Written { destination }
+       Buffy.W.Written { state }
      | Some v ->
-       let* destination =
-         Buffy.W.writef destination Size.uint8 (fun buffer offset ->
-           Bytes.set_uint8 buffer offset (Magic.option_some_tag :> int))
+       let* state =
+         Buffy.W.writef state Size.uint8 (fun destination offset ->
+           Buffy.Dst.set_uint8 destination offset (Magic.option_some_tag :> int))
        in
-       writek destination t v)
+       writek state t v)
   | Headered { mkheader; headerencoding; mkencoding; equal = _; maximum_size = _ } ->
     (match mkheader v with
      | Error msg ->
        let error = "error in user-provided mkheader function: " ^ msg in
-       Failed { destination; error }
+       Failed { state; error }
      | Ok header ->
-       let* destination = writek destination headerencoding header in
+       let* state = writek state headerencoding header in
        (match mkencoding header with
         | Error msg ->
           let error = "error in user-provided encoding function: " ^ msg in
-          Failed { destination; error }
-        | Ok (EDynamic encoding) -> writek destination encoding v
-        | Ok (EStatic encoding) -> writek destination encoding v))
+          Failed { state; error }
+        | Ok (EDynamic encoding) -> writek state encoding v
+        | Ok (EStatic encoding) -> writek state encoding v))
   | Fold
       { chunkencoding; chunkify; readinit = _; reducer = _; equal = _; maximum_size = _ }
     ->
-    let rec fold destination chunks =
+    let rec fold state chunks =
       match chunks () with
-      | Seq.Nil -> Buffy.W.Written { destination }
+      | Seq.Nil -> Buffy.W.Written { state }
       | Seq.Cons (chunk, chunks) ->
-        let* destination = writek destination chunkencoding chunk in
-        fold destination chunks
+        let* state = writek state chunkencoding chunk in
+        fold state chunks
     in
-    fold destination (chunkify v)
+    fold state (chunkify v)
   | Conv { serialisation; deserialisation = _; encoding } ->
-    writek destination encoding (serialisation v)
+    writek state encoding (serialisation v)
   | Size_headered { size; encoding } ->
-    let original_destination = destination in
+    let original_state = state in
     let size0 = Query.zero_of_numeral size in
     (* TODO: make tests that covers the Written and the Suspended cases *)
-    (match write_numeral destination size Encoding.default_endianness size0 with
-     | Buffy.W.Written { destination } ->
-       let written_before_write = destination.written in
+    (match write_numeral state size Encoding.default_endianness size0 with
+     | Buffy.W.Written { state } ->
+       let written_before_write = state.written in
        (* TODO: set a maximum-length so that it always accomodates the size
            header limit (e.g., 256 if uint8) *)
-       (match writek destination encoding v with
-        | Buffy.W.Written { destination } as written_destination ->
-          let written_after_write = destination.written in
+       (match writek state encoding v with
+        | Buffy.W.Written { state } as written_state ->
+          let written_after_write = state.written in
           let actual_size =
             Query.numeral_of_int size (written_after_write - written_before_write)
           in
-          let* (_ : Buffy.W.destination) =
-            write_numeral
-              original_destination
-              size
-              Encoding.default_endianness
-              actual_size
+          let* (_ : Buffy.W.state) =
+            write_numeral original_state size Encoding.default_endianness actual_size
           in
-          written_destination
+          written_state
         | Buffy.W.Failed _ as failed -> failed
         | Buffy.W.Suspended _ as suspend_written ->
           (* slow-path: we compute the whole size and we write it before
@@ -155,19 +148,15 @@ let rec writek : type s a. Buffy.W.destination -> (s, a) Descr.t -> a -> Buffy.W
           (match Query.size_of encoding v with
            | Error s ->
              (* TODO: wrap error message *)
-             Failed { destination; error = s }
+             Failed { state; error = s }
            | Ok actual_size ->
              (* NOTE: actual_size fits in the size header otherwise
                 [Query.size_of] returns [Error] *)
              let actual_size =
                Query.numeral_of_int size (Optint.Int63.to_int actual_size)
              in
-             let* (_ : Buffy.W.destination) =
-               write_numeral
-                 original_destination
-                 size
-                 Encoding.default_endianness
-                 actual_size
+             let* (_ : Buffy.W.state) =
+               write_numeral original_state size Encoding.default_endianness actual_size
              in
              suspend_written))
      | Buffy.W.Failed _ as failed -> failed
@@ -178,60 +167,65 @@ let rec writek : type s a. Buffy.W.destination -> (s, a) Descr.t -> a -> Buffy.W
   | Size_limit { at_most; encoding } ->
     let maximum_length =
       (* TODO: handle overflow *)
-      min destination.maximum_length (Optint.Int63.to_int (at_most :> Optint.Int63.t))
+      min state.maximum_length (Optint.Int63.to_int (at_most :> Optint.Int63.t))
     in
-    let destination = Buffy.W.set_maximum_length destination maximum_length in
-    writek destination encoding v
+    let state = Buffy.W.set_maximum_length state maximum_length in
+    writek state encoding v
   | Union { tag = tag_encoding; serialisation; deserialisation = _; cases = _ } ->
     let (AnyP ({ Descr.tag; encoding; inject = _ }, payload)) = serialisation v in
-    let* destination = writek destination tag_encoding tag in
-    writek destination encoding payload
-  | TupNil -> Written { destination }
+    let* state = writek state tag_encoding tag in
+    writek state encoding payload
+  | TupNil -> Written { state }
   | TupCons (_, t, ts) ->
     (match v with
      | v :: vs ->
-       let* destination = writek destination t v in
-       writek destination ts vs)
+       let* state = writek state t v in
+       writek state ts vs)
 
 and write_numeral
-  : type a.
-    Buffy.W.destination -> a Descr.numeral -> Descr.endianness -> a -> Buffy.W.written
+  : type a. Buffy.W.state -> a Descr.numeral -> Descr.endianness -> a -> Buffy.W.written
   =
- fun destination numeral endianness v ->
+ fun state numeral endianness v ->
   match numeral, endianness with
   | Int64, Big_endian ->
-    Buffy.W.writef destination Size.int64 (fun buffer offset ->
-      Bytes.set_int64_be buffer offset v)
+    Buffy.W.writef state Size.int64 (fun destination offset ->
+      Buffy.Dst.set_int64_be destination offset v)
   | Int64, Little_endian ->
-    Buffy.W.writef destination Size.int64 (fun buffer offset ->
-      Bytes.set_int64_le buffer offset v)
+    Buffy.W.writef state Size.int64 (fun destination offset ->
+      Buffy.Dst.set_int64_le destination offset v)
   | Int32, Big_endian ->
-    Buffy.W.writef destination Size.int32 (fun buffer offset ->
-      Bytes.set_int32_be buffer offset v)
+    Buffy.W.writef state Size.int32 (fun destination offset ->
+      Buffy.Dst.set_int32_be destination offset v)
   | Int32, Little_endian ->
-    Buffy.W.writef destination Size.int32 (fun buffer offset ->
-      Bytes.set_int32_le buffer offset v)
+    Buffy.W.writef state Size.int32 (fun destination offset ->
+      Buffy.Dst.set_int32_le destination offset v)
   | UInt62, Big_endian ->
-    Buffy.W.writef destination Size.uint62 (fun buffer offset ->
-      Commons.Sizedints.Uint62.set_be buffer offset v)
+    Buffy.W.writef state Size.uint62 (fun destination offset ->
+      Buffy.Dst.set_int64_be
+        destination
+        offset
+        (Optint.Int63.to_int64 (v :> Optint.Int63.t)))
   | UInt62, Little_endian ->
-    Buffy.W.writef destination Size.uint62 (fun buffer offset ->
-      Commons.Sizedints.Uint62.set_le buffer offset v)
+    Buffy.W.writef state Size.uint62 (fun destination offset ->
+      Buffy.Dst.set_int64_le
+        destination
+        offset
+        (Optint.Int63.to_int64 (v :> Optint.Int63.t)))
   | UInt30, Big_endian ->
-    Buffy.W.writef destination Size.uint30 (fun buffer offset ->
-      Commons.Sizedints.Uint30.set_be buffer offset v)
+    Buffy.W.writef state Size.uint30 (fun destination offset ->
+      Buffy.Dst.set_int32_be destination offset (Int32.of_int (v :> int)))
   | UInt30, Little_endian ->
-    Buffy.W.writef destination Size.uint30 (fun buffer offset ->
-      Commons.Sizedints.Uint30.set_le buffer offset v)
+    Buffy.W.writef state Size.uint30 (fun destination offset ->
+      Buffy.Dst.set_int32_le destination offset (Int32.of_int (v :> int)))
   | UInt16, Big_endian ->
-    Buffy.W.writef destination Size.uint16 (fun buffer offset ->
-      Bytes.set_uint16_be buffer offset (v :> int))
+    Buffy.W.writef state Size.uint16 (fun destination offset ->
+      Buffy.Dst.set_uint16_be destination offset (v :> int))
   | UInt16, Little_endian ->
-    Buffy.W.writef destination Size.uint16 (fun buffer offset ->
-      Bytes.set_uint16_le buffer offset (v :> int))
+    Buffy.W.writef state Size.uint16 (fun destination offset ->
+      Buffy.Dst.set_uint16_le destination offset (v :> int))
   | UInt8, _ ->
-    Buffy.W.writef destination Size.uint8 (fun buffer offset ->
-      Bytes.set_uint8 buffer offset (v :> int))
+    Buffy.W.writef state Size.uint8 (fun destination offset ->
+      Buffy.Dst.set_uint8 destination offset (v :> int))
 ;;
 
 let write
@@ -247,13 +241,12 @@ let write
   if offset + length > Bytes.length buffer
   then Error (0, "length exceeds buffer size")
   else (
-    let destination =
-      Buffy.W.mk_destination ~maximum_length:length buffer offset length
-    in
-    match writek destination encoding v with
+    let destination = Buffy.Dst.of_bytes buffer ~offset ~length in
+    let state = Buffy.W.mk_state ~maximum_length:length destination in
+    match writek state encoding v with
     | Suspended _ -> assert false (* the buffer is bigger than length *)
-    | Failed { destination; error } -> Error (destination.written, error)
-    | Written { destination } -> Ok destination.written)
+    | Failed { state; error } -> Error (state.written, error)
+    | Written { state } -> Ok state.written)
 ;;
 
 let write_e
@@ -384,7 +377,7 @@ let string_of
   : type s a. ?buffer_size:int -> (s, a) Descr.t -> a -> (string, string) result
   =
  fun ?buffer_size encoding v ->
-  Buffy.W.to_string ?buffer_size (fun destination -> writek destination encoding v)
+  Buffy.W.to_string ?buffer_size (fun state -> writek state encoding v)
 ;;
 
 let string_of_e : type a. ?buffer_size:int -> a Encoding.t -> a -> (string, string) result
