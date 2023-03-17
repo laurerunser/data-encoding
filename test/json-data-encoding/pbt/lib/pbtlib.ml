@@ -3,6 +3,7 @@ let rec generator_of_encoding : type t. t Json_data_encoding.Encoding.t -> t QCh
  fun encoding ->
   match encoding with
   | Unit -> QCheck2.Gen.unit
+  | Null -> QCheck2.Gen.unit
   | Bool -> QCheck2.Gen.bool
   | Int64 -> QCheck2.Gen.int64
   | String -> QCheck2.Gen.(string_size (0 -- 10))
@@ -52,6 +53,7 @@ let rec equal_of_encoding : type t. t Json_data_encoding.Encoding.t -> t -> t ->
  fun encoding ->
   match encoding with
   | Unit -> Unit.equal
+  | Null -> Unit.equal
   | Bool -> Bool.equal
   | Int64 -> Int64.equal
   | String -> String.equal
@@ -103,11 +105,11 @@ let ( let* ) x f =
   | Ok v -> f v
 ;;
 
-let to_test : type t. t Json_data_encoding.Encoding.t -> QCheck2.Test.t =
- fun encoding ->
+let to_test : type t. string -> t Json_data_encoding.Encoding.t -> QCheck2.Test.t =
+ fun name encoding ->
   let generator = generator_of_encoding encoding in
   let equal = equal_of_encoding encoding in
-  QCheck2.Test.make generator (fun v ->
+  QCheck2.Test.make ~name generator (fun v ->
     let* j = Json_data_encoding.Construct.construct encoding v in
     let lxms = Json_data_encoding.JSON.lexemify j in
     let* jj = Json_data_encoding.JSON.parse lxms in

@@ -6,7 +6,8 @@ open Binary_data_encoding
 let%expect_test _ =
   let w : type a. a Encoding.t -> a -> unit =
    fun e v ->
-    match Query.size_of e v with
+    let (E descr) = Binary_data_encoding.Encoding.Advanced_low_level.introspect e in
+    match Query.size_of descr v with
     | Ok s -> Format.printf "%a\n" Optint.Int63.pp s
     | Error msg -> Format.printf "Error: %s\n" msg
   in
@@ -16,16 +17,17 @@ let%expect_test _ =
   [%expect {| 8 |}];
   w Encoding.int64 0xffL;
   [%expect {| 8 |}];
-  w Encoding.[ unit; unit; int32; unit; int32 ] [ (); (); 0x00l; (); 0x00l ];
+  w Encoding.(tuple [ unit; unit; int32; unit; int32 ]) [ (); (); 0x00l; (); 0x00l ];
   [%expect {| 8 |}];
-  w Encoding.[ string `UInt30; unit ] [ "FOO"; () ];
+  w Encoding.(tuple [ string `UInt30; unit ]) [ "FOO"; () ];
   [%expect {| 7 |}];
-  w Encoding.[ string `UInt16; unit ] [ "FOO"; () ];
+  w Encoding.(tuple [ string `UInt16; unit ]) [ "FOO"; () ];
   [%expect {| 5 |}];
-  w Encoding.[ string `UInt8; unit ] [ "FOO"; () ];
+  w Encoding.(tuple [ string `UInt8; unit ]) [ "FOO"; () ];
   [%expect {| 4 |}];
   w
-    Encoding.[ string (`Fixed (Option.get @@ Sizedints.Uint62.of_int64 3L)); unit ]
+    Encoding.(
+      tuple [ string (`Fixed (Option.get @@ Sizedints.Uint62.of_int64 3L)); unit ])
     [ "FOO"; () ];
   [%expect {| 3 |}];
   w Encoding.(option int32) None;
@@ -37,13 +39,17 @@ let%expect_test _ =
 
 let%expect_test _ =
   let w : type a. a Encoding.t -> unit =
-   fun e -> Format.printf "%a\n" Optint.Int63.pp (Query.maximum_size_of e)
+   fun e ->
+    let (E descr) = Binary_data_encoding.Encoding.Advanced_low_level.introspect e in
+    match Query.sizability descr with
+    | Extrinsic -> Format.printf "Extrinsics don't have max_size"
+    | Intrinsic _ -> Format.printf "%a\n" Optint.Int63.pp (Query.maximum_size_of descr)
   in
   w Encoding.unit;
   [%expect {| 0 |}];
   w Encoding.int64;
   [%expect {| 8 |}];
-  w Encoding.[ unit; unit; int32; unit; int32 ];
+  w Encoding.(tuple [ unit; unit; int32; unit; int32 ]);
   [%expect {| 8 |}];
   w Encoding.(option int32);
   [%expect {| 5 |}];

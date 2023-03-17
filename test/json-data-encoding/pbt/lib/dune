@@ -1,0 +1,3 @@
+(library
+ (name json_data_encoding_test_pbt)
+ (libraries qcheck qcheck-core data-encoding.commons json-data-encoding))

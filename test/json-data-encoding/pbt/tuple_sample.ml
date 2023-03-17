@@ -1,3 +1,5 @@
+let () = Printf.printf "Testing a sample of product encodings (JSON)\n"
+
 let seed_gen =
   match Sys.getenv_opt "PBT_ROUNDTRIP_SEED" with
   | None ->
@@ -19,12 +21,23 @@ let run tests =
     QCheck_runner.run_tests
       ~rand
       (List.of_seq
-         (Seq.map (fun (Testable.AnyE (name, t)) -> Pbtlib.to_test name t) tests))
+         (Seq.map
+            (fun (Json_data_encoding_test_pbt.Testable.AnyE (name, t)) ->
+              Json_data_encoding_test_pbt.Pbtlib.to_test name t)
+            tests))
   in
   if exitcode <> 0 then exit exitcode
 ;;
 
-let () = run Testable.basics
+let tuples =
+  let open Json_data_encoding_test_pbt.Testable in
+  tuples (List.to_seq [ all_ground_encodings; all_ground_encodings ])
+;;
+
+let objs =
+  let open Json_data_encoding_test_pbt.Testable in
+  objs (List.to_seq [ all_ground_encodings; all_ground_encodings ])
+;;
 
 let rec skips rate s () =
   let s = Seq.drop rate s in
@@ -33,12 +46,6 @@ let rec skips rate s () =
   | Seq.Cons (v, s) -> Seq.Cons (v, skips rate s)
 ;;
 
-let not_so_basic =
-  (* sampling the long long not-so-basic sequence because it's too long *)
-  let offset = Random.State.int seed_gen 16 in
-  let not_so_basic = Seq.drop offset Testable.not_so_basic in
-  let rate = 200 in
-  skips rate not_so_basic
-;;
-
-let () = run not_so_basic
+let sample rate s = skips rate (Seq.drop (Random.int rate) s)
+let () = run (sample 100 tuples)
+let () = run (sample 100 objs)

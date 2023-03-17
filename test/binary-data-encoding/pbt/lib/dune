@@ -1,0 +1,3 @@
+(library
+ (name binary_data_encoding_test_pbt)
+ (libraries qcheck qcheck-core data-encoding.commons binary-data-encoding))

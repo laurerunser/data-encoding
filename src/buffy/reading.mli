@@ -80,6 +80,11 @@ val peak_stop : source -> int option
     Returns an [Error] if there are no stop hints. *)
 val pop_stop : source -> (int * source, string) result
 
+(** [bring_first_stop_forward]
+
+    @raise Invalid_argument *)
+val bring_first_stop_forward : source -> int -> source
+
 (** [set_maximum_length source maximum_length] is a source identical
     to [source] but with the [maximum_length] field set to
     [maximum_length].
@@ -199,6 +204,8 @@ val readchunked : source -> 'a chunkreader -> 'a readed
 (* TODO? place those in their own module? *)
 (* TODO? type [('a, 'b) reader = 'a -> source -> 'b readed] *)
 
+(* TODO the possible failure may be dangerous bc fed from potentially slow
+   network, maybe relax this *)
 val read_small_string : source -> int -> string readed
 val read_large_string : source -> int -> string readed
 val read_large_bytes : source -> int -> bytes readed

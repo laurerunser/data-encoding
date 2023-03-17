@@ -26,9 +26,19 @@
     When you call the [cont]inuation, the [maximum_length] carries over so that
     the maximum number of bytes read by the call to [readk] and all the
     subsequent calls to [cont]s never exceeds this limit. *)
-val readk : Buffy.R.source -> 'a Encoding.t -> 'a Buffy.R.readed
+val readk : Buffy.R.source -> ('s, 'a) Descr.t -> 'a Buffy.R.readed
 
 (** {2: High-level readers} *)
 
-val read : src:string -> offset:int -> length:int -> 'a Encoding.t -> ('a, string) result
-val read_strings : (string * int * int) Seq.t -> 'a Encoding.t -> ('a, string) result
+val read
+  :  src:string
+  -> offset:int
+  -> length:int
+  -> ('s, 'a) Descr.t
+  -> ('a, string) result
+
+val read_string : string -> ('s, 'a) Descr.t -> ('a, string) result
+val read_strings : (string * int * int) Seq.t -> ('s, 'a) Descr.t -> ('a, string) result
+
+(* TODO: find a better API *)
+val read_string_e : string -> 'a Encoding.t -> ('a, string) result

@@ -1,6 +1,16 @@
 module Uint62 = struct
   type t = Optint.Int63.t
 
+  let mul =
+    (* TODO: catch overflow *)
+    Optint.Int63.mul
+  ;;
+
+  let add =
+    (* TODO: catch overflow *)
+    Optint.Int63.add
+  ;;
+
   let min_int = Optint.Int63.zero
   let zero = Optint.Int63.zero
   let max_int = Optint.Int63.max_int

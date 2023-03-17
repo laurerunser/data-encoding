@@ -10,6 +10,8 @@ module Uint62 : sig
   val set_le : bytes -> int -> t -> unit
   val get_be : string -> int -> t
   val get_le : string -> int -> t
+  val mul : t -> t -> t
+  val add : t -> t -> t
 end
 
 module Uint30 : sig

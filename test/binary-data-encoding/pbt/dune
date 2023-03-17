@@ -1,4 +1,9 @@
 (tests
- (names roundtrip)
+ (names all_simple tuple_sample seq_sample)
  (package binary-data-encoding)
- (libraries qcheck qcheck-core data-encoding.commons binary-data-encoding))
+ (libraries
+  binary_data_encoding_test_pbt
+  qcheck
+  qcheck-core
+  data-encoding.commons
+  binary-data-encoding))

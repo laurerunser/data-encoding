@@ -1,16 +1,30 @@
+let mk
+  : type a.
+    a Data_encoding.Encoding.t
+    -> (Binary_data_encoding__Sizability.static, a) Binary_data_encoding__Descr.t
+  =
+ fun e ->
+  let b = Data_encoding.Encoding.to_binary e in
+  let (E descr) = Binary_data_encoding.Encoding.Advanced_low_level.introspect b in
+  match Binary_data_encoding.Query.sizability descr with
+  | Intrinsic (Static _) -> descr
+  | Intrinsic Dynamic -> failwith "static only here"
+  | Extrinsic -> failwith "static only here"
+;;
+
 let int64_twople =
   let open Data_encoding.Encoding in
-  to_binary (tuple [ int64; int64 ])
+  mk (tuple [ int64; int64 ])
 ;;
 
 let int64_triple =
   let open Data_encoding.Encoding in
-  to_binary (tuple [ int64; int64; int64 ])
+  mk (tuple [ int64; int64; int64 ])
 ;;
 
 let int64_quadle =
   let open Data_encoding.Encoding in
-  to_binary (tuple [ int64; int64; int64; int64 ])
+  mk (tuple [ int64; int64; int64; int64 ])
 ;;
 
 let offset = 0

@@ -1,121 +1,17 @@
 module Hlist = Commons.Hlist
 module Sizedints = Commons.Sizedints
 
-type ('step, 'finish) reducer = ('step, 'finish) Descr.reducer =
-  | K of 'step
-  | Finish of 'finish
+type 'a t
 
-type 'a numeral = 'a Descr.numeral =
-  | UInt8 : Sizedints.Uint8.t numeral
-  | UInt16 : Sizedints.Uint16.t numeral
-  | UInt30 : Sizedints.Uint30.t numeral
-  | UInt62 : Sizedints.Uint62.t numeral
-  | Int32 : int32 numeral
-  | Int64 : int64 numeral
+(* simple *)
+val unit : unit t
+val bool : bool t
 
+(* numerals *)
 type endianness = Descr.endianness =
   | Big_endian
   | Little_endian
 
-type 'a seq_with_length = 'a Descr.seq_with_length =
-  { seq : 'a Seq.t
-  ; length : Sizedints.Uint62.t Lazy.t
-  }
-
-(** [α t] is a encoding for values of type [α]. The encoding can be used to
-    de/serialise these values—see {!Backend}.
-
-    - Product are supported via the overloading of the list constructors ([[]]
-    and [(::)]). This allows compact writing of product encodings of width.
-
-    - [Headered] and [Fold] are low-level constructors. They are meant to be
-    used to create advanced encodings which are not supported by the library.
-    E.g., they can be used to support lists with a length header. E.g., they can
-    be used to support Zarith's [Z.t] values. Note that both of those are
-    supported natively by the library; these examples just demonstrate the kind
-    of expressive power that [Headered] and [Fold] give to the library user.
-*)
-type 'a t = 'a Descr.t =
-  | Unit : unit t
-  | Bool : bool t
-  | Numeral :
-      { numeral : 'a numeral
-      ; endianness : endianness
-      }
-      -> 'a t
-  | String : Sizedints.Uint62.t -> string t
-  | Bytes : Sizedints.Uint62.t -> bytes t
-  | Array :
-      { length : Sizedints.Uint62.t
-      ; elementencoding : 'a t
-      }
-      -> 'a array t
-  | LSeq :
-      { length : Sizedints.Uint62.t
-      ; elementencoding : 'a t
-      }
-      -> 'a seq_with_length t
-  | USeq : { elementencoding : 'a t } -> 'a Seq.t t
-  | Option : 'a t -> 'a option t
-  | Headered :
-      { mkheader : 'a -> ('header, string) result
-      ; headerencoding : 'header t
-      ; mkencoding : 'header -> ('a t, string) result
-      ; equal : 'a -> 'a -> bool
-      ; maximum_size : Optint.Int63.t
-      }
-      -> 'a t
-  | Fold :
-      { chunkencoding : 'chunk t
-      ; chunkify : 'a -> 'chunk Seq.t
-      ; readinit : 'acc
-      ; reducer : 'acc -> 'chunk -> ('acc, 'a) reducer
-      ; equal : 'a -> 'a -> bool
-      ; maximum_size : Optint.Int63.t
-      }
-      -> 'a t
-  | Conv :
-      { serialisation : 'a -> 'b
-      ; deserialisation : 'b -> ('a, string) result
-      ; encoding : 'b t
-      }
-      -> 'a t
-  | Size_headered :
-      { size : _ numeral
-      ; encoding : 'a t
-      }
-      -> 'a t
-  | Size_limit :
-      { at_most : Sizedints.Uint62.t
-      ; encoding : 'a t
-      }
-      -> 'a t
-  | Union :
-      { tag : 'tag t
-      ; serialisation : 'a -> ('tag, 'a) anycaseandpayload
-      ; deserialisation : 'tag -> (('tag, 'a) anycase, string) result
-      ; cases : ('tag, 'a) anycase list
-      }
-      -> 'a t
-  | [] : unit Hlist.t t
-  | ( :: ) : 'a t * 'b Hlist.t t -> ('a * 'b) Hlist.t t
-
-and ('tag, 'payload, 'union) case_descr = ('tag, 'payload, 'union) Descr.case_descr =
-  { tag : 'tag
-  ; encoding : 'payload t
-  ; inject : 'payload -> 'union
-  }
-
-and ('tag, 'p, 'a) case_and_payload = ('tag, 'p, 'a) case_descr * 'p
-
-and ('tag, 'a) anycaseandpayload = ('tag, 'a) Descr.anycaseandpayload =
-  | AnyP : ('tag, _, 'a) case_and_payload -> ('tag, 'a) anycaseandpayload
-
-and ('tag, 'a) anycase = ('tag, 'a) Descr.anycase =
-  | AnyC : ('tag, _, 'a) case_descr -> ('tag, 'a) anycase
-
-val unit : unit t
-val bool : bool t
 val int64 : int64 t
 val int32 : int32 t
 val uint30 : Sizedints.Uint30.t t
@@ -143,22 +39,36 @@ end
 
 val default_endianness : endianness
 
-type variable_size_spec =
+(* collections *)
+type variable_count_spec =
   [ `UInt62
   | `UInt30
   | `UInt16
   | `UInt8
   ]
 
-type size_spec =
+type count_spec =
   [ `Fixed of Sizedints.Uint62.t
-  | variable_size_spec
+  | variable_count_spec
   ]
 
-val array : size_spec -> 'a t -> 'a array t
+val array : count_spec -> 'a t -> 'a array t
+val seq : variable_count_spec -> 'a t -> 'a Seq.t t
+val list : variable_count_spec -> 'a t -> 'a list t
+
+module With_size : sig
+  (* outside of this module, it is by length (a.k.a. cardinal) rather than size *)
+  val seq_with_size : variable_count_spec -> 'a t -> 'a Seq.t t
+  (* TODO: others with size too *)
+end
+
+(* other type constructors *)
 val option : 'a t -> 'a option t
-val string : size_spec -> string t
-val bytes : size_spec -> bytes t
+val either : 'l t -> 'r t -> ('l, 'r) Either.t t
+
+(* strings and bytes *)
+val string : count_spec -> string t
+val bytes : count_spec -> bytes t
 
 val conv
   :  serialisation:('a -> 'b)
@@ -166,54 +76,111 @@ val conv
   -> 'b t
   -> 'a t
 
-val with_header
-  :  headerencoding:'h t
-  -> mkheader:('a -> ('h, string) result)
-  -> mkencoding:('h -> ('a t, string) result)
-  -> equal:('a -> 'a -> bool)
-  -> maximum_size:Optint.Int63.t
+val ellastic_uint30 : Sizedints.Uint30.t t
+
+(* products *)
+type _ tuple =
+  | [] : unit Hlist.t tuple
+  | ( :: ) : 'a t * 'b Hlist.t tuple -> ('a * 'b) Hlist.t tuple
+
+val tuple : 'a tuple -> 'a t
+
+(* unions *)
+type ('tag, 'payload, 'union) case_descr
+type ('tag, 'a) anycase
+
+val anycase : ('tag, _, 'union) case_descr -> ('tag, 'union) anycase
+
+type ('tag, 'a) anycaseandpayload
+
+val case_and_payload
+  :  ('tag, 'payload, 'union) case_descr
+  -> 'payload
+  -> ('tag, 'union) anycaseandpayload
+
+val case
+  :  'tag
+  -> 'payload t
+  -> ('payload -> 'union)
+  -> ('tag, 'payload, 'union) case_descr
+
+val case_unit : 'tag -> (unit -> 'union) -> ('tag, unit, 'union) case_descr
+
+val union
+  :  'tag t
+  -> ('tag, 'a) anycase list
+  -> ('a -> ('tag, 'a) anycaseandpayload)
+  -> ('tag -> (('tag, 'a) anycase, string) result)
   -> 'a t
 
+module Advanced_low_level : sig
+  type 'a introspectable = E : (_ Sizability.t, 'a) Descr.t -> 'a introspectable
+
+  val introspect : 'a t -> 'a introspectable
+  val forget : 'a introspectable -> 'a t
+
+  val with_header
+    :  headerencoding:('a Sizability.intrinsic, 'b) Descr.t
+    -> mkheader:('c -> ('b, string) result)
+    -> mkencoding:('b -> ('c Descr.anyintrinsic, string) result)
+    -> equal:('c -> 'c -> bool)
+    -> maximum_size:Optint.Int63.t
+    -> (Sizability.dynamic, 'c) Descr.t
+
+  type ('step, 'finish) reducer = ('step, 'finish) Descr.reducer =
+    | K of 'step
+    | Finish of 'finish
+
+  val fold
+    :  chunkencoding:('s Sizability.intrinsic, 'chunk) Descr.t
+    -> chunkify:('a -> 'chunk Seq.t)
+    -> readinit:'acc
+    -> reducer:('acc -> 'chunk -> ('acc, 'a) reducer)
+    -> equal:('a -> 'a -> bool)
+    -> maximum_size:Optint.Int63.t
+    -> (Sizability.dynamic, 'a) Descr.t
+
+  val with_length_header
+    :  lengthencoding:variable_count_spec
+    -> length:('a -> Sizedints.Uint62.t)
+    -> mkencoding:(Sizedints.Uint62.t -> ('a Descr.anyintrinsic, string) result)
+    -> equal:('a -> 'a -> bool)
+    -> maximum_size:Optint.Int63.t
+    -> (Sizability.dynamic, 'a) Descr.t
+
+  val with_size_header
+    :  sizeencoding:variable_count_spec
+    -> encoding:(Sizability.extrinsic, 'a) Descr.t
+    -> (Sizability.dynamic, 'a) Descr.t
+
+  type 'a seq_with_length = 'a Descr.seq_with_length =
+    { seq : 'a Seq.t
+    ; length : Sizedints.Uint62.t Lazy.t
+    }
+
+  val seq_with_length_fixed
+    :  Sizedints.Uint62.t
+    -> ('eltsz Sizability.intrinsic, 'eltt) Descr.t
+    -> 'eltt seq_with_length t
+
+  val seq_with_length
+    :  variable_count_spec
+    -> ('eltsz Sizability.intrinsic, 'eltt) Descr.t
+    -> (Sizability.dynamic, 'eltt seq_with_length) Descr.t
+end
+
+(* may raise based on sizability  
+   may raise during serialisation/deserialisation  
+   slower because sizability is checked during serialisation/deserialisation  
+   TODO? what?
+ *)
 val with_length_header
-  :  lengthencoding:size_spec
+  :  lengthencoding:variable_count_spec
   -> length:('a -> Sizedints.Uint62.t)
   -> mkencoding:(Sizedints.Uint62.t -> ('a t, string) result)
   -> equal:('a -> 'a -> bool)
   -> maximum_size:Optint.Int63.t
   -> 'a t
 
-val with_size_header : sizeencoding:variable_size_spec -> encoding:'a t -> 'a t
-val seq_with_length : size_spec -> 'a t -> 'a seq_with_length t
-val seq : size_spec -> 'a t -> 'a Seq.t t
-val list : size_spec -> 'a t -> 'a list t
-val seq_with_size : variable_size_spec -> 'a t -> 'a Seq.t t
-
-val fold
-  :  chunkencoding:'chunk t
-  -> chunkify:('a -> 'chunk Seq.t)
-  -> readinit:'acc
-  -> reducer:('acc -> 'chunk -> ('acc, 'a) reducer)
-  -> equal:('a -> 'a -> bool)
-  -> maximum_size:Optint.Int63.t
-  -> 'a t
-
-val ellastic_uint30 : Sizedints.Uint30.t t
-
-module Union : sig
-  val case
-    :  'tag
-    -> 'payload t
-    -> ('payload -> 'union)
-    -> ('tag, 'payload, 'union) case_descr
-
-  val case_unit : 'tag -> (unit -> 'union) -> ('tag, unit, 'union) case_descr
-
-  val union
-    :  'tag t
-    -> ('tag, 'a) anycase list
-    -> ('a -> ('tag, 'a) anycaseandpayload)
-    -> ('tag -> (('tag, 'a) anycase, string) result)
-    -> 'a t
-
-  val either : 'l t -> 'r t -> ('l, 'r) Either.t t
-end
+(* may raise based on sizability *)
+val with_size_header : sizeencoding:variable_count_spec -> encoding:'a t -> 'a t
