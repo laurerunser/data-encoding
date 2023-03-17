@@ -1,7 +1,20 @@
 (* TODO: expect tests *)
-(* TODO? remove offset, only leave readed: the valid window shrinks *)
-(* TODO? add a [read_in_previous_sources] to accumulate the successive readeds, don't shift stop_hints and maximum_length; or maybe we replace [string] with some other form and we don't have this problem anymore *)
 
+(* The state when reading.
+
+   A reading process can be spread across multiple sources (see documentation of
+   the [readed] type).
+
+   The stop hints are used as a stack to register the size-headers. E.g., when
+   reading a data-structure with a field indicating the size of the next field,
+   a stop-hint is pushed; when reading the next field, the stop point is used to
+   stop at the expected offset. A stop-point can overshoot the length of the
+   source, in which case all the stop-hints are patched when a suspension is
+   resumed.
+
+   The maximum-length is the maximum number of byte that the reading process is
+   allowed to consume. This is a limit over multiple suspensions and sources. It
+   works similarly to a stop-hint, but for a global limit. *)
 type state =
   { source : Src.t
   ; readed : int (* [read] is ambiguous so we make it unambiguously past as [readed] *)
@@ -10,6 +23,8 @@ type state =
   ; maximum_length : int
   }
 
+(* checks invariant regarding the stop-hints: that they are in increasing order
+   and lower than maximum-length *)
 let rec check_stop_hints base stops maximum_length =
   match stops with
   | [] -> true
@@ -17,9 +32,13 @@ let rec check_stop_hints base stops maximum_length =
     base <= stop && stop <= maximum_length && check_stop_hints stop stops maximum_length
 ;;
 
-let mk_state ?(maximum_length = max_int) ?(stop_hints = []) source =
-  if not (check_stop_hints 0 stop_hints maximum_length)
-  then failwith "Buffy.R.mk_state: stops out of bounds or out of order";
+let mk_state ?(maximum_length = max_int) source =
+  if maximum_length < 0
+  then failwith "Buffy.R.mk_state: maximum_length cannot be negative";
+  { source; readed = 0; stop_hints = []; maximum_length }
+;;
+
+let internal_mk_state maximum_length stop_hints source =
   { source; readed = 0; stop_hints; maximum_length }
 ;;
 
@@ -144,7 +163,8 @@ let rec unsafe_read_copy scratch scratch_offset state =
       { state
       ; cont =
           (fun source ->
-            let state = mk_state ~maximum_length ~stop_hints source in
+            assert (check_stop_hints 0 stop_hints maximum_length);
+            let state = internal_mk_state maximum_length stop_hints source in
             unsafe_read_copy scratch scratch_offset state)
       })
 ;;
@@ -174,14 +194,16 @@ let readf state reading read =
           (fun source ->
             if reading > Src.length source
             then (
-              let state = mk_state ~maximum_length ~stop_hints source in
+              assert (check_stop_hints 0 stop_hints maximum_length);
+              let state = internal_mk_state maximum_length stop_hints source in
               let scratch = Bytes.make reading '\x00' in
               let scratch_offset = 0 in
               let* (), state = unsafe_read_copy scratch scratch_offset state in
               let value = read (Src.of_bytes scratch) 0 in
               Readed { value; state })
             else (
-              let state = mk_state ~maximum_length ~stop_hints source in
+              assert (check_stop_hints 0 stop_hints maximum_length);
+              let state = internal_mk_state maximum_length stop_hints source in
               let value = read state.source state.readed in
               let state = bump_readed state reading in
               Readed { state; value }))
@@ -208,7 +230,8 @@ let readf state reading read =
       { state
       ; cont =
           (fun source ->
-            let state = mk_state ~maximum_length ~stop_hints source in
+            assert (check_stop_hints 0 stop_hints maximum_length);
+            let state = internal_mk_state maximum_length stop_hints source in
             let* (), state =
               unsafe_read_copy split_reading_buffer split_reading_left_length state
             in
@@ -302,18 +325,16 @@ let read_char state =
   then Failed { state; error = "expected-stop point exceeded" }
   else if state.readed + 1 > Src.length state.source
   then (
+    (* we are reading 1 char, so we can't have left over from before *)
     assert (state.readed = Src.length state.source);
+    let maximum_length = state.maximum_length - 1 in
+    let stop_hints = List.map (fun stop -> stop - 1) state.stop_hints in
     Suspended
       { state
       ; cont =
           (fun source ->
-            (* we are reading 1 char, so we can't have left over from before *)
-            let state =
-              mk_state
-                ~maximum_length:(state.maximum_length - 1)
-                ~stop_hints:(List.map (fun stop -> stop - 1) state.stop_hints)
-                source
-            in
+            assert (check_stop_hints 0 stop_hints maximum_length);
+            let state = internal_mk_state maximum_length stop_hints source in
             assert (Src.length source > 0);
             let value = Src.get_char source state.readed in
             let state = bump_readed state 1 in
@@ -424,17 +445,14 @@ let rec readchunked : type a. state -> a chunkreader -> a readed =
       Failed { error; state })
     else (
       let state = bump_readed state readed in
+      let maximum_length = state.maximum_length - state.readed in
+      let stop_hints = List.map (fun stop -> stop - state.readed) state.stop_hints in
       Suspended
         { state
         ; cont =
             (fun source ->
-              let state =
-                mk_state
-                  ~maximum_length:(state.maximum_length - state.readed)
-                  ~stop_hints:
-                    (List.map (fun stop -> stop - state.readed) state.stop_hints)
-                  source
-              in
+              assert (check_stop_hints 0 stop_hints maximum_length);
+              let state = internal_mk_state maximum_length stop_hints source in
               readchunked state cont)
         })
   | CFailed { readed; error } ->

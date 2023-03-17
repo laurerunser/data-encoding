@@ -33,7 +33,7 @@ type state =
     @raise Failure if [offset] and [length] do not form a valid slice of
     [blob]. Specifically if
     [ offset<0 || length<0 || offset+length>String.length blob ]. *)
-val mk_state : ?maximum_length:int -> ?stop_hints:int list -> Src.t -> state
+val mk_state : ?maximum_length:int -> Src.t -> state
 
 (** [push_stop state o] adds a stop hint [o] bytes ahead in the reading buffer.
 

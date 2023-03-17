@@ -1,3 +1,7 @@
+(* TODO: expect tests *)
+(* TODO: support unlimited-length sources (e.g., sockets) *)
+(* TODO: support more than just strings *)
+
 type t =
   { blob : string
   ; offset : int

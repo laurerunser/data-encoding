@@ -221,7 +221,6 @@ val ( let* ) : written -> (state -> written) -> written
     resuming, the buffer size is doubled on retry. *)
 val to_string : ?buffer_size:int -> (state -> written) -> (string, string) result
 
-(*
 (** [blit_instructions ~buffer writer v] is a sequence of triplets [(b,o,l)].
     For each triplet, the [l] bytes in [b] starting at offset [o] is a part of
     the output of the serialisation process.
@@ -264,8 +263,4 @@ Lwt.return (String.concat "" (List.rev chunks))
 
     @raise Failure When forcing any of the elements of the returned sequence,
     the exception [Failure] may be raised. *)
-val blit_instructions
-  :  buffer:bytes
-  -> (state -> written)
-  -> (bytes * int * int) Seq.t
-*)
+val blit_instructions : buffer:bytes -> (state -> written) -> (bytes * int * int) Seq.t

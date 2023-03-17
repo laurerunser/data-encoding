@@ -10,13 +10,6 @@ let mk_state ?(maximum_length = max_int) destination =
   { destination; written = 0; maximum_length }
 ;;
 
-(*
-let data_from_state { destination; written; maximum_length = _ } =
-  (* TODO: avoid copy *)
-  String.sub (Dst.to_string destination) 0 written
-;;
-*)
-
 let set_maximum_length state maximum_length =
   if maximum_length < 0
   then
@@ -417,14 +410,18 @@ let to_string ?(buffer_size = 1024) writer =
   | Error _ as err -> err
 ;;
 
-(*
-(* TODO: *)
-let rec blit_instructions_loop buffer destination k () =
+let blit_instruction_of_state { destination; written; maximum_length = _ } =
+  let b, o, l = Dst.blit_instructions destination in
+  assert (l <= written);
+  b, o, written
+;;
+
+let rec blit_instructions_loop destination k () =
   match k destination with
-  | Written { state } -> Seq.Cons (data_from_state state, Seq.empty)
+  | Written { state } -> Seq.Cons (blit_instruction_of_state state, Seq.empty)
   | Failed { state = _; error } -> raise (Failure error)
   | Suspended { state; cont } ->
-    Seq.Cons (data_from_state state, blit_instructions_loop destination cont)
+    Seq.Cons (blit_instruction_of_state state, blit_instructions_loop destination cont)
 ;;
 
 let blit_instructions ~buffer writer =
@@ -433,4 +430,3 @@ let blit_instructions ~buffer writer =
     let state = mk_state destination in
     writer state)
 ;;
-*)
