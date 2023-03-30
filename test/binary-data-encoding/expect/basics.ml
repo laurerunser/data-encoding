@@ -67,7 +67,7 @@ let%expect_test _ =
     Ok: case(true:false)
     Ok: ff00
     Ok: case(true:false) |}];
-  w Encoding.(seq `UInt16 int32) (Array.to_seq [| 0l; 0l |]);
+  w Encoding.(seq `Uint16 int32) (Array.to_seq [| 0l; 0l |]);
   [%expect
     {|
     Ok: conved(seq(0,0))
@@ -88,7 +88,7 @@ let%expect_test _ =
   w
     Encoding.(
       tuple
-        [ seq `UInt16 int32
+        [ seq `Uint16 int32
         ; either uint30 bool
         ; either Little_endian.uint8 Little_endian.uint16
         ])
@@ -104,7 +104,7 @@ let%expect_test _ =
   w
     Encoding.(
       tuple
-        [ With_size.seq_with_size `UInt16 int32
+        [ With_size.seq_with_size `Uint16 int32
         ; either uint30 bool
         ; either Little_endian.uint8 Little_endian.uint16
         ])

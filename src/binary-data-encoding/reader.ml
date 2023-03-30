@@ -197,35 +197,35 @@ and read_numeral
   | Int64, Little_endian -> Buffy.R.read_int64_le state
   | Int32, Big_endian -> Buffy.R.read_int32_be state
   | Int32, Little_endian -> Buffy.R.read_int32_le state
-  | UInt62, Big_endian ->
+  | Uint62, Big_endian ->
     let* i64, state = Buffy.R.read_int64_be state in
     (match Commons.Sizedints.Uint62.of_int64 i64 with
      | None -> Failed { state; error = "Numeric range exceeded in numeral (u62) reading" }
      | Some value -> Readed { value; state })
-  | UInt62, Little_endian ->
+  | Uint62, Little_endian ->
     let* i64, state = Buffy.R.read_int64_le state in
     (match Commons.Sizedints.Uint62.of_int64 i64 with
      | None -> Failed { state; error = "Numeric range exceeded in numeral (u62) reading" }
      | Some value -> Readed { value; state })
-  | UInt30, Big_endian ->
+  | Uint30, Big_endian ->
     let* i32, state = Buffy.R.read_int32_be state in
     (match Commons.Sizedints.Uint30.of_int32 i32 with
      | None -> Failed { state; error = "Numeric range exceeded in numeral (u30) reading" }
      | Some value -> Readed { value; state })
-  | UInt30, Little_endian ->
+  | Uint30, Little_endian ->
     let* i32, state = Buffy.R.read_int32_le state in
     (match Commons.Sizedints.Uint30.of_int32 i32 with
      | None -> Failed { state; error = "Numeric range exceeded in numeral (u30) reading" }
      | Some value -> Readed { value; state })
-  | UInt16, Big_endian ->
+  | Uint16, Big_endian ->
     let* u16, state = Buffy.R.read_uint16_be state in
     let value = Commons.Sizedints.Uint16.unsafe_of_int u16 in
     Readed { value; state }
-  | UInt16, Little_endian ->
+  | Uint16, Little_endian ->
     let* u16, state = Buffy.R.read_uint16_le state in
     let value = Commons.Sizedints.Uint16.unsafe_of_int u16 in
     Readed { value; state }
-  | UInt8, _ ->
+  | Uint8, _ ->
     let* u8, state = Buffy.R.read_uint8 state in
     let value = Commons.Sizedints.Uint8.unsafe_of_int u8 in
     Readed { value; state }

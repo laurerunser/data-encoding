@@ -7,10 +7,10 @@ type 'a seq_with_length = 'a Descr.seq_with_length =
   }
 
 type variable_count_spec =
-  [ `UInt62
-  | `UInt30
-  | `UInt16
-  | `UInt8
+  [ `Uint62
+  | `Uint30
+  | `Uint16
+  | `Uint8
   ]
 
 type count_spec =
@@ -19,10 +19,10 @@ type count_spec =
   ]
 
 type 'a numeral = 'a Descr.numeral =
-  | UInt8 : Sizedints.Uint8.t numeral
-  | UInt16 : Sizedints.Uint16.t numeral
-  | UInt30 : Sizedints.Uint30.t numeral
-  | UInt62 : Sizedints.Uint62.t numeral
+  | Uint8 : Sizedints.Uint8.t numeral
+  | Uint16 : Sizedints.Uint16.t numeral
+  | Uint30 : Sizedints.Uint30.t numeral
+  | Uint62 : Sizedints.Uint62.t numeral
   | Int32 : int32 numeral
   | Int64 : int64 numeral
 
@@ -53,16 +53,16 @@ let with_length_header
   =
  fun ~lengthencoding ~length ~mkencoding ~equal ~maximum_size ->
   match lengthencoding with
-  | `UInt62 ->
+  | `Uint62 ->
     with_header
-      ~headerencoding:(Numeral { numeral = UInt62; endianness = Big_endian })
+      ~headerencoding:(Numeral { numeral = Uint62; endianness = Big_endian })
       ~mkheader:(fun v -> Ok (length v))
       ~mkencoding
       ~equal
       ~maximum_size
-  | `UInt30 ->
+  | `Uint30 ->
     with_header
-      ~headerencoding:(Numeral { numeral = UInt30; endianness = Big_endian })
+      ~headerencoding:(Numeral { numeral = Uint30; endianness = Big_endian })
       ~mkheader:(fun v ->
         let length = length v in
         if Sizedints.Uint30.(to_uint62 max_int) < length
@@ -74,9 +74,9 @@ let with_length_header
       ~mkencoding:(fun n -> mkencoding (Sizedints.Uint30.to_uint62 n))
       ~equal
       ~maximum_size
-  | `UInt16 ->
+  | `Uint16 ->
     with_header
-      ~headerencoding:(Numeral { numeral = UInt16; endianness = Big_endian })
+      ~headerencoding:(Numeral { numeral = Uint16; endianness = Big_endian })
       ~mkheader:(fun v ->
         let length = length v in
         if Sizedints.Uint16.(to_uint62 max_int) < length
@@ -88,9 +88,9 @@ let with_length_header
       ~mkencoding:(fun n -> mkencoding (Sizedints.Uint16.to_uint62 n))
       ~equal
       ~maximum_size
-  | `UInt8 ->
+  | `Uint8 ->
     with_header
-      ~headerencoding:(Numeral { numeral = UInt8; endianness = Big_endian })
+      ~headerencoding:(Numeral { numeral = Uint8; endianness = Big_endian })
       ~mkheader:(fun v ->
         let length = length v in
         if Sizedints.Uint8.(to_uint62 max_int) < length
@@ -112,10 +112,10 @@ let with_size_header
   =
  fun ~sizeencoding ~encoding ->
   match sizeencoding with
-  | `UInt62 -> Size_headered { size = UInt62; encoding }
-  | `UInt30 -> Size_headered { size = UInt30; encoding }
-  | `UInt16 -> Size_headered { size = UInt16; encoding }
-  | `UInt8 -> Size_headered { size = UInt8; encoding }
+  | `Uint62 -> Size_headered { size = Uint62; encoding }
+  | `Uint30 -> Size_headered { size = Uint30; encoding }
+  | `Uint16 -> Size_headered { size = Uint16; encoding }
+  | `Uint8 -> Size_headered { size = Uint8; encoding }
 ;;
 
 let seq_with_length_fixed length elementencoding =
@@ -153,16 +153,16 @@ let seq_with_length
          (LSeq { length; elementencoding }))
   in
   match lengthencoding with
-  | `UInt62 ->
+  | `Uint62 ->
     with_header
-      ~headerencoding:(Numeral { numeral = UInt62; endianness = Big_endian })
+      ~headerencoding:(Numeral { numeral = Uint62; endianness = Big_endian })
       ~mkheader:(fun (s : eltt seq_with_length) -> Ok (Lazy.force s.length))
       ~mkencoding
       ~equal
       ~maximum_size
-  | `UInt30 ->
+  | `Uint30 ->
     with_header
-      ~headerencoding:(Numeral { numeral = UInt30; endianness = Big_endian })
+      ~headerencoding:(Numeral { numeral = Uint30; endianness = Big_endian })
       ~mkheader:(fun v ->
         let length = Lazy.force v.length in
         if Sizedints.Uint30.(to_uint62 max_int) < length
@@ -176,9 +176,9 @@ let seq_with_length
         mkencoding length)
       ~equal
       ~maximum_size
-  | `UInt16 ->
+  | `Uint16 ->
     with_header
-      ~headerencoding:(Numeral { numeral = UInt16; endianness = Big_endian })
+      ~headerencoding:(Numeral { numeral = Uint16; endianness = Big_endian })
       ~mkheader:(fun v ->
         let length = Lazy.force v.length in
         if Sizedints.Uint16.(to_uint62 max_int) < length
@@ -192,9 +192,9 @@ let seq_with_length
         mkencoding length)
       ~equal
       ~maximum_size
-  | `UInt8 ->
+  | `Uint8 ->
     with_header
-      ~headerencoding:(Numeral { numeral = UInt8; endianness = Big_endian })
+      ~headerencoding:(Numeral { numeral = Uint8; endianness = Big_endian })
       ~mkheader:(fun v ->
         let length = Lazy.force v.length in
         if Sizedints.Uint8.(to_uint62 max_int) < length

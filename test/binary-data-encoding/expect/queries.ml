@@ -18,11 +18,11 @@ let%expect_test _ =
   [%expect {| 8 |}];
   w Encoding.(tuple [ unit; unit; int32; unit; int32 ]) [ (); (); 0x00l; (); 0x00l ];
   [%expect {| 8 |}];
-  w Encoding.(tuple [ string `UInt30; unit ]) [ "FOO"; () ];
+  w Encoding.(tuple [ string `Uint30; unit ]) [ "FOO"; () ];
   [%expect {| 7 |}];
-  w Encoding.(tuple [ string `UInt16; unit ]) [ "FOO"; () ];
+  w Encoding.(tuple [ string `Uint16; unit ]) [ "FOO"; () ];
   [%expect {| 5 |}];
-  w Encoding.(tuple [ string `UInt8; unit ]) [ "FOO"; () ];
+  w Encoding.(tuple [ string `Uint8; unit ]) [ "FOO"; () ];
   [%expect {| 4 |}];
   w
     Encoding.(

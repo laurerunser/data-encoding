@@ -78,9 +78,9 @@ let%expect_test _ =
   (* a complex encoding with some nesting structure *)
   let encoding =
     let open Encoding in
-    let base = With_size.seq_with_size `UInt8 uint16 in
-    let tup = With_size.seq_with_size `UInt8 (tuple [ base; base ]) in
-    let arr = array `UInt30 tup in
+    let base = With_size.seq_with_size `Uint8 uint16 in
+    let tup = With_size.seq_with_size `Uint8 (tuple [ base; base ]) in
+    let arr = array `Uint30 tup in
     arr
   in
   let uint16 n = Seq.return (Option.get @@ Encoding.Sizedints.Uint16.of_int n) in
@@ -117,10 +117,10 @@ let%expect_test _ =
     let open Encoding in
     let tup =
       With_size.seq_with_size
-        `UInt8
-        (tuple [ With_size.seq_with_size `UInt8 uint16; string `UInt8; string `UInt8 ])
+        `Uint8
+        (tuple [ With_size.seq_with_size `Uint8 uint16; string `Uint8; string `Uint8 ])
     in
-    array `UInt30 tup
+    array `Uint30 tup
   in
   let v =
     let open Encoding.Hlist in

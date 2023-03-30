@@ -6,10 +6,10 @@ type ('step, 'finish) reducer =
   | Finish of 'finish
 
 type _ numeral =
-  | UInt8 : Sizedints.Uint8.t numeral
-  | UInt16 : Sizedints.Uint16.t numeral
-  | UInt30 : Sizedints.Uint30.t numeral
-  | UInt62 : Sizedints.Uint62.t numeral
+  | Uint8 : Sizedints.Uint8.t numeral
+  | Uint16 : Sizedints.Uint16.t numeral
+  | Uint30 : Sizedints.Uint30.t numeral
+  | Uint62 : Sizedints.Uint62.t numeral
   | Int32 : int32 numeral
   | Int64 : int64 numeral
 

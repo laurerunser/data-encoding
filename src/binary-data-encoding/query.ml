@@ -1,27 +1,27 @@
 let zero_of_numeral : type n. n Descr.numeral -> n = function
-  | UInt8 -> Commons.Sizedints.Uint8.zero
-  | UInt16 -> Commons.Sizedints.Uint16.zero
-  | UInt30 -> Commons.Sizedints.Uint30.zero
-  | UInt62 -> Commons.Sizedints.Uint62.zero
+  | Uint8 -> Commons.Sizedints.Uint8.zero
+  | Uint16 -> Commons.Sizedints.Uint16.zero
+  | Uint30 -> Commons.Sizedints.Uint30.zero
+  | Uint62 -> Commons.Sizedints.Uint62.zero
   | Int32 -> Int32.zero
   | Int64 -> Int64.zero
 ;;
 
 let max_int_of : type n. n Descr.numeral -> Commons.Sizedints.Uint62.t = function
-  | UInt8 -> Commons.Sizedints.Uint8.(to_uint62 max_int)
-  | UInt16 -> Commons.Sizedints.Uint16.(to_uint62 max_int)
-  | UInt30 -> Commons.Sizedints.Uint30.(to_uint62 max_int)
-  | UInt62 -> Commons.Sizedints.Uint62.max_int
+  | Uint8 -> Commons.Sizedints.Uint8.(to_uint62 max_int)
+  | Uint16 -> Commons.Sizedints.Uint16.(to_uint62 max_int)
+  | Uint30 -> Commons.Sizedints.Uint30.(to_uint62 max_int)
+  | Uint62 -> Commons.Sizedints.Uint62.max_int
   | Int32 ->
     Option.get @@ Commons.Sizedints.Uint62.of_int64 (Int64.of_int32 Int32.max_int)
   | Int64 -> Option.get @@ Commons.Sizedints.Uint62.of_int64 Int64.max_int
 ;;
 
 let size_of_numeral : type n. n Descr.numeral -> Commons.Sizedints.Uint62.t = function
-  | UInt8 -> Size.As_uint62.uint8
-  | UInt16 -> Size.As_uint62.uint16
-  | UInt30 -> Size.As_uint62.uint30
-  | UInt62 -> Size.As_uint62.uint62
+  | Uint8 -> Size.As_uint62.uint8
+  | Uint16 -> Size.As_uint62.uint16
+  | Uint30 -> Size.As_uint62.uint30
+  | Uint62 -> Size.As_uint62.uint62
   | Int32 -> Size.As_uint62.int32
   | Int64 -> Size.As_uint62.int64
 ;;
@@ -31,10 +31,10 @@ let numeral_of_int : type n. n Descr.numeral -> int -> n =
   (* TODO: handle overflow uniformly accross all numerals, possibly returning
      option *)
   match n with
-  | UInt8 -> Option.get @@ Commons.Sizedints.Uint8.of_int i
-  | UInt16 -> Option.get @@ Commons.Sizedints.Uint16.of_int i
-  | UInt30 -> Option.get @@ Commons.Sizedints.Uint30.of_int i
-  | UInt62 -> Option.get @@ Commons.Sizedints.Uint62.of_int i
+  | Uint8 -> Option.get @@ Commons.Sizedints.Uint8.of_int i
+  | Uint16 -> Option.get @@ Commons.Sizedints.Uint16.of_int i
+  | Uint30 -> Option.get @@ Commons.Sizedints.Uint30.of_int i
+  | Uint62 -> Option.get @@ Commons.Sizedints.Uint62.of_int i
   | Int32 -> Int32.of_int i
   | Int64 -> Int64.of_int i
 ;;
@@ -43,10 +43,10 @@ let int_of_numeral : type n. n Descr.numeral -> n -> int =
  fun n i ->
   (* TODO: handle 32 bit arch *)
   match n with
-  | UInt8 -> (i :> int)
-  | UInt16 -> (i :> int)
-  | UInt30 -> (i :> int)
-  | UInt62 -> Optint.Int63.to_int (i :> Optint.Int63.t)
+  | Uint8 -> (i :> int)
+  | Uint16 -> (i :> int)
+  | Uint30 -> (i :> int)
+  | Uint62 -> Optint.Int63.to_int (i :> Optint.Int63.t)
   | Int32 -> Int32.to_int i
   | Int64 ->
     (* TODO: handle overflow *)
@@ -208,10 +208,10 @@ let rec maximum_size_of : type s t. (s, t) Descr.t -> Optint.Int63.t =
   | Bool -> Optint.Int63.one
   | Numeral { numeral = Int64; endianness = _ } -> Optint.Int63.of_int 8
   | Numeral { numeral = Int32; endianness = _ } -> Optint.Int63.of_int 4
-  | Numeral { numeral = UInt62; endianness = _ } -> Optint.Int63.of_int 8
-  | Numeral { numeral = UInt30; endianness = _ } -> Optint.Int63.of_int 4
-  | Numeral { numeral = UInt16; endianness = _ } -> Optint.Int63.of_int 2
-  | Numeral { numeral = UInt8; endianness = _ } -> Optint.Int63.one
+  | Numeral { numeral = Uint62; endianness = _ } -> Optint.Int63.of_int 8
+  | Numeral { numeral = Uint30; endianness = _ } -> Optint.Int63.of_int 4
+  | Numeral { numeral = Uint16; endianness = _ } -> Optint.Int63.of_int 2
+  | Numeral { numeral = Uint8; endianness = _ } -> Optint.Int63.one
   | String n -> (n :> Optint.Int63.t)
   | Bytes n -> (n :> Optint.Int63.t)
   | LSeq { length; elementencoding } ->
@@ -285,13 +285,13 @@ let rec equal_of : type s t. (s, t) Descr.t -> t -> t -> bool =
   | Bool -> Bool.equal
   | Numeral { numeral = Int64; endianness = _ } -> Int64.equal
   | Numeral { numeral = Int32; endianness = _ } -> Int32.equal
-  | Numeral { numeral = UInt62; endianness = _ } ->
+  | Numeral { numeral = Uint62; endianness = _ } ->
     fun a b -> Optint.Int63.equal (a :> Optint.Int63.t) (b :> Optint.Int63.t)
-  | Numeral { numeral = UInt30; endianness = _ } ->
+  | Numeral { numeral = Uint30; endianness = _ } ->
     fun a b -> Int.equal (a :> int) (b :> int)
-  | Numeral { numeral = UInt16; endianness = _ } ->
+  | Numeral { numeral = Uint16; endianness = _ } ->
     fun a b -> Int.equal (a :> int) (b :> int)
-  | Numeral { numeral = UInt8; endianness = _ } ->
+  | Numeral { numeral = Uint8; endianness = _ } ->
     fun a b -> Int.equal (a :> int) (b :> int)
   | String _ -> String.equal
   | Bytes _ -> Bytes.equal
@@ -362,11 +362,11 @@ let rec pp_of : type s t. (s, t) Descr.t -> Format.formatter -> t -> unit =
   | Bool -> Format.fprintf fmt "%b" v
   | Numeral { numeral = Int64; endianness = _ } -> Format.fprintf fmt "%Ld" v
   | Numeral { numeral = Int32; endianness = _ } -> Format.fprintf fmt "%ld" v
-  | Numeral { numeral = UInt62; endianness = _ } ->
+  | Numeral { numeral = Uint62; endianness = _ } ->
     Format.fprintf fmt "%Ld" (Optint.Int63.to_int64 (v :> Optint.Int63.t))
-  | Numeral { numeral = UInt30; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
-  | Numeral { numeral = UInt16; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
-  | Numeral { numeral = UInt8; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
+  | Numeral { numeral = Uint30; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
+  | Numeral { numeral = Uint16; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
+  | Numeral { numeral = Uint8; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
   | String _ -> Format.fprintf fmt "%S" v
   | Bytes _ -> Format.fprintf fmt "%S" (Bytes.unsafe_to_string v)
   | Array { length = _; elementencoding } ->
