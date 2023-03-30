@@ -1,0 +1,3 @@
+(library
+ (name benchlib)
+ (libraries buffy mtime mtime.clock.os))

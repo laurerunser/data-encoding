@@ -1,0 +1,9 @@
+(executables
+ (names bench_binary bench_json)
+ (libraries
+  buffy
+  binary-data-encoding
+  json-data-encoding
+  mtime
+  mtime.clock.os
+  benchlib))
