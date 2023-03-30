@@ -121,7 +121,7 @@ let rec writek : type s a. Buffy.W.state -> (s, a) Descr.t -> a -> Buffy.W.writt
     let original_state = state in
     let size0 = Query.zero_of_numeral size in
     (* TODO: make tests that covers the Written and the Suspended cases *)
-    (match write_numeral state size Encoding.default_endianness size0 with
+    (match write_numeral state size Encoding_public.default_endianness size0 with
      | Buffy.W.Written { state } ->
        let written_before_write = state.written in
        (* TODO: set a maximum-length so that it always accomodates the size
@@ -133,7 +133,11 @@ let rec writek : type s a. Buffy.W.state -> (s, a) Descr.t -> a -> Buffy.W.writt
             Query.numeral_of_int size (written_after_write - written_before_write)
           in
           let* (_ : Buffy.W.state) =
-            write_numeral original_state size Encoding.default_endianness actual_size
+            write_numeral
+              original_state
+              size
+              Encoding_public.default_endianness
+              actual_size
           in
           written_state
         | Buffy.W.Failed _ as failed -> failed
@@ -156,7 +160,11 @@ let rec writek : type s a. Buffy.W.state -> (s, a) Descr.t -> a -> Buffy.W.writt
                Query.numeral_of_int size (Optint.Int63.to_int actual_size)
              in
              let* (_ : Buffy.W.state) =
-               write_numeral original_state size Encoding.default_endianness actual_size
+               write_numeral
+                 original_state
+                 size
+                 Encoding_public.default_endianness
+                 actual_size
              in
              suspend_written))
      | Buffy.W.Failed _ as failed -> failed
@@ -249,199 +257,9 @@ let write
     | Written { state } -> Ok state.written)
 ;;
 
-let write_e
-  : type a.
-    dst:bytes
-    -> offset:int
-    -> length:int
-    -> a Encoding.t
-    -> a
-    -> (int, int * string) result
-  =
- fun ~dst ~offset ~length encoding v ->
-  let (E encoding) = Encoding.Advanced_low_level.introspect encoding in
-  write ~dst ~offset ~length encoding v
-;;
-
-let%expect_test _ =
-  let scratch = String.make 10 '\x00' in
-  let pp_bytes fmt b =
-    Format.pp_print_seq
-      ~pp_sep:(fun _ () -> ())
-      (fun fmt ch -> Format.fprintf fmt "%02x" (Char.code ch))
-      fmt
-      (Bytes.to_seq b)
-  in
-  let w : type a. a Encoding.t -> a -> unit =
-   fun e v ->
-    let dst = Bytes.of_string scratch in
-    match write_e ~dst ~offset:1 ~length:8 e v with
-    | Ok n -> Format.printf "Ok(%d): %a\n" n pp_bytes dst
-    | Error (n, s) -> Format.printf "Error(%d,%s): %a" n s pp_bytes dst
-  in
-  w Encoding.unit ();
-  [%expect {| Ok(0): 00000000000000000000 |}];
-  w Encoding.int64 0x4c_6f_6f_6f_6f_6f_6f_4cL;
-  [%expect {| Ok(8): 004c6f6f6f6f6f6f4c00 |}];
-  w Encoding.int64 0xff_ff_ff_ff_ff_ff_ff_ffL;
-  [%expect {| Ok(8): 00ffffffffffffffff00 |}];
-  w Encoding.int64 0x4c_6f_6f_6f_6f_4c_4c_4cL;
-  [%expect {| Ok(8): 004c6f6f6f6f4c4c4c00 |}];
-  w Encoding.Little_endian.int64 0x4c_6f_6f_6f_6f_4c_4c_4cL;
-  [%expect {| Ok(8): 004c4c4c6f6f6f6f4c00 |}];
-  w Encoding.uint62 (Option.get @@ Commons.Sizedints.Uint62.of_int64 0L);
-  [%expect {| Ok(8): 00000000000000000000 |}];
-  w
-    Encoding.uint62
-    (Option.get @@ Commons.Sizedints.Uint62.of_int64 0x3c_6f_6f_6f_6f_6f_6f_4cL);
-  [%expect {| Ok(8): 003c6f6f6f6f6f6f4c00 |}];
-  w
-    Encoding.Little_endian.uint62
-    (Option.get @@ Commons.Sizedints.Uint62.of_int64 0x3c_6f_6f_6f_6f_6f_6f_4cL);
-  [%expect {| Ok(8): 004c6f6f6f6f6f6f3c00 |}];
-  w Encoding.uint62 Commons.Sizedints.Uint62.max_int;
-  [%expect {| Ok(8): 003fffffffffffffff00 |}];
-  w
-    Encoding.(tuple [ unit; unit; int32; unit; int32 ])
-    [ (); (); 0x4c_6f_6f_4cl; (); 0x4c_6f_6f_4cl ];
-  [%expect {| Ok(8): 004c6f6f4c4c6f6f4c00 |}];
-  w Encoding.(tuple [ string `UInt30; unit ]) [ "FOO"; () ];
-  [%expect {| Ok(7): 0000000003464f4f0000 |}];
-  w Encoding.(tuple [ string `UInt16; unit ]) [ "FOOo0"; () ];
-  [%expect {| Ok(7): 000005464f4f6f300000 |}];
-  w Encoding.(tuple [ string `UInt8; unit ]) [ "FOOo00o"; () ];
-  [%expect {| Ok(8): 0007464f4f6f30306f00 |}];
-  w Encoding.ellastic_uint30 Commons.Sizedints.Uint30.min_int;
-  [%expect {| Ok(1): 00000000000000000000 |}];
-  w Encoding.ellastic_uint30 (Option.get @@ Commons.Sizedints.Uint30.of_int 1);
-  [%expect {| Ok(1): 00010000000000000000 |}];
-  w Encoding.ellastic_uint30 (Option.get @@ Commons.Sizedints.Uint30.of_int 0b0111_1110);
-  [%expect {| Ok(1): 007e0000000000000000 |}];
-  w Encoding.ellastic_uint30 (Option.get @@ Commons.Sizedints.Uint30.of_int 0b0111_1111);
-  [%expect {| Ok(1): 007f0000000000000000 |}];
-  w Encoding.ellastic_uint30 (Option.get @@ Commons.Sizedints.Uint30.of_int 0b1000_0000);
-  [%expect {| Ok(2): 00800100000000000000 |}];
-  w Encoding.ellastic_uint30 (Option.get @@ Commons.Sizedints.Uint30.of_int 0b1000_0001);
-  [%expect {| Ok(2): 00810100000000000000 |}];
-  w
-    Encoding.ellastic_uint30
-    (Option.get @@ Commons.Sizedints.Uint30.of_int 0b1010_1010_1010_1010);
-  [%expect {| Ok(3): 00aad502000000000000 |}];
-  w
-    Encoding.(array (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 2L)) uint8)
-    [| Option.get @@ Commons.Sizedints.Uint8.of_int 127
-     ; Option.get @@ Commons.Sizedints.Uint8.of_int 255
-    |];
-  [%expect {| Ok(2): 007fff00000000000000 |}];
-  w
-    Encoding.(array (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 3L)) uint8)
-    [| Option.get @@ Commons.Sizedints.Uint8.of_int 127
-     ; Option.get @@ Commons.Sizedints.Uint8.of_int 255
-     ; Option.get @@ Commons.Sizedints.Uint8.of_int 1
-    |];
-  [%expect {| Ok(3): 007fff01000000000000 |}];
-  w Encoding.(array `UInt8 uint8) [||];
-  [%expect {| Ok(1): 00000000000000000000 |}];
-  w
-    Encoding.(array `UInt8 uint8)
-    [| Option.get @@ Commons.Sizedints.Uint8.of_int 127
-     ; Option.get @@ Commons.Sizedints.Uint8.of_int 255
-     ; Option.get @@ Commons.Sizedints.Uint8.of_int 1
-    |];
-  [%expect {| Ok(4): 00037fff010000000000 |}];
-  w
-    Encoding.(
-      with_size_header
-        ~sizeencoding:`UInt8
-        ~encoding:
-          (tuple
-             [ Advanced_low_level.(forget (E (USeq { elementencoding = Bool })))
-             ; string (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int 3))
-             ]))
-    [ Seq.empty; "LOl" ];
-  [%expect {| Ok(4): 00034c4f6c0000000000 |}];
-  w Encoding.(With_size.seq_with_size `UInt8 uint8) Seq.empty;
-  [%expect {| Ok(1): 00000000000000000000 |}];
-  w
-    Encoding.(With_size.seq_with_size `UInt8 uint8)
-    (Seq.return (Option.get @@ Commons.Sizedints.Uint8.of_int 0));
-  [%expect {| Ok(2): 00010000000000000000 |}];
-  w
-    Encoding.(With_size.seq_with_size `UInt8 (option uint8))
-    (Seq.map Commons.Sizedints.Uint8.of_int (List.to_seq [ 0; 1; 2 ]));
-  [%expect {| Ok(7): 00060100010101020000 |}];
-  ()
-;;
-
 let string_of
   : type s a. ?buffer_size:int -> (s, a) Descr.t -> a -> (string, string) result
   =
  fun ?buffer_size encoding v ->
   Buffy.W.to_string ?buffer_size (fun state -> writek state encoding v)
-;;
-
-let string_of_e : type a. ?buffer_size:int -> a Encoding.t -> a -> (string, string) result
-  =
- fun ?buffer_size encoding v ->
-  let (E encoding) = Encoding.Advanced_low_level.introspect encoding in
-  string_of ?buffer_size encoding v
-;;
-
-let%expect_test _ =
-  let w : type a. ?buffer_size:int -> a Encoding.t -> a -> unit =
-   fun ?buffer_size e v ->
-    match string_of_e ?buffer_size e v with
-    | Ok s -> Format.printf "Ok: %S\n" s
-    | Error s -> Format.printf "Error: %s" s
-  in
-  w ~buffer_size:10 Encoding.unit ();
-  [%expect {| Ok: "" |}];
-  w ~buffer_size:10 Encoding.int64 0x4c_6f_6f_6f_6f_6f_6f_4cL;
-  [%expect {| Ok: "LooooooL" |}];
-  w ~buffer_size:5 Encoding.int64 0x4c_6f_6f_6f_6f_6f_6f_4cL;
-  [%expect {| Ok: "LooooooL" |}];
-  w ~buffer_size:10 Encoding.int64 0xff_ff_ff_ff_ff_ff_ff_ffL;
-  [%expect {| Ok: "\255\255\255\255\255\255\255\255" |}];
-  w
-    ~buffer_size:10
-    Encoding.(tuple [ unit; unit; int32; unit; int32 ])
-    [ (); (); 0x4c_6f_6f_4cl; (); 0x4c_6f_6f_4cl ];
-  [%expect {| Ok: "LooLLooL" |}];
-  let str_x_str =
-    Encoding.(
-      tuple
-        [ string (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 3L))
-        ; string (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 3L))
-        ])
-  in
-  w ~buffer_size:10 str_x_str [ "FOO"; "LOL" ];
-  [%expect {| Ok: "FOOLOL" |}];
-  w ~buffer_size:2 str_x_str [ "FOO"; "LOL" ];
-  [%expect {| Ok: "FOOLOL" |}];
-  w
-    ~buffer_size:2
-    Encoding.(
-      tuple
-        [ string (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 3L))
-        ; unit
-        ; unit
-        ; string (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 8L))
-        ])
-    [ "FOO"; (); (); "LOLLOLOL" ];
-  [%expect {| Ok: "FOOLOLLOLOL" |}];
-  w ~buffer_size:10 Encoding.(tuple [ int64; option int32 ]) [ 0L; Some 0l ];
-  [%expect {| Ok: "\000\000\000\000\000\000\000\000\001\000\000\000\000" |}];
-  w ~buffer_size:10 Encoding.(With_size.seq_with_size `UInt8 uint8) Seq.empty;
-  [%expect {| Ok: "\000" |}];
-  w
-    ~buffer_size:10
-    Encoding.(With_size.seq_with_size `UInt8 uint8)
-    (Seq.return (Option.get @@ Commons.Sizedints.Uint8.of_int 0));
-  [%expect {| Ok: "\001\000" |}];
-  w
-    ~buffer_size:10
-    Encoding.(With_size.seq_with_size `UInt8 (option uint8))
-    (Seq.map Commons.Sizedints.Uint8.of_int (List.to_seq [ 0; 1; 2 ]));
-  [%expect {| Ok: "\006\001\000\001\001\001\002" |}];
-  ()
 ;;

@@ -13,8 +13,7 @@ let%expect_test _ =
   in
   let w : type a. int -> int -> a Encoding.t -> a -> unit =
    fun initread morereads e v ->
-    let (E descr) = Binary_data_encoding.Encoding.Advanced_low_level.introspect e in
-    match Writer.string_of descr v with
+    match Writer.string_of e v with
     | Error _ -> assert false
     | Ok blob ->
       Format.printf
@@ -27,7 +26,7 @@ let%expect_test _ =
       let state =
         Buffy.R.mk_state (Buffy.Src.of_string blob ~offset:0 ~length:initread)
       in
-      (match Reader.readk state descr with
+      (match Reader.readk state e with
        | Failed { error; state } ->
          Format.printf
            "Error: %S, Readed: %d, Stops: %a\n"
@@ -37,7 +36,7 @@ let%expect_test _ =
            state
        | Readed { value; state } ->
          Format.printf "Ok, Readed: %d, Stops: %a\n" state.readed print_stops state;
-         assert (Query.equal_of descr v value)
+         assert (Query.equal_of e v value)
        | Suspended { cont; state } ->
          Format.printf "Suspended, Readed: %d, Stops: %a\n" state.readed print_stops state;
          let rec go offset (cont : Buffy.Src.t -> a Buffy.R.readed) =
@@ -53,7 +52,7 @@ let%expect_test _ =
                state
            | Readed { value; state } ->
              Format.printf "Ok, Readed: %d, Stops: %a\n" state.readed print_stops state;
-             assert (Query.equal_of descr v value)
+             assert (Query.equal_of e v value)
            | Suspended { cont; state } ->
              Format.printf
                "Suspended, Readed: %d, Stops: %a\n"

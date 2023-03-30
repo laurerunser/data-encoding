@@ -127,3 +127,5 @@ and ('tag, 'a) anycase = AnyC : (_, 'tag, _, 'a) case_descr -> ('tag, 'a) anycas
 
    E.g., this allows [Query] to access [Descr] and [Encoding] to access [Query].
 *)
+
+type 'a introspectable = E : (_ Sizability.t, 'a) t -> 'a introspectable

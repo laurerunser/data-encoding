@@ -45,14 +45,3 @@ val write
   -> (int, int * string) result
 
 val string_of : ?buffer_size:int -> ('s, 'a) Descr.t -> 'a -> (string, string) result
-
-(* TODO: find a better UI *)
-val write_e
-  :  dst:bytes
-  -> offset:int
-  -> length:int
-  -> 'a Encoding.t
-  -> 'a
-  -> (int, int * string) result
-
-val string_of_e : ?buffer_size:int -> 'a Encoding.t -> 'a -> (string, string) result

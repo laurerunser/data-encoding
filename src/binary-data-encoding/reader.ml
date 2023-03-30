@@ -106,7 +106,9 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
      | Ok value -> Buffy.R.Readed { state; value }
      | Error error -> Failed { state; error })
   | Size_headered { size; encoding } ->
-    let* readed_size, state = read_numeral state size Encoding.default_endianness in
+    let* readed_size, state =
+      read_numeral state size Encoding_public.default_endianness
+    in
     let readed_size = Query.int_of_numeral size readed_size in
     assert (readed_size >= 0);
     (match Buffy.R.push_stop state readed_size with
@@ -244,25 +246,25 @@ let%expect_test _ =
   let w
     : type a.
       (string * int * int) Seq.t
-      -> a Encoding.t
+      -> a Encoding_public.t
       -> (Format.formatter -> a -> unit)
       -> unit
     =
    fun sources e f ->
-    let (E descr) = Encoding.Advanced_low_level.introspect e in
+    let (E descr) = Encoding_public.introspect e in
     match read_strings sources descr with
     | Ok value -> Format.printf "Ok: %a" f value
     | Error error -> Format.printf "Error: %s" error
   in
   w
     (List.to_seq [ "LooooooL", 0, 8 ])
-    Encoding.int64
+    Encoding_public.int64
     (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
   [%expect {|
     Ok: 4c6f6f6f6f6f6f4c |}];
   w
     (List.to_seq [ "Looo", 0, 4; "oooL", 0, 4 ])
-    Encoding.int64
+    Encoding_public.int64
     (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
   [%expect {|
     Ok: 4c6f6f6f6f6f6f4c |}];
@@ -279,7 +281,7 @@ let%expect_test _ =
   in
   ww
     "LooLLooL"
-    Encoding.(tuple [ unit; int32; int32; unit ])
+    Encoding_public.(tuple [ unit; int32; int32; unit ])
     (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx\n" l r);
   [%expect
     {|
@@ -303,7 +305,7 @@ let%expect_test _ =
   in
   www
     "LooLLooL"
-    Encoding.(tuple [ unit; int32; int32; unit ])
+    Encoding_public.(tuple [ unit; int32; int32; unit ])
     (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx\n" l r);
   [%expect
     {|
@@ -317,35 +319,35 @@ let%expect_test _ =
     Ok: 4c6f6f4c_4c6f6f4c |}];
   w
     Seq.(ints 0 |> take 8 |> map (fun i -> "LooLLooL", i, 1))
-    Encoding.(tuple [ unit; int32; int32; unit ])
+    Encoding_public.(tuple [ unit; int32; int32; unit ])
     (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx" l r);
   [%expect {| Ok: 4c6f6f4c_4c6f6f4c |}];
   w
     Seq.(ints 0 |> take 4 |> map (fun i -> "LooLLooL", i * 2, 2))
-    Encoding.(tuple [ unit; int32; int32; unit ])
+    Encoding_public.(tuple [ unit; int32; int32; unit ])
     (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx" l r);
   [%expect {| Ok: 4c6f6f4c_4c6f6f4c |}];
   w
     (List.to_seq [ "FOO", 0, 3 ])
-    Encoding.(string (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 3L)))
+    Encoding_public.(string (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 3L)))
     Format.pp_print_string;
   [%expect {|
     Ok: FOO |}];
   w
     (List.to_seq [ "\000\000\000\000\000\000\000\000", 0, 8 ])
-    Encoding.uint62
+    Encoding_public.uint62
     (fun fmt u62 -> Format.fprintf fmt "%a" Optint.Int63.pp (u62 :> Optint.Int63.t));
   [%expect {|
     Ok: 0 |}];
   w
     (List.to_seq [ "<ooooooL", 0, 8 ])
-    Encoding.uint62
+    Encoding_public.uint62
     (fun fmt u62 -> Format.fprintf fmt "%a" Optint.Int63.pp (u62 :> Optint.Int63.t));
   [%expect {|
     Ok: 4354821889092185932 |}];
   w
     (List.to_seq [ "?\255\255\255\255\255\255\255", 0, 8 ])
-    Encoding.uint62
+    Encoding_public.uint62
     (fun fmt u62 -> Format.fprintf fmt "%a" Optint.Int63.pp (u62 :> Optint.Int63.t));
   [%expect {|
     Ok: 4611686018427387903 |}];
@@ -371,88 +373,4 @@ let read
     (* it would be [Failed] because [maximum_length] takes priority over
          suspensions. *)
     assert false
-;;
-
-let read_string_e s encoding =
-  let (E encoding) = Encoding.Advanced_low_level.introspect encoding in
-  read_string s encoding
-;;
-
-let%expect_test _ =
-  let w : type a. ?pp:(Format.formatter -> a -> unit) -> string -> a Encoding.t -> unit =
-   fun ?pp blob e ->
-    let (E descr) = Encoding.Advanced_low_level.introspect e in
-    match read ~src:blob ~offset:0 ~length:(String.length blob) descr with
-    | Ok d ->
-      let pp =
-        match pp with
-        | Some pp -> pp
-        | None -> Query.pp_of descr
-      in
-      Format.printf "Ok: %a\n" pp d
-    | Error s -> Format.printf "Error: %s" s
-  in
-  w ~pp:(fun fmt i64 -> Format.fprintf fmt "%Lx" i64) "LooooooL" Encoding.int64;
-  [%expect {|
-    Ok: 4c6f6f6f6f6f6f4c |}];
-  w "LooLLooL" Encoding.(tuple [ unit; int32; int32; unit ]);
-  [%expect {|
-    Ok: ();1282371404;1282371404;() |}];
-  w "FOO" Encoding.(string (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 3L)));
-  [%expect {|
-    Ok: FOO |}];
-  w
-    "\000\000\000\000\000\000\000\000\001\000\000\000\000"
-    Encoding.(tuple [ int64; option int32 ]);
-  [%expect {|
-    Ok: 0;Some(0) |}];
-  let pp_ui30 fmt (u30 : Commons.Sizedints.Uint30.t) =
-    Format.fprintf fmt "%x" (u30 :> int)
-  in
-  w ~pp:pp_ui30 "\x00" Encoding.ellastic_uint30;
-  [%expect {|
-    Ok: 0 |}];
-  w ~pp:pp_ui30 "\x01" Encoding.ellastic_uint30;
-  [%expect {|
-    Ok: 1 |}];
-  w ~pp:pp_ui30 "\x7f" Encoding.ellastic_uint30;
-  [%expect {|
-    Ok: 7f |}];
-  w ~pp:pp_ui30 "\x80\x01" Encoding.ellastic_uint30;
-  [%expect {|
-    Ok: 80 |}];
-  w ~pp:pp_ui30 "\x81\x01" Encoding.ellastic_uint30;
-  [%expect {|
-    Ok: 81 |}];
-  w ~pp:pp_ui30 "\xaa\xd5\x02" Encoding.ellastic_uint30;
-  [%expect {|
-    Ok: aaaa |}];
-  w
-    "\x7f\xff"
-    Encoding.(array (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 2L)) uint8);
-  [%expect {|
-    Ok: [|127;255|] |}];
-  w
-    "\x7f\xff\x01"
-    Encoding.(array (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 3L)) uint8);
-  [%expect {|
-    Ok: [|127;255;1|] |}];
-  w "\x00" Encoding.(array `UInt8 uint8);
-  [%expect {|
-    Ok: [||] |}];
-  w "\x03\x7f\xff\x01" Encoding.(array `UInt8 uint8);
-  [%expect {|
-    Ok: [|127;255;1|] |}];
-  w "\000" Encoding.(With_size.seq_with_size `UInt8 uint8);
-  [%expect {|
-    Ok: seq() |}];
-  w "\001\000" Encoding.(With_size.seq_with_size `UInt8 uint8);
-  [%expect {|
-    Ok: seq(0) |}];
-  w
-    "\006\001\000\001\001\001\002"
-    Encoding.(With_size.seq_with_size `UInt8 (option uint8));
-  [%expect {|
-    Ok: seq(Some(0),Some(1),Some(2)) |}];
-  ()
 ;;

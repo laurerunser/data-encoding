@@ -1,7 +1,15 @@
 module Hlist = Commons.Hlist
 module Sizedints = Commons.Sizedints
 
-type 'a t = E : (_ Sizability.t, 'a) Descr.t -> 'a t
+type 'a t = 'a Descr.introspectable = E : (_ Sizability.t, 'a) Descr.t -> 'a t
+
+let introspect : 'a t -> 'a Descr.introspectable = Fun.id
+let forget : 'a Descr.introspectable -> 'a t = Fun.id
+
+type 'a seq_with_length = 'a Descr.seq_with_length =
+  { seq : 'a Seq.t
+  ; length : Sizedints.Uint62.t Lazy.t
+  }
 
 type variable_count_spec =
   [ `UInt62
@@ -15,198 +23,13 @@ type count_spec =
   | variable_count_spec
   ]
 
-module Advanced_low_level = struct
-  type 'a introspectable = 'a t = E : (_ Sizability.t, 'a) Descr.t -> 'a introspectable
-
-  let introspect : 'a t -> 'a introspectable = Fun.id
-  let forget : 'a introspectable -> 'a t = Fun.id
-
-  type ('step, 'finish) reducer = ('step, 'finish) Descr.reducer =
-    | K of 'step
-    | Finish of 'finish
-
-  let with_header ~headerencoding ~mkheader ~mkencoding ~equal ~maximum_size =
-    Descr.Headered { mkheader; headerencoding; mkencoding; equal; maximum_size }
-  ;;
-
-  let fold ~chunkencoding ~chunkify ~readinit ~reducer ~equal ~maximum_size =
-    Descr.Fold { chunkencoding; chunkify; readinit; reducer; equal; maximum_size }
-  ;;
-
-  let with_length_header
-    : type a.
-      lengthencoding:variable_count_spec
-      -> length:(a -> Sizedints.Uint62.t)
-      -> mkencoding:(Sizedints.Uint62.t -> (a Descr.anyintrinsic, string) result)
-      -> equal:(a -> a -> bool)
-      -> maximum_size:Optint.Int63.t
-      -> (Sizability.dynamic, a) Descr.t
-    =
-   fun ~lengthencoding ~length ~mkencoding ~equal ~maximum_size ->
-    match lengthencoding with
-    | `UInt62 ->
-      with_header
-        ~headerencoding:(Numeral { numeral = UInt62; endianness = Big_endian })
-        ~mkheader:(fun v -> Ok (length v))
-        ~mkencoding
-        ~equal
-        ~maximum_size
-    | `UInt30 ->
-      with_header
-        ~headerencoding:(Numeral { numeral = UInt30; endianness = Big_endian })
-        ~mkheader:(fun v ->
-          let length = length v in
-          if Sizedints.Uint30.(to_uint62 max_int) < length
-          then Error "Length larger than header-size (30 bits) can encode"
-          else
-            Ok
-              (Option.get
-                 (Sizedints.Uint30.of_int
-                    (Optint.Int63.to_int (length :> Optint.Int63.t)))))
-        ~mkencoding:(fun n -> mkencoding (Sizedints.Uint30.to_uint62 n))
-        ~equal
-        ~maximum_size
-    | `UInt16 ->
-      with_header
-        ~headerencoding:(Numeral { numeral = UInt16; endianness = Big_endian })
-        ~mkheader:(fun v ->
-          let length = length v in
-          if Sizedints.Uint16.(to_uint62 max_int) < length
-          then Error "Length larger than header-size (16 bits) can encode"
-          else
-            Ok
-              (Option.get
-                 (Sizedints.Uint16.of_int
-                    (Optint.Int63.to_int (length :> Optint.Int63.t)))))
-        ~mkencoding:(fun n -> mkencoding (Sizedints.Uint16.to_uint62 n))
-        ~equal
-        ~maximum_size
-    | `UInt8 ->
-      with_header
-        ~headerencoding:(Numeral { numeral = UInt8; endianness = Big_endian })
-        ~mkheader:(fun v ->
-          let length = length v in
-          if Sizedints.Uint8.(to_uint62 max_int) < length
-          then Error "Length larger than header-size (16 bits) can encode"
-          else
-            Ok
-              (Option.get
-                 (Sizedints.Uint8.of_int (Optint.Int63.to_int (length :> Optint.Int63.t)))))
-        ~mkencoding:(fun n -> mkencoding (Sizedints.Uint8.to_uint62 n))
-        ~equal
-        ~maximum_size
- ;;
-
-  let with_size_header
-    : type a.
-      sizeencoding:variable_count_spec
-      -> encoding:(Sizability.extrinsic, a) Descr.t
-      -> (Sizability.dynamic, a) Descr.t
-    =
-   fun ~sizeencoding ~encoding ->
-    match sizeencoding with
-    | `UInt62 -> Size_headered { size = UInt62; encoding }
-    | `UInt30 -> Size_headered { size = UInt30; encoding }
-    | `UInt16 -> Size_headered { size = UInt16; encoding }
-    | `UInt8 -> Size_headered { size = UInt8; encoding }
- ;;
-
-  type 'a seq_with_length = 'a Descr.seq_with_length =
-    { seq : 'a Seq.t
-    ; length : Sizedints.Uint62.t Lazy.t
-    }
-
-  let seq_with_length_fixed length elementencoding = E (LSeq { length; elementencoding })
-
-  let wrap_e
-    : type sz.
-      sz Sizability.intrinsic
-      -> (sz Sizability.intrinsic, 'a) Descr.t
-      -> 'a Descr.anyintrinsic
-    =
-   fun sz d ->
-    match sz with
-    | Intrinsic Dynamic -> EDynamic d
-    | Intrinsic (Static _) -> EStatic d
- ;;
-
-  let seq_with_length
-    : type eltsz eltt.
-      variable_count_spec
-      -> (eltsz Sizability.intrinsic, eltt) Descr.t
-      -> (Sizability.dynamic, eltt seq_with_length) Descr.t
-    =
-   fun lengthencoding elementencoding ->
-    let maximum_size =
-      (* TODO *)
-      Optint.Int63.max_int
-    in
-    let equal a b = Seq.equal (Query.equal_of elementencoding) a.seq b.seq in
-    let mkencoding length =
-      Ok (wrap_e (Query.sizability elementencoding) (LSeq { length; elementencoding }))
-    in
-    match lengthencoding with
-    | `UInt62 ->
-      with_header
-        ~headerencoding:(Numeral { numeral = UInt62; endianness = Big_endian })
-        ~mkheader:(fun (s : eltt seq_with_length) -> Ok (Lazy.force s.length))
-        ~mkencoding
-        ~equal
-        ~maximum_size
-    | `UInt30 ->
-      with_header
-        ~headerencoding:(Numeral { numeral = UInt30; endianness = Big_endian })
-        ~mkheader:(fun v ->
-          let length = Lazy.force v.length in
-          if Sizedints.Uint30.(to_uint62 max_int) < length
-          then Error "Length larger than header-size (30 bits) can encode"
-          else
-            Ok
-              (Option.get
-                 (Sizedints.Uint30.of_int
-                    (Optint.Int63.to_int (length :> Optint.Int63.t)))))
-        ~mkencoding:(fun length ->
-          let length = Sizedints.Uint30.to_uint62 length in
-          mkencoding length)
-        ~equal
-        ~maximum_size
-    | `UInt16 ->
-      with_header
-        ~headerencoding:(Numeral { numeral = UInt16; endianness = Big_endian })
-        ~mkheader:(fun v ->
-          let length = Lazy.force v.length in
-          if Sizedints.Uint16.(to_uint62 max_int) < length
-          then Error "Length larger than header-size (16 bits) can encode"
-          else
-            Ok
-              (Option.get
-                 (Sizedints.Uint16.of_int
-                    (Optint.Int63.to_int (length :> Optint.Int63.t)))))
-        ~mkencoding:(fun length ->
-          let length = Sizedints.Uint16.to_uint62 length in
-          mkencoding length)
-        ~equal
-        ~maximum_size
-    | `UInt8 ->
-      with_header
-        ~headerencoding:(Numeral { numeral = UInt8; endianness = Big_endian })
-        ~mkheader:(fun v ->
-          let length = Lazy.force v.length in
-          if Sizedints.Uint8.(to_uint62 max_int) < length
-          then Error "Length larger than header-size (16 bits) can encode"
-          else
-            Ok
-              (Option.get
-                 (Sizedints.Uint8.of_int (Optint.Int63.to_int (length :> Optint.Int63.t)))))
-        ~mkencoding:(fun length ->
-          let length = Sizedints.Uint8.to_uint62 length in
-          mkencoding length)
-        ~equal
-        ~maximum_size
- ;;
-end
-
-include Advanced_low_level
+type 'a numeral = 'a Descr.numeral =
+  | UInt8 : Sizedints.Uint8.t numeral
+  | UInt16 : Sizedints.Uint16.t numeral
+  | UInt30 : Sizedints.Uint30.t numeral
+  | UInt62 : Sizedints.Uint62.t numeral
+  | Int32 : int32 numeral
+  | Int64 : int64 numeral
 
 type endianness = Descr.endianness =
   | Big_endian
@@ -290,7 +113,7 @@ let seq count_spec (E encoding) =
         in
         { seq; length })
       ~deserialisation:(fun { seq; length = _ } -> Ok seq)
-      (E (seq_with_length count_spec encoding))
+      (Descr.E (Encoding_internals.seq_with_length count_spec encoding))
 ;;
 
 let list count_spec (E encoding) =
@@ -304,7 +127,7 @@ let list count_spec (E encoding) =
         in
         { seq = List.to_seq l; length })
       ~deserialisation:(fun { seq; length = _ } -> Ok (List.of_seq seq))
-      (E (seq_with_length count_spec encoding))
+      (Descr.E (Encoding_internals.seq_with_length count_spec encoding))
 ;;
 
 let array : type a. count_spec -> a t -> a array t =
@@ -319,12 +142,12 @@ let array : type a. count_spec -> a t -> a array t =
      | Extrinsic -> raise (Invalid_argument "extrinsic in array")
      | Intrinsic _ ->
        let descr =
-         with_length_header
+         Encoding_internals.with_length_header
            ~lengthencoding
            ~length:(fun a -> Option.get (Sizedints.Uint62.of_int (Array.length a)))
            ~mkencoding:(fun length ->
              Ok
-               (Advanced_low_level.wrap_e
+               (Encoding_internals.wrap_intrinsic
                   (Query.sizability elementencoding)
                   (Array { length; elementencoding })))
            ~equal:(fun xs ys ->
@@ -352,10 +175,17 @@ module With_size = struct
       if n = Sizedints.Uint62.zero
       then
         raise (Invalid_argument "zero-size elements in sized (rather than lengthed) seq")
-      else E (with_size_header ~sizeencoding ~encoding:(USeq { elementencoding }))
+      else
+        E
+          (Encoding_internals.with_size_header
+             ~sizeencoding
+             ~encoding:(USeq { elementencoding }))
     | Extrinsic -> raise (Invalid_argument "extrinsic-size elements in sized seq")
     | Intrinsic _ ->
-      E (with_size_header ~sizeencoding ~encoding:(USeq { elementencoding }))
+      E
+        (Encoding_internals.with_size_header
+           ~sizeencoding
+           ~encoding:(USeq { elementencoding }))
   ;;
 end
 
@@ -364,7 +194,7 @@ let string lengthencoding =
   | `Fixed length -> E (String length)
   | #variable_count_spec as lengthencoding ->
     let descr =
-      with_length_header
+      Encoding_internals.with_length_header
         ~lengthencoding
         ~length:(fun s ->
           Option.get (Sizedints.Uint62.of_int64 (Int64.of_int (String.length s))))
@@ -385,7 +215,7 @@ let bytes lengthencoding =
   | `Fixed length -> E (Bytes length)
   | #variable_count_spec as lengthencoding ->
     let descr =
-      with_length_header
+      Encoding_internals.with_length_header
         ~lengthencoding
         ~length:(fun b ->
           Option.get (Sizedints.Uint62.of_int64 (Int64.of_int (Bytes.length b))))
@@ -407,7 +237,7 @@ let ellastic_uint30 : Sizedints.Uint30.t t =
   let tag_mask = (* metadata bits of each byte *) 0b1000_0000 in
   let payload_width = (* number of significant bits in each byte of payload *) 7 in
   let descr =
-    fold
+    Encoding_internals.fold
       ~chunkencoding:(Numeral { numeral = UInt8; endianness = Big_endian })
       ~chunkify:(fun (u30 : Sizedints.Uint30.t) ->
         let u30 = (u30 :> int) in
@@ -511,13 +341,13 @@ let with_size_header ~sizeencoding ~encoding:(E encoding) =
   match Query.sizability encoding with
   | Intrinsic _ -> raise (Invalid_argument "intrinsic cannot have size header")
   | Extrinsic ->
-    let descr = Advanced_low_level.with_size_header ~sizeencoding ~encoding in
+    let descr = Encoding_internals.with_size_header ~sizeencoding ~encoding in
     E descr
 ;;
 
 let with_length_header ~lengthencoding ~length ~mkencoding ~equal ~maximum_size =
   let descr =
-    Advanced_low_level.with_length_header
+    Encoding_internals.with_length_header
       ~lengthencoding
       ~length
       ~mkencoding:(fun n ->

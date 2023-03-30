@@ -57,9 +57,7 @@ let rec generator_of_descr
   | LSeq { length; elementencoding } ->
     QCheck2.Gen.map
       (fun l ->
-        { Binary_data_encoding.Encoding.Advanced_low_level.seq = List.to_seq l
-        ; length = lazy length
-        })
+        { Binary_data_encoding.Internals.Descr.seq = List.to_seq l; length = lazy length })
       QCheck2.Gen.(
         list_size
           (let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
@@ -127,14 +125,12 @@ let rec generator_of_descr
 
 and generator_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t QCheck2.Gen.t =
  fun encoding ->
-  let (E descr) = Binary_data_encoding.Encoding.Advanced_low_level.introspect encoding in
+  let (E descr) = Binary_data_encoding.Encoding.introspect encoding in
   generator_of_descr descr
 ;;
 
 let print_of_encoding : type t. t Binary_data_encoding.Encoding.t -> t -> string =
- fun encoding v ->
-  let (E descr) = Binary_data_encoding.Encoding.Advanced_low_level.introspect encoding in
-  Format.asprintf "%a" (Binary_data_encoding.Query.pp_of descr) v
+ fun encoding v -> Format.asprintf "%a" (Binary_data_encoding.Query.pp_of encoding) v
 ;;
 
 let ( let* ) x f =
@@ -153,16 +149,15 @@ let to_test
     | Some g -> g
     | None -> generator_of_encoding encoding
   in
-  let (E descr) = Binary_data_encoding.Encoding.Advanced_low_level.introspect encoding in
-  let equal = Binary_data_encoding.Query.equal_of descr in
+  let equal = Binary_data_encoding.Query.equal_of encoding in
   let print = print_of_encoding encoding in
   QCheck2.Test.make ~name ~print generator (fun v ->
-    let* s = Binary_data_encoding.Writer.string_of descr v in
-    let* queried_size = Binary_data_encoding.Query.size_of descr v in
+    let* s = Binary_data_encoding.Writer.string_of encoding v in
+    let* queried_size = Binary_data_encoding.Query.size_of encoding v in
     let queried_size = Optint.Int63.to_int queried_size in
     if String.length s <> queried_size
     then failwith "Computed size inconsistent with written size";
-    let* vv = Binary_data_encoding.Reader.read_string s descr in
+    let* vv = Binary_data_encoding.Reader.read_string s encoding in
     if not (equal v vv)
     then
       Format.kasprintf

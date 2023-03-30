@@ -1,4 +1,5 @@
-module Encoding = Encoding
-module Query = Query
-module Writer = Writer
-module Reader = Reader
+(* mostly module aliases, but also splitting the high-level (encoding-based) and
+   low-level (descr-based) parts of the API *)
+
+include Public
+module Internals = Internals

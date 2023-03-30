@@ -6,8 +6,7 @@ open Binary_data_encoding
 let%expect_test _ =
   let w : type a. a Encoding.t -> a -> unit =
    fun e v ->
-    let (E descr) = Binary_data_encoding.Encoding.Advanced_low_level.introspect e in
-    match Query.size_of descr v with
+    match Query.size_of e v with
     | Ok s -> Format.printf "%a\n" Optint.Int63.pp s
     | Error msg -> Format.printf "Error: %s\n" msg
   in
@@ -40,10 +39,9 @@ let%expect_test _ =
 let%expect_test _ =
   let w : type a. a Encoding.t -> unit =
    fun e ->
-    let (E descr) = Binary_data_encoding.Encoding.Advanced_low_level.introspect e in
-    match Query.sizability descr with
-    | Extrinsic -> Format.printf "Extrinsics don't have max_size"
-    | Intrinsic _ -> Format.printf "%a\n" Optint.Int63.pp (Query.maximum_size_of descr)
+    match Query.sizability e with
+    | S Extrinsic -> Format.printf "Extrinsics don't have max_size"
+    | S (Intrinsic _) -> Format.printf "%a\n" Optint.Int63.pp (Query.maximum_size_of e)
   in
   w Encoding.unit;
   [%expect {| 0 |}];
