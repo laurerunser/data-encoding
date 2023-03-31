@@ -22,6 +22,61 @@ type 'a seq_with_length =
   ; length : Sizedints.Uint62.t Lazy.t
   }
 
+(** {1: "The GADT"}
+
+    This GADT describes OCaml values and their representation. E.g.,
+    [Numeral { numeral = Int64; endianness = Big_endian }] describes an OCaml
+    value of the type [int64] represented in big-endian form. On top of this
+    descriptions are serialisation functions (see module [Writer]) and
+    deserialisation functions (see module [Reader]) and some other helpers (see
+    other modules).
+
+    This is a low-level description used as the shared foundation for the
+    binary-data-encoding library. It is not meant for casual users (who should
+    use the [Encoding] module instead) but is still usable by advanced users.
+
+    The first type parameter of this GADT describes the sizability of the
+    representation. See module [Sizability] for more info.
+
+    The second type parameter of this GADT describes the type of OCaml values.
+
+    E.g., a [(dynamic, int array) t] describes integer arrays which are
+    represented in a dynamically-sized form.
+
+    {2: Design}
+
+    This GADT is designed with two conflicting goals in mind: simplicity and
+    efficiency. For simplicity, we want to keep the GADT small with a few
+    expressive cases. This reduces the amount of code in all the functions which
+    match on this GADT ([Writer.writek], [Reader.readk], a lot of functions in
+    [Query], etc.). For efficiency, we want to keep the de/serialisation process
+    fast.
+
+    E.g., string-vs-bytes: OCaml has two distinct types for mutable and
+    immutable strings of bytes. They are represented identically in the language
+    runtime and in the serialised form produced by binary-data-encoding. We
+    could have a single constructor, say [String], and represent bytes with
+{[
+Conv
+  { encoding = String
+  ; serialisation = Bytes.unsafe_to_string
+  ; deserialisation = Bytes.unsafe_of_string }
+]}
+    However, in doing so the serialisation process needs to traverse two
+    constructors ([Conv] and [String]) and apply a function. We instead have
+    two distinct constructors ([String] and [Bytes]) which leads to some
+    (near) duplication in the code of the functions that match this AST.
+
+    {2: Organisation}
+
+    The GADT has constructors for:
+
+    - ground types
+    - product types and sum types
+    - parametric types
+    - special uses (for advanced features)
+
+    The constructors appear in this order for readability. *)
 type (_, _) t =
   | Unit : (Sizability.static, unit) t
   | Bool : (Sizability.static, bool) t
@@ -31,24 +86,45 @@ type (_, _) t =
       }
       -> (Sizability.static, 'a) t
   | String : Sizedints.Uint62.t -> (Sizability.static, string) t
+      (** The constructor's parameter is the length of the string *)
   | Bytes : Sizedints.Uint62.t -> (Sizability.static, bytes) t
+      (** The constructor's parameter is the length of the bytes *)
+  | TupNil : (Sizability.static, unit Hlist.t) t (** The empty tuple *)
+  | TupCons :
+      ('l, 'r, 's) Sizability.tupler * ('l, 'a) t * ('r, 'b Hlist.t) t
+      -> ('s, ('a * 'b) Hlist.t) t
+      (** The tuple constructor. The [tupler] parameter enforces the tuple is
+         deserialisable and keeps track of the sizability of the result. *)
+  | Union :
+      { tag : (Sizability.static, 'tag) t
+      ; serialisation : 'a -> ('tag, 'a) anycaseandpayload
+      ; deserialisation : 'tag -> (('tag, 'a) anycase, string) result
+      ; cases : ('tag, 'a) anycase list
+      }
+      -> (* TODO? support dynamically sized tags? *)
+         (* if all the [cases] have encodings of the same static size then the
+           encoding is static, but this level of fined-grained tracking requires
+           dependent types. *)
+      (Sizability.dynamic, 'a) t
   | Array :
       { length : Sizedints.Uint62.t
       ; elementencoding : ('s Sizability.intrinsic, 'a) t
       }
       -> ('s Sizability.intrinsic, 'a array) t
+      (** The [length] parameter is the number of elements in the array. *)
   | LSeq :
       { length : Sizedints.Uint62.t
       ; elementencoding : ('s Sizability.intrinsic, 'a) t
       }
       -> ('s Sizability.intrinsic, 'a seq_with_length) t
+      (** The [length] parameter is the number of elements in the sequence. *)
+  | Option : ('s, 'ss) Sizability.optioner * ('s, 'a) t -> ('ss, 'a option) t
   | USeq :
       { elementencoding : ('s Sizability.intrinsic, 'a) t }
       -> (* INVARIANT (not encoded in the type-system): elementencoding cannot take
          zero-bytes of space otherwise it is impossible to distinguish sequences
          of different lengths *)
       (Sizability.extrinsic, 'a Seq.t) t
-  | Option : ('s, 'ss) Sizability.optioner * ('s, 'a) t -> ('ss, 'a option) t
   | Headered :
       { mkheader : 'a -> ('header, string) result
       ; headerencoding : ('s Sizability.intrinsic, 'header) t
@@ -87,21 +163,6 @@ type (_, _) t =
       ; encoding : ('s, 'a) t
       }
       -> ('s, 'a) t
-  | Union :
-      { tag : (Sizability.static, 'tag) t
-      ; serialisation : 'a -> ('tag, 'a) anycaseandpayload
-      ; deserialisation : 'tag -> (('tag, 'a) anycase, string) result
-      ; cases : ('tag, 'a) anycase list
-      }
-      -> (* TODO? support dynamically sized tags? *)
-         (* if all the [cases] have encodings of the same static size then the
-           encoding is static, but this level of fined-grained tracking requires
-           dependent types. *)
-      (Sizability.dynamic, 'a) t
-  | TupNil : (Sizability.static, unit Hlist.t) t
-  | TupCons :
-      ('l, 'r, 's) Sizability.tupler * ('l, 'a) t * ('r, 'b Hlist.t) t
-      -> ('s, ('a * 'b) Hlist.t) t
 
 (* existential to allow returning either of the intrinsic forms *)
 and 'a anyintrinsic =
