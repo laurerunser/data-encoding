@@ -129,6 +129,8 @@ val union
   -> ('tag -> (('tag, 'a) anycase, string) result)
   -> 'a t
 
+val with_size_limit : int -> 'a t -> 'a t
+
 (* may raise based on sizability  
    may raise during serialisation/deserialisation  
    slower because sizability is checked during serialisation/deserialisation  

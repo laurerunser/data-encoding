@@ -22,34 +22,24 @@ type state = private
   ; written : int
       (** [written] is the number of bytes that have been serialised; it
                       starts at [0] and is updated when writing *)
-  ; maximum_length : int
-      (** [maximum_length] is the total number of bytes that
+  ; maximum_size : int
+      (** [maximum_size] is the total number of bytes that
                              can ever be written, on this buffer and all the
                              subsequent buffers that may be needed after a
                              suspend/resume. *)
+  ; size_limits : int list
   }
 
 (** [mk_state destination] is a state. With such a
     state, the [writek] function can write on the [destination].
 
-    @param ?maximum_length is a limit on the maximum number of bytes
-    written. [maximum_length] is a limit for a whole serialisation procedure
+    @param ?maximum_size is a limit on the maximum number of bytes
+    written. [maximum_size] is a limit for a whole serialisation procedure
     which might use multiple destination (see the documentation of [writek]). *)
-val mk_state : ?maximum_length:int -> Dst.t -> state
+val mk_state : ?maximum_size:int -> Dst.t -> state
 
-(** [set_maximum_length state maximum_length] is a state identical
-    to [state] but with the [maximum_length] field set to
-    [maximum_length].
-
-    Beware, the [state] returned by a call to [set_maximum_length] shares
-    its destination with the original. The returned destination intended to
-    replace the original one for the caller.
-
-    @raise Invalid_argument if [maximum_length > state.maximum_length].
-    I.e., if this function is used to increase the limit.
-
-    @raise Invalid_argument if [maximum_length < 0]. *)
-val set_maximum_length : state -> int -> state
+val push_limit : state -> int -> (state, string) result
+val remove_limit : state -> (state, string) result
 
 (** [destination_too_small_to_continue_message] is an error message used when a
     suspended destination is provided with a new buffer which is too small to

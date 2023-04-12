@@ -124,12 +124,35 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
        (* TODO: context of error message*)
        Failed { state; error = msg })
   | Size_limit { at_most; encoding } ->
-    let maximum_length =
-      (* TODO: handle overflow *)
-      min state.maximum_length (Optint.Int63.to_int (at_most :> Optint.Int63.t))
+    let requested_size_limit =
+      (* TODO: support 32bit plateforms *)
+      Optint.Int63.to_int (at_most :> Optint.Int63.t)
     in
-    let state = Buffy.R.set_maximum_length state maximum_length in
-    readk state encoding
+    (* Because the constructors are nested, the effective size-limit may be
+       lower than that provided in the constructor. We compute the largest
+       possible size-limit. *)
+    let possible_size_limit = state.maximum_size - state.readed in
+    let possible_size_limit =
+      match state.size_limits with
+      | [] -> possible_size_limit
+      | previous_limit :: _ -> min (previous_limit - state.readed) possible_size_limit
+    in
+    let possible_size_limit =
+      match state.stop_hints with
+      | [] -> possible_size_limit
+      | stop :: _ -> min (stop - state.readed) possible_size_limit
+    in
+    if requested_size_limit < possible_size_limit
+    then (
+      match Buffy.R.push_limit state requested_size_limit with
+      | Error _ -> assert false (* the [min]s above prevent this *)
+      | Ok state ->
+        let* value, state = readk state encoding in
+        (match Buffy.R.remove_limit state with
+         | Error _ ->
+           assert false (* the only remove is here and it is paired with the push *)
+         | Ok state -> Readed { value; state }))
+    else readk state encoding
   | Union { tag; serialisation = _; deserialisation; cases = _ } ->
     let* found_tag, state = readk state tag in
     (match deserialisation found_tag with
@@ -351,6 +374,54 @@ let%expect_test _ =
     (fun fmt u62 -> Format.fprintf fmt "%a" Optint.Int63.pp (u62 :> Optint.Int63.t));
   [%expect {|
     Ok: 4611686018427387903 |}];
+  w
+    (List.to_seq [ "LooooooL", 0, 8 ])
+    Encoding_public.(with_size_limit 0 int64)
+    (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
+  [%expect {|
+    Error: size-limit exceeded |}];
+  w
+    (List.to_seq [ "LooooooL", 0, 8 ])
+    Encoding_public.(with_size_limit 2 int64)
+    (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
+  [%expect {|
+    Error: size-limit exceeded |}];
+  w
+    (List.to_seq [ "LooooooL", 0, 8 ])
+    Encoding_public.(with_size_limit 8 int64)
+    (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
+  [%expect {|
+    Ok: 4c6f6f6f6f6f6f4c |}];
+  w
+    (List.to_seq [ "LooooooL", 0, 8 ])
+    Encoding_public.(with_size_limit max_int int64)
+    (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
+  [%expect {|
+    Ok: 4c6f6f6f6f6f6f4c |}];
+  w
+    (List.to_seq [ "LooooooL", 0, 8 ])
+    Encoding_public.(with_size_limit 100 (with_size_limit 1000 int64))
+    (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
+  [%expect {|
+    Ok: 4c6f6f6f6f6f6f4c |}];
+  w
+    (List.to_seq [ "LooooooL", 0, 8 ])
+    Encoding_public.(with_size_limit 1000 (with_size_limit 100 int64))
+    (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
+  [%expect {|
+    Ok: 4c6f6f6f6f6f6f4c |}];
+  w
+    (List.to_seq [ "LooooooL", 0, 8 ])
+    Encoding_public.(with_size_limit 4 (with_size_limit 8 int64))
+    (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
+  [%expect {|
+    Error: size-limit exceeded |}];
+  w
+    (List.to_seq [ "LooooooL", 0, 8 ])
+    Encoding_public.(with_size_limit 8 (with_size_limit 4 int64))
+    (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
+  [%expect {|
+    Error: size-limit exceeded |}];
   ()
 ;;
 
@@ -364,7 +435,7 @@ let read
   =
  fun ~src ~offset ~length encoding ->
   let source =
-    Buffy.R.mk_state ~maximum_length:length (Buffy.Src.of_string src ~offset ~length)
+    Buffy.R.mk_state ~maximum_size:length (Buffy.Src.of_string src ~offset ~length)
   in
   match readk source encoding with
   | Buffy.R.Readed { state = _; value } -> Ok value

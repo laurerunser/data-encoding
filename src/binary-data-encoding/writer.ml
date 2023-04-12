@@ -173,12 +173,30 @@ let rec writek : type s a. Buffy.W.state -> (s, a) Descr.t -> a -> Buffy.W.writt
                buffer that even the size header cannot be written *)
        suspended)
   | Size_limit { at_most; encoding } ->
-    let maximum_length =
-      (* TODO: handle overflow *)
-      min state.maximum_length (Optint.Int63.to_int (at_most :> Optint.Int63.t))
+    let requested_size_limit =
+      (* TODO: support 32bit plateforms *)
+      Optint.Int63.to_int (at_most :> Optint.Int63.t)
     in
-    let state = Buffy.W.set_maximum_length state maximum_length in
-    writek state encoding v
+    (* Because the constructors are nested, the effective size-limit may be
+       lower than that provided in the constructor. We compute the largest
+       possible size-limit. *)
+    let possible_size_limit = state.maximum_size - state.written in
+    let possible_size_limit =
+      match state.size_limits with
+      | [] -> possible_size_limit
+      | previous_limit :: _ -> min (previous_limit - state.written) possible_size_limit
+    in
+    if requested_size_limit < possible_size_limit
+    then (
+      match Buffy.W.push_limit state requested_size_limit with
+      | Error _ -> assert false (* the [min]s above prevent this *)
+      | Ok state ->
+        let* state = writek state encoding v in
+        (match Buffy.W.remove_limit state with
+         | Error _ ->
+           assert false (* the only remove is here and it is paired with the push *)
+         | Ok state -> Written { state }))
+    else writek state encoding v
   | Union { tag = tag_encoding; serialisation; deserialisation = _; cases = _ } ->
     let (AnyP ({ Descr.tag; encoding; inject = _ }, payload)) = serialisation v in
     let* state = writek state tag_encoding tag in
@@ -250,7 +268,7 @@ let write
   then Error (0, "length exceeds buffer size")
   else (
     let destination = Buffy.Dst.of_bytes buffer ~offset ~length in
-    let state = Buffy.W.mk_state ~maximum_length:length destination in
+    let state = Buffy.W.mk_state ~maximum_size:length destination in
     match writek state encoding v with
     | Suspended _ -> assert false (* the buffer is bigger than length *)
     | Failed { state; error } -> Error (state.written, error)

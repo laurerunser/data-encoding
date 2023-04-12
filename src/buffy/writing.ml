@@ -3,24 +3,16 @@
 type state =
   { destination : Dst.t
   ; written : int
-  ; maximum_length : int
+  ; maximum_size : int
+  ; size_limits : int list
   }
 
-let mk_state ?(maximum_length = max_int) destination =
-  { destination; written = 0; maximum_length }
+let mk_state ?(maximum_size = max_int) destination =
+  { destination; written = 0; maximum_size; size_limits = [] }
 ;;
 
-let set_maximum_length state maximum_length =
-  if maximum_length < 0
-  then
-    raise
-      (Invalid_argument "Suspendable_buffers.Writing.set_maximum_length: negative length");
-  if maximum_length > state.maximum_length
-  then
-    raise
-      (Invalid_argument
-         "Suspendable_buffers.Writing.set_maximum_length: cannot increase maximum length");
-  { state with maximum_length }
+let internal_mk_state maximum_size size_limits destination =
+  { destination; written = 0; maximum_size; size_limits }
 ;;
 
 let bump_written state writing = { state with written = state.written + writing }
@@ -36,14 +28,39 @@ type written =
       ; cont : Dst.t -> written
       }
 
+let push_limit state length =
+  assert (length >= 0);
+  let requested_limit = state.written + length in
+  if requested_limit > state.maximum_size
+  then Error "size-limit exceeds maximum-size"
+  else (
+    match state.size_limits with
+    | inner_most_limit :: _ when requested_limit > inner_most_limit ->
+      (* limits need to be correctly nested: you cannot have an inner
+         size-limit pointing further than an outer size-limit *)
+      Error "size-limit exceeds previously set size-limit"
+    | _ -> Ok { state with size_limits = requested_limit :: state.size_limits })
+;;
+
+let remove_limit state =
+  match state.size_limits with
+  | [] -> Error "expected a size-limit but found none"
+  | _ :: size_limits -> Ok { state with size_limits }
+;;
+
 let destination_too_small_to_continue_message =
   "new destination buffer is too small to continue"
 ;;
 
 let writef state writing write =
   assert (writing >= 0);
-  if state.written + writing > state.maximum_length
-  then Failed { state; error = "maximum-length exceeded" }
+  let reach = state.written + writing in
+  if reach > state.maximum_size
+  then Failed { state; error = "maximum-size exceeded" }
+  else if match state.size_limits with
+          | [] -> false
+          | limit :: _ -> reach > limit
+  then Failed { state; error = "size-limit exceeded" }
   else if state.written + writing <= Dst.length state.destination
   then (
     write state.destination state.written;
@@ -53,12 +70,13 @@ let writef state writing write =
     (* TODO? add an option which does some copying to a temporary buffer and
        uses the original destination to its maximum capacity. (Similar to
        Reading case.) *)
-    let maximum_length = state.maximum_length - state.written in
+    let maximum_size = state.maximum_size - state.written in
+    let size_limits = List.map (fun limit -> limit - state.written) state.size_limits in
     Suspended
       { state
       ; cont =
           (fun destination ->
-            let state = mk_state ~maximum_length destination in
+            let state = internal_mk_state maximum_size size_limits destination in
             if Dst.length destination < writing
             then Failed { state; error = destination_too_small_to_continue_message }
             else (
@@ -203,7 +221,12 @@ and chunkwritten =
    which is larger than the current buffer can accomodate, this is intended for
    writing string and other such potentially big blobs. *)
 let rec writechunked state write =
-  let writing = min state.maximum_length (Dst.length state.destination) - state.written in
+  let writing = min state.maximum_size (Dst.length state.destination) - state.written in
+  let writing =
+    match state.size_limits with
+    | [] -> writing
+    | limit :: _ -> min (limit - state.written) writing
+  in
   assert (writing >= 0);
   match write state.destination state.written writing with
   | CWritten { written } ->
@@ -218,17 +241,23 @@ let rec writechunked state write =
       raise
         (Failure "Suspendable_buffers.Writing.writechunked: chunkwriter exceeded limit");
     let state = bump_written state written in
-    let maximum_length = state.maximum_length - state.written in
-    assert (maximum_length >= 0);
-    if maximum_length = 0
-    then
-      Failed { state; error = "maximum-length reached but chunk-writer is not finished" }
+    let maximum_size = state.maximum_size - state.written in
+    let size_limits = List.map (fun limit -> limit - state.written) state.size_limits in
+    assert (maximum_size >= 0);
+    if maximum_size = 0
+    then Failed { state; error = "maximum-size reached but chunk-writer is not finished" }
+    else if match size_limits with
+            | [] -> false
+            | limit :: _ ->
+              assert (limit >= 0);
+              limit = 0
+    then Failed { state; error = "size-limit reached but chunk-writer is not finished" }
     else
       Suspended
         { state
         ; cont =
             (fun destination ->
-              let state = mk_state ~maximum_length destination in
+              let state = internal_mk_state maximum_size size_limits destination in
               writechunked state cont)
         }
 ;;
@@ -401,7 +430,7 @@ let to_string ?(buffer_size = 1024) writer =
   let buffer = Bytes.make buffer_size '\x00' in
   match
     to_string_loop buffer [] (fun destination ->
-      let state = mk_state ~maximum_length:max_int destination in
+      let state = mk_state ~maximum_size:max_int destination in
       writer state)
   with
   | Ok rev_chunks ->
@@ -410,7 +439,7 @@ let to_string ?(buffer_size = 1024) writer =
   | Error _ as err -> err
 ;;
 
-let blit_instruction_of_state { destination; written; maximum_length = _ } =
+let blit_instruction_of_state { destination; written; maximum_size = _; size_limits = _ } =
   let b, o, l = Dst.bytes_of_dst destination in
   assert (l <= written);
   b, o, written

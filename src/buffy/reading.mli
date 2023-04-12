@@ -15,25 +15,21 @@
 (** {2: State} *)
 
 (** A state is a value that tracks indexes and limits whilst reading. *)
-type state =
+type state = private
   { source : Src.t
   ; readed : int (* [read] is ambiguous so we make it unambiguously past as [readed] *)
+  ; maximum_size : int
+  ; size_limits : int list
   ; stop_hints : int list
-      (* this list is grown when there is a size-header in the encoded binary data *)
-  ; maximum_length : int
   }
 
 (** [mk_state source] is a reading [state]. With such a state, the [readk]
     function can read from the bytes of [source].
 
-    @param ?maximum_length is a limit on the maximum number of bytes
-    read. [maximum_length] is a limit for a whole deserialisation procedure
-    which might use multiple blobs (see the documentation of [readk]).
-
-    @raise Failure if [offset] and [length] do not form a valid slice of
-    [blob]. Specifically if
-    [ offset<0 || length<0 || offset+length>String.length blob ]. *)
-val mk_state : ?maximum_length:int -> Src.t -> state
+    @param ?maximum_size is a limit on the maximum number of bytes
+    read. [maximum_size] is a limit for a whole deserialisation procedure
+    which might use multiple blobs (see the documentation of [readk]). *)
+val mk_state : ?maximum_size:int -> Src.t -> state
 
 (** [push_stop state o] adds a stop hint [o] bytes ahead in the reading buffer.
 
@@ -48,7 +44,7 @@ val mk_state : ?maximum_length:int -> Src.t -> state
     [state].
 
     Returns an [Error] if the pushed stop hint is beyond the
-    [maximum_length] limit of the [state].
+    [maximum_size] limit of the [state].
 
     Returns an [Error] if the pushed stop hint is beyond an already placed
     stop hint. This means that the stops must be nested correctly like
@@ -74,18 +70,11 @@ val pop_stop : state -> (int * state, string) result
     @raise Invalid_argument *)
 val bring_first_stop_forward : state -> int -> state
 
-(** [set_maximum_length state maximum_length] is a state identical
-    to [state] but with the [maximum_length] field set to
-    [maximum_length].
+(** [push_limit state o] adds a size-limit [o] bytes ahead in the reading buffer. *)
+val push_limit : state -> int -> (state, string) result
 
-    @raise Invalid_argument if [maximum_length > state.maximum_length].
-    I.e., if this function is used to increase the limit.
-
-    @raise Invalid_argument if [maximum_length < 0].
-
-    @raise Invalid_argument if [maximum_length] is before any of the pushed stop
-    hints (see [push_stop]). *)
-val set_maximum_length : state -> int -> state
+(** [remove_limit state] removes the inner-most size-limit in the reading buffer. *)
+val remove_limit : state -> (state, string) result
 
 (** A [readed] is a value returned by [readk] in order to indicate the status of
     the deserialisation operation.
@@ -110,8 +99,8 @@ type 'a readed =
       { state : state
       ; cont : Src.t -> 'a readed
           (** The deserialisation is suspeneded because it ran out of bytes to
-                read from. Use [cont blob offset length] to provide one more
-                slice that the deserialisation can read from. *)
+                read from. Use [cont src] to provide one more source that the
+                deserialisation can read from. *)
       }
 
 (** {2: Simple reading functions} *)
@@ -120,7 +109,10 @@ type 'a readed =
    enough bytes are available, it calls [f blob offset] allowing the actual read
    to take place.
 
-   Returns [Failed] if reading exceeds the [maximum_length] of the [state].
+   Returns [Failed] if reading exceeds the [maximum_size] of the [state].
+
+   Returns [Failed] if the next size limit is exceeded. (See [push_limit]
+   and [remove_limit].)
 
    Returns [Failed] if the next stop hint is exceeded. (See [push_stop],
    [peak_stop] and [pop_stop].)

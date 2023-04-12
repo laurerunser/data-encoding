@@ -337,6 +337,12 @@ end
 
 include Union
 
+let with_size_limit limit (E encoding) =
+  match Commons.Sizedints.Uint62.of_int limit with
+  | None -> raise (Invalid_argument "size limit cannot be negative")
+  | Some at_most -> E (Size_limit { at_most; encoding })
+;;
+
 let with_size_header ~sizeencoding ~encoding:(E encoding) =
   match Query.sizability encoding with
   | Intrinsic _ -> raise (Invalid_argument "intrinsic cannot have size header")
