@@ -411,7 +411,7 @@ let to_string ?(buffer_size = 1024) writer =
 ;;
 
 let blit_instruction_of_state { destination; written; maximum_length = _ } =
-  let b, o, l = Dst.blit_instructions destination in
+  let b, o, l = Dst.bytes_of_dst destination in
   assert (l <= written);
   b, o, written
 ;;

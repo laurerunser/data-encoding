@@ -148,12 +148,14 @@ val to_string : t -> string
 (** [blit_onto_bytes t soff b doff len] blits [len] bytes from [t] starting at
     offset [soff] onto [b] starting at offset [doff].
 
+    @parameter [soff] is relative to the writable part of the destination.
+
     @raise [Invalid_argument] if the offsets or length are out of bounds. *)
 val blit_onto_bytes : t -> int -> bytes -> int -> int -> unit
 
-(** [blit_instructions t] is a triplet [(b,o,l)] such that the contents of [b]
+(** [bytes_of_dst t] is a triplet [(b,o,l)] such that the contents of [b]
     starting at offset [o] and of length [l] is the writable part of [t].
 
     Modifying the content of the destination or the returned bytes may affect
     the other. *)
-val blit_instructions : t -> bytes * int * int
+val bytes_of_dst : t -> bytes * int * int

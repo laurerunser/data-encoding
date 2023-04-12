@@ -101,5 +101,7 @@ val to_string : t -> string
 (** [blit_onto_bytes t soff b doff len] blits [len] bytes from [t] starting at
     offset [soff] onto [b] starting at offset [doff].
 
+    @param [soff] is relative to the readable part of the source.
+
     @raise [Invalid_argument] if the offsets or length are out of bounds. *)
 val blit_onto_bytes : t -> int -> bytes -> int -> int -> unit

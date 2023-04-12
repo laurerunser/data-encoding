@@ -32,12 +32,38 @@ let rec check_stop_hints base stops maximum_length =
     base <= stop && stop <= maximum_length && check_stop_hints stop stops maximum_length
 ;;
 
+let%expect_test _ =
+  let w stops maxlen =
+    if check_stop_hints 0 stops maxlen
+    then Format.printf "Ok\n"
+    else Format.printf "Not\n"
+  in
+  w [] 0;
+  [%expect {| Ok |}];
+  w [] max_int;
+  [%expect {| Ok |}];
+  w [ 0; 1; 2 ] max_int;
+  [%expect {| Ok |}];
+  w [ 0; 0; 2 ] 2;
+  [%expect {| Ok |}];
+  w [ 1; 0; 2 ] 2;
+  (* out-of-order stops *)
+  [%expect {| Not |}];
+  w [ 0; 1; 2 ] 1;
+  (* stops beyond maximum length *)
+  [%expect {| Not |}];
+  ()
+;;
+
 let mk_state ?(maximum_length = max_int) source =
   if maximum_length < 0
   then failwith "Buffy.R.mk_state: maximum_length cannot be negative";
   { source; readed = 0; stop_hints = []; maximum_length }
 ;;
 
+(* The {e internal} version of [mk_state] takes [stop_hints] as additional
+   parameters. These are not available in the public API because they are never
+   set from the outside, only from the reading process itself. *)
 let internal_mk_state maximum_length stop_hints source =
   { source; readed = 0; stop_hints; maximum_length }
 ;;
@@ -49,15 +75,34 @@ let bump_readed state reading =
   { state with readed }
 ;;
 
+(* when we set a new maximum-length, this function checks that the new maximum
+   length is not before some of the expected stops *)
 let rec check_last_stop stops maximum_length =
   match stops with
   | [] -> true
-  | [ stop ] -> stop < maximum_length
+  | [ stop ] -> stop <= maximum_length
   | stop :: stops ->
     assert (stop >= 0);
-    assert (stop < maximum_length);
     assert (stop <= List.hd stops);
-    check_last_stop stops maximum_length
+    stop <= maximum_length && check_last_stop stops maximum_length
+;;
+
+let%expect_test _ =
+  let w stops maxlen =
+    if check_last_stop stops maxlen then Format.printf "Ok\n" else Format.printf "Not\n"
+  in
+  w [] 0;
+  [%expect {| Ok |}];
+  w [] max_int;
+  [%expect {| Ok |}];
+  w [ 0; 1; 2 ] max_int;
+  [%expect {| Ok |}];
+  w [ 0; 0; 2 ] 2;
+  [%expect {| Ok |}];
+  w [ 0; 1; 2 ] 1;
+  (* stops beyond maximum length *)
+  [%expect {| Not |}];
+  ()
 ;;
 
 let set_maximum_length state maximum_length =
@@ -134,7 +179,10 @@ type 'a readed =
 
 let rec ( let* ) x f =
   match x with
-  | Readed { state; value } -> f (value, state)
+  | Readed { state; value } ->
+    (* TODO? can we avoid tuple allocation by having the Readed payload as an
+         intermediary type? *)
+    f (value, state)
   | Failed { state; error } -> Failed { state; error }
   | Suspended { state; cont } ->
     let cont source =

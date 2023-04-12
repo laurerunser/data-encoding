@@ -29,7 +29,7 @@ let blit_onto_bytes source soff dest doff len =
   Bytes.blit source.buffer (source.offset + soff) dest doff len
 ;;
 
-let blit_instructions t = t.buffer, t.offset, t.length
+let bytes_of_dst t = t.buffer, t.offset, t.length
 
 (* making destinations *)
 
