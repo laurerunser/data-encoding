@@ -388,6 +388,17 @@ let%expect_test _ =
   ()
 ;;
 
+let write_uint8 state v = writef state 1 (fun dst o -> Dst.set_uint8 dst o v)
+let write_int8 state v = writef state 1 (fun dst o -> Dst.set_int8 dst o v)
+let write_uint16_be state v = writef state 2 (fun dst o -> Dst.set_uint16_be dst o v)
+let write_uint16_le state v = writef state 2 (fun dst o -> Dst.set_uint16_le dst o v)
+let write_int16_be state v = writef state 2 (fun dst o -> Dst.set_int16_be dst o v)
+let write_int16_le state v = writef state 2 (fun dst o -> Dst.set_int16_le dst o v)
+let write_int32_be state v = writef state 4 (fun dst o -> Dst.set_int32_be dst o v)
+let write_int32_le state v = writef state 4 (fun dst o -> Dst.set_int32_le dst o v)
+let write_int64_be state v = writef state 8 (fun dst o -> Dst.set_int64_be dst o v)
+let write_int64_le state v = writef state 8 (fun dst o -> Dst.set_int64_le dst o v)
+
 let rec ( let* ) x f =
   match x with
   | Written { state } -> f state

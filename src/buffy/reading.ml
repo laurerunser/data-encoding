@@ -200,7 +200,7 @@ let rec ( let* ) x f =
     Suspended { state; cont }
 ;;
 
-let rec unsafe_read_copy scratch scratch_offset state =
+let rec unsafe_readcopy scratch scratch_offset state =
   let reading = Bytes.length scratch - scratch_offset in
   let readable = Src.length state.source - state.readed in
   if reading <= readable
@@ -223,7 +223,7 @@ let rec unsafe_read_copy scratch scratch_offset state =
             assert (check_stops_and_limits 0 stop_hints maximum_size);
             assert (check_stops_and_limits 0 size_limits maximum_size);
             let state = internal_mk_state maximum_size size_limits stop_hints source in
-            unsafe_read_copy scratch scratch_offset state)
+            unsafe_readcopy scratch scratch_offset state)
       })
 ;;
 
@@ -263,7 +263,7 @@ let readf state reading read =
               let state = internal_mk_state maximum_size size_limits stop_hints source in
               let scratch = Bytes.make reading '\x00' in
               let scratch_offset = 0 in
-              let* (), state = unsafe_read_copy scratch scratch_offset state in
+              let* (), state = unsafe_readcopy scratch scratch_offset state in
               let value = read (Src.of_bytes scratch) 0 in
               Readed { value; state })
             else (
@@ -299,7 +299,7 @@ let readf state reading read =
             assert (check_stops_and_limits 0 size_limits maximum_size);
             let state = internal_mk_state maximum_size size_limits stop_hints source in
             let* (), state =
-              unsafe_read_copy split_reading_buffer split_reading_left_length state
+              unsafe_readcopy split_reading_buffer split_reading_left_length state
             in
             let value = read (Src.of_bytes split_reading_buffer) 0 in
             Readed { value; state })
@@ -371,7 +371,7 @@ let%expect_test _ =
   ()
 ;;
 
-let read_copy scratch state =
+let readcopy scratch state =
   let reading = Bytes.length scratch in
   if state.readed + reading > state.maximum_size
   then Failed { state; error = "maximum-size exceeded" }
@@ -383,7 +383,7 @@ let read_copy scratch state =
           | [] -> false
           | stop :: _ -> state.readed + reading > stop
   then Failed { state; error = "expected-stop point exceeded" }
-  else unsafe_read_copy scratch 0 state
+  else unsafe_readcopy scratch 0 state
 ;;
 
 let read_char state =
@@ -549,13 +549,13 @@ let rec readchunked : type a. state -> a chunkreader -> a readed =
 
 let read_bytes state len =
   let scratch = Bytes.make len '\000' in
-  let* (), state = read_copy scratch state in
+  let* (), state = readcopy scratch state in
   Readed { value = scratch; state }
 ;;
 
 let read_string state len =
   let scratch = Bytes.make len '\000' in
-  let* (), state = read_copy scratch state in
+  let* (), state = readcopy scratch state in
   Readed { value = Bytes.unsafe_to_string scratch; state }
 ;;
 
@@ -794,6 +794,15 @@ let%expect_test _ =
 ;;
 
 let read_uint8 state = readf state 1 Src.get_uint8
+let read_int8 state = readf state 1 Src.get_int8
+let read_uint16_be state = readf state 2 Src.get_uint16_be
+let read_uint16_le state = readf state 2 Src.get_uint16_le
+let read_int16_be state = readf state 2 Src.get_int16_be
+let read_int16_le state = readf state 2 Src.get_int16_le
+let read_int32_be state = readf state 4 Src.get_int32_be
+let read_int32_le state = readf state 4 Src.get_int32_le
+let read_int64_be state = readf state 8 Src.get_int64_be
+let read_int64_le state = readf state 8 Src.get_int64_le
 
 let of_string read s =
   let state = mk_state (Src.of_string s) in

@@ -191,40 +191,40 @@ and read_numeral
   =
  fun state numeral endianness ->
   match numeral, endianness with
-  | Int64, Big_endian -> Buffy.R.readf state Size.int64 Buffy.Src.get_int64_be
-  | Int64, Little_endian -> Buffy.R.readf state Size.int64 Buffy.Src.get_int64_le
-  | Int32, Big_endian -> Buffy.R.readf state Size.int32 Buffy.Src.get_int32_be
-  | Int32, Little_endian -> Buffy.R.readf state Size.int32 Buffy.Src.get_int32_le
+  | Int64, Big_endian -> Buffy.R.read_int64_be state
+  | Int64, Little_endian -> Buffy.R.read_int64_le state
+  | Int32, Big_endian -> Buffy.R.read_int32_be state
+  | Int32, Little_endian -> Buffy.R.read_int32_le state
   | UInt62, Big_endian ->
-    let* i64, state = Buffy.R.readf state Size.int64 Buffy.Src.get_int64_be in
+    let* i64, state = Buffy.R.read_int64_be state in
     (match Commons.Sizedints.Uint62.of_int64 i64 with
      | None -> Failed { state; error = "Numeric range exceeded in numeral (u62) reading" }
      | Some value -> Readed { value; state })
   | UInt62, Little_endian ->
-    let* i64, state = Buffy.R.readf state Size.int64 Buffy.Src.get_int64_le in
+    let* i64, state = Buffy.R.read_int64_le state in
     (match Commons.Sizedints.Uint62.of_int64 i64 with
      | None -> Failed { state; error = "Numeric range exceeded in numeral (u62) reading" }
      | Some value -> Readed { value; state })
   | UInt30, Big_endian ->
-    let* i32, state = Buffy.R.readf state Size.int32 Buffy.Src.get_int32_be in
+    let* i32, state = Buffy.R.read_int32_be state in
     (match Commons.Sizedints.Uint30.of_int32 i32 with
      | None -> Failed { state; error = "Numeric range exceeded in numeral (u30) reading" }
      | Some value -> Readed { value; state })
   | UInt30, Little_endian ->
-    let* i32, state = Buffy.R.readf state Size.int32 Buffy.Src.get_int32_le in
+    let* i32, state = Buffy.R.read_int32_le state in
     (match Commons.Sizedints.Uint30.of_int32 i32 with
      | None -> Failed { state; error = "Numeric range exceeded in numeral (u30) reading" }
      | Some value -> Readed { value; state })
   | UInt16, Big_endian ->
-    let* u16, state = Buffy.R.readf state Size.uint16 Buffy.Src.get_uint16_be in
+    let* u16, state = Buffy.R.read_uint16_be state in
     let value = Commons.Sizedints.Uint16.unsafe_of_int u16 in
     Readed { value; state }
   | UInt16, Little_endian ->
-    let* u16, state = Buffy.R.readf state Size.uint16 Buffy.Src.get_uint16_le in
+    let* u16, state = Buffy.R.read_uint16_le state in
     let value = Commons.Sizedints.Uint16.unsafe_of_int u16 in
     Readed { value; state }
   | UInt8, _ ->
-    let* u8, state = Buffy.R.readf state Size.uint8 Buffy.Src.get_uint8 in
+    let* u8, state = Buffy.R.read_uint8 state in
     let value = Commons.Sizedints.Uint8.unsafe_of_int u8 in
     Readed { value; state }
 

@@ -97,6 +97,8 @@ type written =
 
 (** {2: Simple writing functions} *)
 
+(* TODO? [type 'a writer = 'a -> state -> written] *)
+
 (** [writef state writing f] writes some content on the state's destination at
     the appropriate offset. More specifically, [writef]
 
@@ -160,9 +162,6 @@ val writechunked : state -> chunkwriter -> written
 
 (** {2: OCaml base-type writers} *)
 
-(* TODO? place these functions in a module of its own *)
-(* TODO? [type 'a writer = 'a -> state -> written] *)
-
 (** [write_string state s] is equivalent to
     [writef state (String.length s) (fun b o -> Bytes.blit_string s 0 b o (String.length s)].
     I.e., it writes the whole of the string [s] onto [state.destination]. There
@@ -183,8 +182,16 @@ val write_char : state -> char -> written
     point [c]. *)
 val write_utf8_uchar : state -> Uchar.t -> written
 
-(* TODO? list/array/seq writing combinator? other combinators? *)
-(* TODO? uint8, uint16, etc. writing functions (wrapping [Bytes.*]) *)
+val write_uint8 : state -> int -> written
+val write_int8 : state -> int -> written
+val write_uint16_be : state -> int -> written
+val write_uint16_le : state -> int -> written
+val write_int16_be : state -> int -> written
+val write_int16_le : state -> int -> written
+val write_int32_be : state -> int32 -> written
+val write_int32_le : state -> int32 -> written
+val write_int64_be : state -> int64 -> written
+val write_int64_le : state -> int64 -> written
 
 (** {2: Composing writing functions} *)
 

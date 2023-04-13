@@ -105,28 +105,33 @@ type 'a readed =
 
 (** {2: Simple reading functions} *)
 
-(* [readf state reading f] is for reading [reading] bytes from [state]. If
-   enough bytes are available, it calls [f blob offset] allowing the actual read
-   to take place.
+(* TODO? type [('a, 'b) reader = 'a -> state -> 'b readed] *)
 
-   Returns [Failed] if reading exceeds the [maximum_size] of the [state].
+(** [readf state reading f] is for reading [reading] bytes from [state]. If
+    enough bytes are available, it calls [f blob offset] allowing the actual read
+    to take place.
 
-   Returns [Failed] if the next size limit is exceeded. (See [push_limit]
-   and [remove_limit].)
+    Returns [Failed] if reading exceeds the [maximum_size] of the [state].
 
-   Returns [Failed] if the next stop hint is exceeded. (See [push_stop],
-   [peak_stop] and [pop_stop].)
+    Returns [Failed] if the next size limit is exceeded. (See [push_limit]
+    and [remove_limit].)
 
-   If there are not enough bytes available in [state], then
-   [readf state reading f] will allocate a buffer of [reading] bytes which it
-   uses to copy the bytes remaining in the current state and proceed with the
-   reading when more bytes are given to the suspension.
+    Returns [Failed] if the next stop hint is exceeded. (See [push_stop],
+    [peak_stop] and [pop_stop].)
 
-   It is recommended to use [readf] with values of [reading] which are small.
-   One of the reason being this allocation which might be performed here.
-   Check out chunk readers (below) if you need to read large values. *)
+    If there are not enough bytes available in [state], then
+    [readf state reading f] will allocate a buffer of [reading] bytes which it
+    uses to copy the bytes remaining in the current state and proceed with the
+    reading when more bytes are given to the suspension.
+
+    It is recommended to use [readf] with values of [reading] which are small.
+    One of the reason being this allocation which might be performed here.
+    Check out chunk readers (below) if you need to read large values. *)
 val readf : state -> int -> (Src.t -> int -> 'a) -> 'a readed
-val read_copy : bytes -> state -> unit readed
+
+(** [readcopy buffer state] reads [Bytes.length buffer] bytes from state,
+    copying them into [buffer]. *)
+val readcopy : bytes -> state -> unit readed
 
 (** {2: Chunked writing functions} *)
 
@@ -170,16 +175,20 @@ val readchunked : state -> 'a chunkreader -> 'a readed
 
 (** {2: OCaml base-type readers} *)
 
-(* TODO? place those in their own module? *)
-(* TODO? type [('a, 'b) reader = 'a -> state -> 'b readed] *)
-
 val read_string : state -> int -> string readed
 val read_bytes : state -> int -> bytes readed
 val read_char : state -> char readed
 val read_utf8_uchar : state -> Uchar.t readed
 val read_uint8 : state -> int readed
-(* TODO? list/array/seq writing combinator? other combinators? *)
-(* TODO? uint8, uint16, etc. reading functions (wrapping [Bytes.*]) *)
+val read_int8 : state -> int readed
+val read_uint16_be : state -> int readed
+val read_uint16_le : state -> int readed
+val read_int16_be : state -> int readed
+val read_int16_le : state -> int readed
+val read_int32_be : state -> int32 readed
+val read_int32_le : state -> int32 readed
+val read_int64_be : state -> int64 readed
+val read_int64_le : state -> int64 readed
 
 (** {2: Composing reading functions} *)
 

@@ -9,10 +9,9 @@ let rec writek : type s a. Buffy.W.state -> (s, a) Descr.t -> a -> Buffy.W.writt
   match encoding with
   | Unit -> Written { state }
   | Bool ->
-    Buffy.W.writef state Size.bool (fun destination offset ->
-      if v
-      then Buffy.Dst.set_uint8 destination offset (Magic.bool_true :> int)
-      else Buffy.Dst.set_uint8 destination offset (Magic.bool_false :> int))
+    if v
+    then Buffy.W.write_uint8 state (Magic.bool_true :> int)
+    else Buffy.W.write_uint8 state (Magic.bool_false :> int)
   | Numeral { numeral; endianness } -> write_numeral state numeral endianness v
   | String n ->
     (* TODO: support chunk writing of strings so that it's possible to serialise
@@ -80,16 +79,10 @@ let rec writek : type s a. Buffy.W.state -> (s, a) Descr.t -> a -> Buffy.W.writt
   | Option (_, t) ->
     (match v with
      | None ->
-       let* state =
-         Buffy.W.writef state Size.uint8 (fun destination offset ->
-           Buffy.Dst.set_uint8 destination offset (Magic.option_none_tag :> int))
-       in
+       let* state = Buffy.W.write_uint8 state (Magic.option_none_tag :> int) in
        Buffy.W.Written { state }
      | Some v ->
-       let* state =
-         Buffy.W.writef state Size.uint8 (fun destination offset ->
-           Buffy.Dst.set_uint8 destination offset (Magic.option_some_tag :> int))
-       in
+       let* state = Buffy.W.write_uint8 state (Magic.option_some_tag :> int) in
        writek state t v)
   | Headered { mkheader; headerencoding; mkencoding; equal = _; maximum_size = _ } ->
     (match mkheader v with
@@ -213,45 +206,19 @@ and write_numeral
   =
  fun state numeral endianness v ->
   match numeral, endianness with
-  | Int64, Big_endian ->
-    Buffy.W.writef state Size.int64 (fun destination offset ->
-      Buffy.Dst.set_int64_be destination offset v)
-  | Int64, Little_endian ->
-    Buffy.W.writef state Size.int64 (fun destination offset ->
-      Buffy.Dst.set_int64_le destination offset v)
-  | Int32, Big_endian ->
-    Buffy.W.writef state Size.int32 (fun destination offset ->
-      Buffy.Dst.set_int32_be destination offset v)
-  | Int32, Little_endian ->
-    Buffy.W.writef state Size.int32 (fun destination offset ->
-      Buffy.Dst.set_int32_le destination offset v)
+  | Int64, Big_endian -> Buffy.W.write_int64_be state v
+  | Int64, Little_endian -> Buffy.W.write_int64_le state v
+  | Int32, Big_endian -> Buffy.W.write_int32_be state v
+  | Int32, Little_endian -> Buffy.W.write_int32_le state v
   | UInt62, Big_endian ->
-    Buffy.W.writef state Size.uint62 (fun destination offset ->
-      Buffy.Dst.set_int64_be
-        destination
-        offset
-        (Optint.Int63.to_int64 (v :> Optint.Int63.t)))
+    Buffy.W.write_int64_be state (Optint.Int63.to_int64 (v :> Optint.Int63.t))
   | UInt62, Little_endian ->
-    Buffy.W.writef state Size.uint62 (fun destination offset ->
-      Buffy.Dst.set_int64_le
-        destination
-        offset
-        (Optint.Int63.to_int64 (v :> Optint.Int63.t)))
-  | UInt30, Big_endian ->
-    Buffy.W.writef state Size.uint30 (fun destination offset ->
-      Buffy.Dst.set_int32_be destination offset (Int32.of_int (v :> int)))
-  | UInt30, Little_endian ->
-    Buffy.W.writef state Size.uint30 (fun destination offset ->
-      Buffy.Dst.set_int32_le destination offset (Int32.of_int (v :> int)))
-  | UInt16, Big_endian ->
-    Buffy.W.writef state Size.uint16 (fun destination offset ->
-      Buffy.Dst.set_uint16_be destination offset (v :> int))
-  | UInt16, Little_endian ->
-    Buffy.W.writef state Size.uint16 (fun destination offset ->
-      Buffy.Dst.set_uint16_le destination offset (v :> int))
-  | UInt8, _ ->
-    Buffy.W.writef state Size.uint8 (fun destination offset ->
-      Buffy.Dst.set_uint8 destination offset (v :> int))
+    Buffy.W.write_int64_le state (Optint.Int63.to_int64 (v :> Optint.Int63.t))
+  | UInt30, Big_endian -> Buffy.W.write_int32_be state (Int32.of_int (v :> int))
+  | UInt30, Little_endian -> Buffy.W.write_int32_le state (Int32.of_int (v :> int))
+  | UInt16, Big_endian -> Buffy.W.write_uint16_be state (v :> int)
+  | UInt16, Little_endian -> Buffy.W.write_uint16_le state (v :> int)
+  | UInt8, _ -> Buffy.W.write_uint8 state (v :> int)
 ;;
 
 let write
