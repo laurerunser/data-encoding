@@ -165,22 +165,9 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
        else Buffy.R.Failed { state; error = "inconsistent tag in union" }
      | Error error -> Buffy.R.Failed { state; error })
   | TupNil -> Buffy.R.Readed { state; value = [] }
-  | TupCons (tupler, t, ts) ->
-    (match tupler with
-     | TDynamicIntrinsic | TStaticIntrinsic ->
-       let* v, state = readk state t in
-       let* vs, state = readk state ts in
-       Buffy.R.Readed { state; value = Descr.Hlist.( :: ) (v, vs) }
-     | TIntrinsicExtrinsic ->
-       let* v, state = readk state t in
-       let* vs, state = readk state ts in
-       Buffy.R.Readed { state; value = Descr.Hlist.( :: ) (v, vs) }
-     | TExtrinsicStatic ->
-       (* ExtrinsicStatic means that we have an extrinsically sized encoding
-             on the left and then a static one on the right. This means that the
-             size-header (the only constructor that can have made this viable)
-             has the size of the whole tuple. We must subtract the static size
-             of the rhs to realign the stop on the lhs. *)
+  | TupCons (TAnyStatic, t, ts) ->
+    (match Query.sizability t with
+     | Extrinsic ->
        let (Intrinsic (Static n)) = Query.sizability ts in
        let state =
          Buffy.R.bring_first_stop_forward
@@ -189,7 +176,15 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
        in
        let* v, state = readk state t in
        let* vs, state = readk state ts in
+       Buffy.R.Readed { state; value = Descr.Hlist.( :: ) (v, vs) }
+     | Intrinsic _ ->
+       let* v, state = readk state t in
+       let* vs, state = readk state ts in
        Buffy.R.Readed { state; value = Descr.Hlist.( :: ) (v, vs) })
+  | TupCons (_, t, ts) ->
+    let* v, state = readk state t in
+    let* vs, state = readk state ts in
+    Buffy.R.Readed { state; value = Descr.Hlist.( :: ) (v, vs) }
 
 and read_numeral
   : type n. Buffy.R.state -> n Descr.numeral -> Descr.endianness -> n Buffy.R.readed

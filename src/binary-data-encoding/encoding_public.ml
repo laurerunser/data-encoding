@@ -43,26 +43,16 @@ let rec tuple : type a. a tuple -> a t = function
   | [] -> E TupNil
   | E head :: tail ->
     let open Sizability in
-    (match Query.sizability head with
-     | Intrinsic (Static _) ->
-       let (E tail) = tuple tail in
-       (match Query.sizability tail with
-        | Intrinsic (Static _) ->
-          (* TODO: catch overflow *)
-          E (TupCons (TStaticIntrinsic, head, tail))
-        | Intrinsic Dynamic -> E (TupCons (TStaticIntrinsic, head, tail))
-        | Extrinsic -> E (TupCons (TIntrinsicExtrinsic, head, tail)))
+    let (E tail) = tuple tail in
+    (match Query.sizability tail with
+     | Intrinsic (Static _) -> E (TupCons (TAnyStatic, head, tail))
      | Intrinsic Dynamic ->
-       let (E tail) = tuple tail in
-       (match Query.sizability tail with
-        | Intrinsic _ -> E (TupCons (TDynamicIntrinsic, head, tail))
-        | Extrinsic -> E (TupCons (TIntrinsicExtrinsic, head, tail)))
+       (match Query.sizability head with
+        | Intrinsic _ -> E (TupCons (TIntrinsicDynamic, head, tail))
+        | Extrinsic -> failwith "forbidden extrinsic-dynamic construction in tuple")
      | Extrinsic ->
-       let (E tail) = tuple tail in
-       (match Query.sizability tail with
-        | Intrinsic (Static _) -> E (TupCons (TExtrinsicStatic, head, tail))
-        | Intrinsic Dynamic ->
-          failwith "forbidden extrinsic-dynamic construction in tuple"
+       (match Query.sizability head with
+        | Intrinsic _ -> E (TupCons (TIntrinsicExtrinsic, head, tail))
         | Extrinsic -> failwith "forbidden extrinsic-extrinsic construction in tuple"))
 ;;
 

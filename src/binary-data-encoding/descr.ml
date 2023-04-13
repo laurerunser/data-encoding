@@ -121,9 +121,14 @@ type (_, _) t =
   | Option : ('s, 'ss) Sizability.optioner * ('s, 'a) t -> ('ss, 'a option) t
   | USeq :
       { elementencoding : ('s Sizability.intrinsic, 'a) t }
-      -> (* INVARIANT (not encoded in the type-system): elementencoding cannot take
-         zero-bytes of space otherwise it is impossible to distinguish sequences
-         of different lengths *)
+      -> (* INVARIANT (not encoded in the type-system):
+            - [elementencoding] cannot take zero-bytes of space otherwise it is
+              impossible to distinguish sequences of different lengths.
+            - To encode this into the type system we need to make it possible to
+              distinguish zero-byte and non-zero-byte encodings. But doing so
+              requires to make the distinction everywhere. This is problematic
+              for, amongst other things, [String n] where the zero-byte-ability
+              would depend on the value of [n]. *)
       (Sizability.extrinsic, 'a Seq.t) t
   | Headered :
       { mkheader : 'a -> ('header, string) result

@@ -44,14 +44,13 @@ type s = S : _ t -> s
     - proves that two encodings can be concatenated into a tuple, and
     - keeps track of the sizability of the concatenated tuple.
 
-    E.g., it is not possible to have an intrinsic before a dynamic: the
+    E.g., it is not possible to have an extrinsic before a dynamic: the
     deserialisation process wouldn't know where the former ends and the latter
     starts. *)
 type ('l, 'r, 's) tupler =
-  | TExtrinsicStatic : (extrinsic, static, extrinsic) tupler
-  | TIntrinsicExtrinsic : ('s intrinsic, extrinsic, extrinsic) tupler
-  | TStaticIntrinsic : (static, 's intrinsic, 's intrinsic) tupler
-  | TDynamicIntrinsic : (dynamic, 's intrinsic, dynamic) tupler
+  | TAnyStatic : ('any t, static, 'any t) tupler
+  | TIntrinsicExtrinsic : (_ intrinsic, extrinsic, extrinsic) tupler
+  | TIntrinsicDynamic : (_ intrinsic, dynamic, dynamic) tupler
 
 (** An [optioner] is a value which keeps track of the sizability of the option. *)
 type ('x, 'xo) optioner =
