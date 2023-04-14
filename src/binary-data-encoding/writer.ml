@@ -111,17 +111,41 @@ let rec writek : type s a. Buffy.W.state -> (s, a) Descr.t -> a -> Buffy.W.writt
   | Conv { serialisation; deserialisation = _; encoding } ->
     writek state encoding (serialisation v)
   | Size_headered { size = size_numeral; encoding } ->
+    let size_size_limit =
+      (* a size-header implies a size-limit; e.g., uint8 implies 256 *)
+      (Query.max_int_of size_numeral :> Optint.Int63.t)
+    in
+    let other_size_limit = state.maximum_size - Buffy.W.written state in
+    let other_size_limit =
+      match state.size_limits with
+      | [] -> other_size_limit
+      | previous_limit :: _ ->
+        min (previous_limit - Buffy.W.written state) other_size_limit
+    in
+    let other_size_limit =
+      (* TODO: 32bit compat *)
+      Optint.Int63.of_int other_size_limit
+    in
+    let size_limit =
+      if Optint.Int63.compare size_size_limit other_size_limit <= 0
+      then size_size_limit
+      else other_size_limit
+    in
+    (* TODO: have [Query.size_of_with_limit] to fail earlier *)
     (match Query.size_of encoding v with
      | Error error -> Failed { error; state }
      | Ok size ->
-       let size =
-         (* TODO: 32bit machines *)
-         Query.numeral_of_int size_numeral (Optint.Int63.to_int size)
-       in
-       let* state =
-         write_numeral state size_numeral Encoding_public.default_endianness size
-       in
-       writek state encoding v)
+       if Optint.Int63.compare size size_limit > 0
+       then Failed { error = "size-limit exceeded"; state }
+       else (
+         let size =
+           (* TODO: 32bit machines *)
+           Query.numeral_of_int size_numeral (Optint.Int63.to_int size)
+         in
+         let* state =
+           write_numeral state size_numeral Encoding_public.default_endianness size
+         in
+         writek state encoding v))
   | Size_limit { at_most; encoding } ->
     let requested_size_limit =
       (* TODO: support 32bit plateforms *)
