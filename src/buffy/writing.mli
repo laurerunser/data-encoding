@@ -19,9 +19,6 @@
     to. It is a stateful wrapper around a [Dst.t] buffer. *)
 type state = private
   { destination : Dst.t
-  ; written : int
-      (** [written] is the number of bytes that have been serialised; it
-                      starts at [0] and is updated when writing *)
   ; maximum_size : int
       (** [maximum_size] is the total number of bytes that
                              can ever be written, on this buffer and all the
@@ -40,6 +37,7 @@ val mk_state : ?maximum_size:int -> Dst.t -> state
 
 val push_limit : state -> int -> (state, string) result
 val remove_limit : state -> (state, string) result
+val written : state -> int
 
 (** [destination_too_small_to_continue_message] is an error message used when a
     suspended destination is provided with a new buffer which is too small to
@@ -121,14 +119,14 @@ type written =
     be engaged when the buffer utilisation is small.
 
     If you need to write large values, consider using [writechunked] below. *)
-val writef : state -> int -> (Dst.t -> int -> unit) -> written
+val writef : state -> int -> (Dst.t -> unit) -> written
 
 (** {2: Chunked writing functions} *)
 
 (** [chunkwriter] is the type of functions that can be used to write a single
     value in multiple chunks. See the documentation of [writechunked] below for
     details on usage. *)
-type chunkwriter = Dst.t -> int -> int -> chunkwritten
+type chunkwriter = Dst.t -> int -> chunkwritten
 
 and chunkwritten =
   | CWritten of { written : int }

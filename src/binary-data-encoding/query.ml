@@ -367,8 +367,8 @@ let rec pp_of : type s t. (s, t) Descr.t -> Format.formatter -> t -> unit =
   | Numeral { numeral = UInt30; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
   | Numeral { numeral = UInt16; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
   | Numeral { numeral = UInt8; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
-  | String _ -> Format.fprintf fmt "%s" v
-  | Bytes _ -> Format.fprintf fmt "%s" (Bytes.unsafe_to_string v)
+  | String _ -> Format.fprintf fmt "%S" v
+  | Bytes _ -> Format.fprintf fmt "%S" (Bytes.unsafe_to_string v)
   | Array { length = _; elementencoding } ->
     Format.(
       fprintf

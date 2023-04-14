@@ -2,20 +2,19 @@
 
 type state =
   { destination : Dst.t
-  ; written : int
   ; maximum_size : int
   ; size_limits : int list
   }
 
+let written { destination; _ } = Dst.added destination
+
 let mk_state ?(maximum_size = max_int) destination =
-  { destination; written = 0; maximum_size; size_limits = [] }
+  { destination; maximum_size; size_limits = [] }
 ;;
 
 let internal_mk_state maximum_size size_limits destination =
-  { destination; written = 0; maximum_size; size_limits }
+  { destination; maximum_size; size_limits }
 ;;
-
-let bump_written state writing = { state with written = state.written + writing }
 
 type written =
   | Written of { state : state }
@@ -30,7 +29,7 @@ type written =
 
 let push_limit state length =
   assert (length >= 0);
-  let requested_limit = state.written + length in
+  let requested_limit = Dst.added state.destination + length in
   if requested_limit > state.maximum_size
   then Error "size-limit exceeds maximum-size"
   else (
@@ -54,34 +53,34 @@ let destination_too_small_to_continue_message =
 
 let writef state writing write =
   assert (writing >= 0);
-  let reach = state.written + writing in
+  let reach = Dst.added state.destination + writing in
   if reach > state.maximum_size
   then Failed { state; error = "maximum-size exceeded" }
   else if match state.size_limits with
           | [] -> false
           | limit :: _ -> reach > limit
   then Failed { state; error = "size-limit exceeded" }
-  else if state.written + writing <= Dst.length state.destination
+  else if writing <= Dst.available state.destination
   then (
-    write state.destination state.written;
-    let state = bump_written state writing in
+    write state.destination;
     Written { state })
   else (
     (* TODO? add an option which does some copying to a temporary buffer and
        uses the original destination to its maximum capacity. (Similar to
        Reading case.) *)
-    let maximum_size = state.maximum_size - state.written in
-    let size_limits = List.map (fun limit -> limit - state.written) state.size_limits in
+    let maximum_size = state.maximum_size - Dst.added state.destination in
+    let size_limits =
+      List.map (fun limit -> limit - Dst.added state.destination) state.size_limits
+    in
     Suspended
       { state
       ; cont =
           (fun destination ->
             let state = internal_mk_state maximum_size size_limits destination in
-            if Dst.length destination < writing
+            if Dst.available destination < writing
             then Failed { state; error = destination_too_small_to_continue_message }
             else (
-              write state.destination state.written;
-              let state = bump_written state writing in
+              write state.destination;
               Written { state }))
       })
 ;;
@@ -103,41 +102,61 @@ let%expect_test _ =
     | Suspended _ -> assert false
     (* no test for suspended in this block *)
   in
-  w 0 (fun _ _ -> ());
+  w 0 (fun _ -> ());
   [%expect {| Written: __________ |}];
-  w 1 (fun b o -> Dst.set_char b o 'X');
+  w 1 (fun b -> Dst.add_char b 'X');
   [%expect {| Written: _X________ |}];
-  w 2 (fun b o ->
-    Dst.set_char b o '/';
-    Dst.set_char b (o + 1) '\\');
+  w 2 (fun b ->
+    Dst.add_char b '/';
+    Dst.add_char b '\\');
   [%expect {| Written: _/\_______ |}];
-  w 3 (fun b o -> Dst.set_string b o "oOo");
+  w 3 (fun b -> Dst.add_string b "oOo");
   [%expect {| Written: _oOo______ |}];
   ()
 ;;
 
-let write_char state c = writef state 1 (fun b o -> Dst.set_char b o c)
+let write_char state c = writef state 1 (fun b -> Dst.add_char b c)
 
 let%expect_test _ =
-  let w c =
+  let w cs =
     let len = 10 in
     let buffer = Bytes.make len '_' in
     let destination = Dst.of_bytes buffer ~offset:1 ~length:8 in
-    let state = mk_state destination in
-    match write_char state c with
-    | Written { state } ->
-      assert (state.destination == destination);
-      Format.printf "Written: %s" (Bytes.unsafe_to_string buffer)
-    | Failed { state; error } ->
-      assert (state.destination == destination);
-      Format.printf "Failed: %s (%s)" error (Bytes.unsafe_to_string buffer)
-    | Suspended _ -> assert false
-    (* no test for suspended in this block *)
+    match
+      List.fold_left
+        (fun state c ->
+          match write_char state c with
+          | Written { state } ->
+            assert (state.destination == destination);
+            Format.printf "Written: %s\n%!" (Bytes.unsafe_to_string buffer);
+            state
+          | Failed { state; error } ->
+            assert (state.destination == destination);
+            Format.printf "Failed: %s (%s)\n%!" error (Bytes.unsafe_to_string buffer);
+            raise Exit
+          | Suspended _ ->
+            Format.printf "Suspended\n%!";
+            raise Exit)
+        (mk_state destination)
+        cs
+    with
+    | exception Exit -> ()
+    | _state -> ()
   in
-  w ' ';
-  [%expect {| Written: _ ________ |}];
-  w 'X';
-  [%expect {| Written: _X________ |}];
+  w [ '+' ];
+  [%expect {| Written: _+________ |}];
+  w (List.of_seq (String.to_seq "aBcDeFgHiJkLmN"));
+  [%expect
+    {|
+    Written: _a________
+    Written: _aB_______
+    Written: _aBc______
+    Written: _aBcD_____
+    Written: _aBcDe____
+    Written: _aBcDeF___
+    Written: _aBcDeFg__
+    Written: _aBcDeFgH_
+    Suspended |}];
   ()
 ;;
 
@@ -149,29 +168,29 @@ let write_utf8_uchar state c =
   then (
     let c0 = 0b110_00000 lor ((c land 0b11111_000000) lsr 6) in
     let c1 = 0b10_000000 lor (c land 0b00000_111111) in
-    writef state 2 (fun b o ->
-      Dst.set_uint8 b o c0;
-      Dst.set_uint8 b (o + 1) c1))
+    writef state 2 (fun b ->
+      Dst.add_uint8 b c0;
+      Dst.add_uint8 b c1))
   else if c < 0b1_0000_000000_000000
   then (
     let c0 = 0b1110_0000 lor ((c land 0b1111_000000_000000) lsr 12) in
     let c1 = 0b10_000000 lor ((c land 0b0000_111111_000000) lsr 6) in
     let c2 = 0b10_000000 lor (c land 0b0000_000000_111111) in
-    writef state 2 (fun b o ->
-      Dst.set_uint8 b o c0;
-      Dst.set_uint8 b (o + 1) c1;
-      Dst.set_uint8 b (o + 2) c2))
+    writef state 2 (fun b ->
+      Dst.add_uint8 b c0;
+      Dst.add_uint8 b c1;
+      Dst.add_uint8 b c2))
   else if c < 0b1_000_000000_000000_000000
   then (
     let c0 = 0b11110_000 lor ((c land 0b111_000000_000000_000000) lsr 18) in
     let c1 = 0b10_000000 lor ((c land 0b000_111111_000000_000000) lsr 12) in
     let c2 = 0b10_000000 lor ((c land 0b000_000000_111111_000000) lsr 6) in
     let c3 = 0b10_000000 lor (c land 0b000_000000_000000_111111) in
-    writef state 2 (fun b o ->
-      Dst.set_uint8 b o c0;
-      Dst.set_uint8 b (o + 1) c1;
-      Dst.set_uint8 b (o + 2) c2;
-      Dst.set_uint8 b (o + 3) c3))
+    writef state 2 (fun b ->
+      Dst.add_uint8 b c0;
+      Dst.add_uint8 b c1;
+      Dst.add_uint8 b c2;
+      Dst.add_uint8 b c3))
   else (
     let error = "Invalid uchar" in
     Failed { state; error })
@@ -204,7 +223,7 @@ let%expect_test _ =
   ()
 ;;
 
-type chunkwriter = Dst.t -> int -> int -> chunkwritten
+type chunkwriter = Dst.t -> int -> chunkwritten
 
 and chunkwritten =
   | CWritten of { written : int }
@@ -221,28 +240,29 @@ and chunkwritten =
    which is larger than the current buffer can accomodate, this is intended for
    writing string and other such potentially big blobs. *)
 let rec writechunked state write =
-  let writing = min state.maximum_size (Dst.length state.destination) - state.written in
+  let writing =
+    min
+      (state.maximum_size - Dst.added state.destination)
+      (Dst.available state.destination)
+  in
   let writing =
     match state.size_limits with
     | [] -> writing
-    | limit :: _ -> min (limit - state.written) writing
+    | limit :: _ -> min (limit - Dst.added state.destination) writing
   in
   assert (writing >= 0);
-  match write state.destination state.written writing with
-  | CWritten { written } ->
-    let state = bump_written state written in
-    Written { state }
-  | CFailed { written; error } ->
-    let state = bump_written state written in
-    Failed { state; error }
+  match write state.destination writing with
+  | CWritten { written = _ } -> Written { state }
+  | CFailed { written = _; error } -> Failed { state; error }
   | CSuspended { written; cont } ->
     if written > writing
     then
       raise
         (Failure "Suspendable_buffers.Writing.writechunked: chunkwriter exceeded limit");
-    let state = bump_written state written in
-    let maximum_size = state.maximum_size - state.written in
-    let size_limits = List.map (fun limit -> limit - state.written) state.size_limits in
+    let maximum_size = state.maximum_size - Dst.added state.destination in
+    let size_limits =
+      List.map (fun limit -> limit - Dst.added state.destination) state.size_limits
+    in
     assert (maximum_size >= 0);
     if maximum_size = 0
     then Failed { state; error = "maximum-size reached but chunk-writer is not finished" }
@@ -264,20 +284,20 @@ let rec writechunked state write =
 
 let write_string state src =
   let size = String.length src in
-  if size <= Dst.length state.destination - state.written
-  then writef state size (fun d o -> Dst.set_string d o src)
+  if size <= Dst.available state.destination
+  then writef state size (fun d -> Dst.add_string d src)
   else (
-    let rec chunkwriter source_offset destination offset maxwritesize =
+    let rec chunkwriter source_offset destination maxwritesize =
       let needswriting = size - source_offset in
       assert (needswriting >= 0);
       if needswriting = 0
       then CWritten { written = 0 }
       else if needswriting <= maxwritesize
       then (
-        Dst.set_string_slice destination offset src source_offset needswriting;
+        Dst.add_string_slice destination src source_offset needswriting;
         CWritten { written = needswriting })
       else (
-        Dst.set_string_slice destination offset src source_offset maxwritesize;
+        Dst.add_string_slice destination src source_offset maxwritesize;
         CSuspended
           { written = maxwritesize; cont = chunkwriter (source_offset + maxwritesize) })
     in
@@ -297,15 +317,12 @@ let%expect_test _ =
     | Failed { state; error } ->
       assert (state.destination == destination);
       Format.printf "Failed: %s (%s)" error (Bytes.unsafe_to_string buffer)
-    | Suspended { state; cont } ->
-      assert (state.destination == destination);
+    | Suspended { state = _; cont } ->
       Format.printf "Suspended: %s\n%!" (Bytes.to_string buffer);
-      (match cont destination with
-       | Written { state } ->
-         assert (state.destination == destination);
+      (match cont (Dst.of_bytes buffer ~offset:1 ~length:8) with
+       | Written { state = _ } ->
          Format.printf "Written: %s" (Bytes.unsafe_to_string buffer)
-       | Failed { state; error } ->
-         assert (state.destination == destination);
+       | Failed { state = _; error } ->
          Format.printf "Failed: %s (%s)" error (Bytes.unsafe_to_string buffer)
        | Suspended _ -> assert false)
     (* no test for double suspension in this block*)
@@ -327,20 +344,20 @@ let%expect_test _ =
 
 let write_bytes state src =
   let size = Bytes.length src in
-  if size <= Dst.length state.destination - state.written
-  then writef state size (fun d o -> Dst.set_bytes d o src)
+  if size <= Dst.available state.destination
+  then writef state size (fun d -> Dst.add_bytes d src)
   else (
-    let rec chunkwriter source_offset destination offset maxwritesize =
+    let rec chunkwriter source_offset destination maxwritesize =
       let needswriting = size - source_offset in
       assert (needswriting >= 0);
       if needswriting = 0
       then CWritten { written = 0 }
       else if needswriting <= maxwritesize
       then (
-        Dst.set_bytes_slice destination offset src source_offset needswriting;
+        Dst.add_bytes_slice destination src source_offset needswriting;
         CWritten { written = needswriting })
       else (
-        Dst.set_bytes_slice destination offset src source_offset maxwritesize;
+        Dst.add_bytes_slice destination src source_offset maxwritesize;
         CSuspended
           { written = maxwritesize; cont = chunkwriter (source_offset + maxwritesize) })
     in
@@ -360,15 +377,12 @@ let%expect_test _ =
     | Failed { state; error } ->
       assert (state.destination == destination);
       Format.printf "Failed: %s (%s)" error (Bytes.unsafe_to_string buffer)
-    | Suspended { state; cont } ->
-      assert (state.destination == destination);
+    | Suspended { state = _; cont } ->
       Format.printf "Suspended: %s\n%!" (Bytes.to_string buffer);
-      (match cont destination with
-       | Written { state } ->
-         assert (state.destination == destination);
+      (match cont (Dst.of_bytes buffer ~offset:1 ~length:8) with
+       | Written { state = _ } ->
          Format.printf "Written: %s" (Bytes.unsafe_to_string buffer)
-       | Failed { state; error } ->
-         assert (state.destination == destination);
+       | Failed { state = _; error } ->
          Format.printf "Failed: %s (%s)" error (Bytes.unsafe_to_string buffer)
        | Suspended _ -> assert false)
     (* no test for double suspension in this block*)
@@ -388,16 +402,16 @@ let%expect_test _ =
   ()
 ;;
 
-let write_uint8 state v = writef state 1 (fun dst o -> Dst.set_uint8 dst o v)
-let write_int8 state v = writef state 1 (fun dst o -> Dst.set_int8 dst o v)
-let write_uint16_be state v = writef state 2 (fun dst o -> Dst.set_uint16_be dst o v)
-let write_uint16_le state v = writef state 2 (fun dst o -> Dst.set_uint16_le dst o v)
-let write_int16_be state v = writef state 2 (fun dst o -> Dst.set_int16_be dst o v)
-let write_int16_le state v = writef state 2 (fun dst o -> Dst.set_int16_le dst o v)
-let write_int32_be state v = writef state 4 (fun dst o -> Dst.set_int32_be dst o v)
-let write_int32_le state v = writef state 4 (fun dst o -> Dst.set_int32_le dst o v)
-let write_int64_be state v = writef state 8 (fun dst o -> Dst.set_int64_be dst o v)
-let write_int64_le state v = writef state 8 (fun dst o -> Dst.set_int64_le dst o v)
+let write_uint8 state v = writef state 1 (fun dst -> Dst.add_uint8 dst v)
+let write_int8 state v = writef state 1 (fun dst -> Dst.add_int8 dst v)
+let write_uint16_be state v = writef state 2 (fun dst -> Dst.add_uint16_be dst v)
+let write_uint16_le state v = writef state 2 (fun dst -> Dst.add_uint16_le dst v)
+let write_int16_be state v = writef state 2 (fun dst -> Dst.add_int16_be dst v)
+let write_int16_le state v = writef state 2 (fun dst -> Dst.add_int16_le dst v)
+let write_int32_be state v = writef state 4 (fun dst -> Dst.add_int32_be dst v)
+let write_int32_le state v = writef state 4 (fun dst -> Dst.add_int32_le dst v)
+let write_int64_be state v = writef state 8 (fun dst -> Dst.add_int64_be dst v)
+let write_int64_le state v = writef state 8 (fun dst -> Dst.add_int64_le dst v)
 
 let rec ( let* ) x f =
   match x with
@@ -415,23 +429,23 @@ let rec to_string_loop buffer acc k =
   let destination = Dst.of_bytes buffer in
   match k destination with
   | Written { state } ->
-    let b = Bytes.make state.written '\x00' in
-    Dst.blit_onto_bytes state.destination 0 b 0 state.written;
+    let b = Bytes.make (Dst.added state.destination) '\x00' in
+    Dst.blit_onto_bytes state.destination 0 b 0 (Dst.added state.destination);
     let s = Bytes.unsafe_to_string b in
     Ok (s :: acc)
   | Failed { state; error } when error = destination_too_small_to_continue_message ->
     (* TODO: instead of restarting with the old-like *)
-    assert (state.written = 0);
-    let buffer_size = 2 * (1 + Dst.length destination) in
+    assert (Dst.added state.destination = 0);
+    let buffer_size = 2 * (1 + Bytes.length buffer) in
     let buffer = Bytes.make buffer_size '\x00' in
     to_string_loop buffer acc k
   | Failed { state = _; error } -> Error error
   | Suspended { state; cont } ->
-    if state.written = 0
+    if Dst.added state.destination = 0
     then to_string_loop buffer acc cont
     else (
-      let b = Bytes.make state.written '\x00' in
-      Dst.blit_onto_bytes state.destination 0 b 0 state.written;
+      let b = Bytes.make (Dst.added state.destination) '\x00' in
+      Dst.blit_onto_bytes state.destination 0 b 0 (Dst.added state.destination);
       let s = Bytes.unsafe_to_string b in
       let acc = s :: acc in
       to_string_loop buffer acc cont)
@@ -450,10 +464,10 @@ let to_string ?(buffer_size = 1024) writer =
   | Error _ as err -> err
 ;;
 
-let blit_instruction_of_state { destination; written; maximum_size = _; size_limits = _ } =
+let blit_instruction_of_state { destination; maximum_size = _; size_limits = _ } =
   let b, o, l = Dst.bytes_of_dst destination in
-  assert (l <= written);
-  b, o, written
+  assert (l <= Dst.added destination);
+  b, o, Dst.added destination
 ;;
 
 let rec blit_instructions_loop destination k () =

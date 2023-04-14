@@ -110,61 +110,18 @@ let rec writek : type s a. Buffy.W.state -> (s, a) Descr.t -> a -> Buffy.W.writt
     fold state (chunkify v)
   | Conv { serialisation; deserialisation = _; encoding } ->
     writek state encoding (serialisation v)
-  | Size_headered { size; encoding } ->
-    let original_state = state in
-    let size0 = Query.zero_of_numeral size in
-    (* TODO: make tests that covers the Written and the Suspended cases *)
-    (match write_numeral state size Encoding_public.default_endianness size0 with
-     | Buffy.W.Written { state } ->
-       let written_before_write = state.written in
-       (* TODO: set a maximum-length so that it always accomodates the size
-           header limit (e.g., 256 if uint8) *)
-       (match writek state encoding v with
-        | Buffy.W.Written { state } as written_state ->
-          let written_after_write = state.written in
-          let actual_size =
-            Query.numeral_of_int size (written_after_write - written_before_write)
-          in
-          let* (_ : Buffy.W.state) =
-            write_numeral
-              original_state
-              size
-              Encoding_public.default_endianness
-              actual_size
-          in
-          written_state
-        | Buffy.W.Failed _ as failed -> failed
-        | Buffy.W.Suspended _ as suspend_written ->
-          (* slow-path: we compute the whole size and we write it before
-               returning the suspension. This causes to traverse [v] which is
-               the price to pay for chunked writing *)
-          (* TODO: make a whole lot of tests that [size_of] and [writek] agree
-               on size *)
-          (* TODO: make a [size_of] variant which stops early when exceeding
-               [maximum_length] *)
-          (match Query.size_of encoding v with
-           | Error s ->
-             (* TODO: wrap error message *)
-             Failed { state; error = s }
-           | Ok actual_size ->
-             (* NOTE: actual_size fits in the size header otherwise
-                [Query.size_of] returns [Error] *)
-             let actual_size =
-               Query.numeral_of_int size (Optint.Int63.to_int actual_size)
-             in
-             let* (_ : Buffy.W.state) =
-               write_numeral
-                 original_state
-                 size
-                 Encoding_public.default_endianness
-                 actual_size
-             in
-             suspend_written))
-     | Buffy.W.Failed _ as failed -> failed
-     | Buffy.W.Suspended _ as suspended ->
-       (* we happen onto this case if we are so close to the end of the
-               buffer that even the size header cannot be written *)
-       suspended)
+  | Size_headered { size = size_numeral; encoding } ->
+    (match Query.size_of encoding v with
+     | Error error -> Failed { error; state }
+     | Ok size ->
+       let size =
+         (* TODO: 32bit machines *)
+         Query.numeral_of_int size_numeral (Optint.Int63.to_int size)
+       in
+       let* state =
+         write_numeral state size_numeral Encoding_public.default_endianness size
+       in
+       writek state encoding v)
   | Size_limit { at_most; encoding } ->
     let requested_size_limit =
       (* TODO: support 32bit plateforms *)
@@ -173,11 +130,12 @@ let rec writek : type s a. Buffy.W.state -> (s, a) Descr.t -> a -> Buffy.W.writt
     (* Because the constructors are nested, the effective size-limit may be
        lower than that provided in the constructor. We compute the largest
        possible size-limit. *)
-    let possible_size_limit = state.maximum_size - state.written in
+    let possible_size_limit = state.maximum_size - Buffy.W.written state in
     let possible_size_limit =
       match state.size_limits with
       | [] -> possible_size_limit
-      | previous_limit :: _ -> min (previous_limit - state.written) possible_size_limit
+      | previous_limit :: _ ->
+        min (previous_limit - Buffy.W.written state) possible_size_limit
     in
     if requested_size_limit < possible_size_limit
     then (
@@ -238,8 +196,8 @@ let write
     let state = Buffy.W.mk_state ~maximum_size:length destination in
     match writek state encoding v with
     | Suspended _ -> assert false (* the buffer is bigger than length *)
-    | Failed { state; error } -> Error (state.written, error)
-    | Written { state } -> Ok state.written)
+    | Failed { state; error } -> Error (Buffy.W.written state, error)
+    | Written { state } -> Ok (Buffy.W.written state))
 ;;
 
 let string_of
