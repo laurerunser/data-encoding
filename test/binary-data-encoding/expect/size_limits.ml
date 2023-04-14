@@ -132,13 +132,18 @@ let%expect_test _ =
     Blob: 000000020c02dead02eeee05ffffffffff0902feed02eeee02eeee
     Suspended, Readed: 10, Limits: 132
     Suspended, Readed: 6, Limits: 122
-    Error: "expected-stop point exceeded", Readed: 1, Limits: 116 |}];
+    Suspended, Readed: 6, Limits: 129
+    Ok, Readed: 5, Limits: |}];
   w 6 5 encoding v;
   [%expect
     {|
     Blob: 000000020c02dead02eeee05ffffffffff0902feed02eeee02eeee
     Suspended, Readed: 6, Limits: 132
-    Error: "expected-stop point exceeded", Readed: 2, Limits: 126 |}];
+    Suspended, Readed: 5, Limits: 126
+    Suspended, Readed: 5, Limits: 121
+    Suspended, Readed: 5, Limits: 129
+    Suspended, Readed: 5, Limits: 124
+    Ok, Readed: 1, Limits: |}];
   w 3 5 encoding v;
   [%expect
     {|
@@ -146,7 +151,9 @@ let%expect_test _ =
     Suspended, Readed: 3, Limits:
     Suspended, Readed: 5, Limits: 129
     Suspended, Readed: 5, Limits: 124
-    Error: "expected-stop point exceeded", Readed: 4, Limits: 119 |}];
+    Suspended, Readed: 5, Limits: 132
+    Suspended, Readed: 5, Limits: 127
+    Ok, Readed: 4, Limits: |}];
   (* a more complex test with some size-limits being too small *)
   let encoding =
     let open Encoding in
@@ -175,33 +182,50 @@ let%expect_test _ =
     |]
   in
   w 10 6 encoding v;
-  [%expect {| Error whilst serialising: "size-limit exceeded" |}];
+  [%expect {| Error whilst serialising: "size exceeds limit" |}];
   w 6 5 encoding v;
-  [%expect {| Error whilst serialising: "size-limit exceeded" |}];
+  [%expect {| Error whilst serialising: "size exceeds limit" |}];
   w 3 5 encoding v;
-  [%expect {| Error whilst serialising: "size-limit exceeded" |}];
+  [%expect {| Error whilst serialising: "size exceeds limit" |}];
   let encoding =
     let open Encoding in
     let tup =
       with_size_limit
         1024
-        (tuple [ With_size.seq_with_size `UInt8 uint16; string `UInt8; string `UInt8 ])
+        (tuple
+           [ With_size.seq_with_size `UInt8 uint16
+           ; with_size_limit 10 (string `UInt8)
+           ; string `UInt8
+           ])
     in
     let seq = with_size_limit 64 (With_size.seq_with_size `UInt8 tup) in
     array `UInt30 seq
   in
-  let v =
+  let v sz =
     let open Encoding.Hlist in
-    [| Seq.return [ uint16 0xdead; "\xee\xee"; "\xff\xff\xff\xff\xff" ]
+    [| Seq.return [ uint16 0xdead; String.make sz '\xee'; "\xff\xff\xff\xff\xff" ]
      ; Seq.return [ uint16 0xfeed; "\xee\xee"; "\xee\xee" ]
     |]
   in
-  w 10 6 encoding v;
+  w 10 6 encoding (v 2);
   [%expect
     {|
     Blob: 000000020c02dead02eeee05ffffffffff0902feed02eeee02eeee
     Suspended, Readed: 10, Limits: 68
     Suspended, Readed: 6, Limits: 58
-    Error: "expected-stop point exceeded", Readed: 1, Limits: 52 |}];
+    Suspended, Readed: 6, Limits: 65
+    Ok, Readed: 5, Limits: |}];
+  w 10 6 encoding (v 9);
+  [%expect
+    {|
+    Blob: 000000021302dead09eeeeeeeeeeeeeeeeee05ffffffffff0902feed02eeee02eeee
+    Suspended, Readed: 10, Limits: 18-68
+    Suspended, Readed: 6, Limits: 8-58
+    Suspended, Readed: 6, Limits: 52
+    Suspended, Readed: 6, Limits: 66
+    Ok, Readed: 6, Limits: |}];
+  w 10 6 encoding (v 11);
+  [%expect {|
+    Error whilst serialising: "size exceeds limit" |}];
   ()
 ;;

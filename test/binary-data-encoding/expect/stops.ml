@@ -85,19 +85,21 @@ let%expect_test _ =
     Blob: 000000020602dead02beef0602feed02beef
     Ok, Readed: 18, Stops: |}];
   (* somewhat friendly cuts *)
-  w 10 6 encoding v;
+  w 12 6 encoding v;
   [%expect
     {|
     Blob: 000000020602dead02beef0602feed02beef
-    Suspended, Readed: 10, Stops: 11-11
-    Error: "expected-stop point exceeded", Readed: 1, Stops: 1-1 |}];
+    Suspended, Readed: 12, Stops: 18
+    Ok, Readed: 6, Stops: |}];
   (* unfriendly cuts *)
   w 6 5 encoding v;
   [%expect
     {|
     Blob: 000000020602dead02beef0602feed02beef
     Suspended, Readed: 6, Stops: 8-11
-    Error: "expected-stop point exceeded", Readed: 2, Stops: 2-5 |}];
+    Suspended, Readed: 5, Stops:
+    Suspended, Readed: 5, Stops: 7-7
+    Ok, Readed: 2, Stops: |}];
   (* a more complex test mixing in strings which use chunkread *)
   let encoding =
     let open Encoding in
@@ -120,13 +122,18 @@ let%expect_test _ =
     Blob: 000000020c02dead02eeee05ffffffffff0902feed02eeee02eeee
     Suspended, Readed: 10, Stops: 17
     Suspended, Readed: 6, Stops: 7
-    Error: "expected-stop point exceeded", Readed: 1, Stops: 1 |}];
+    Suspended, Readed: 6, Stops: 11
+    Ok, Readed: 5, Stops: |}];
   w 6 5 encoding v;
   [%expect
     {|
     Blob: 000000020c02dead02eeee05ffffffffff0902feed02eeee02eeee
     Suspended, Readed: 6, Stops: 8-17
-    Error: "expected-stop point exceeded", Readed: 2, Stops: 2-11 |}];
+    Suspended, Readed: 5, Stops: 11
+    Suspended, Readed: 5, Stops: 6
+    Suspended, Readed: 5, Stops: 11
+    Suspended, Readed: 5, Stops: 6
+    Ok, Readed: 1, Stops: |}];
   w 3 5 encoding v;
   [%expect
     {|
@@ -134,6 +141,8 @@ let%expect_test _ =
     Suspended, Readed: 3, Stops:
     Suspended, Readed: 5, Stops: 14
     Suspended, Readed: 5, Stops: 9
-    Error: "expected-stop point exceeded", Readed: 4, Stops: 4 |}];
+    Suspended, Readed: 5, Stops: 14
+    Suspended, Readed: 5, Stops: 9
+    Ok, Readed: 4, Stops: |}];
   ()
 ;;

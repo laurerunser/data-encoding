@@ -38,23 +38,24 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
     in
     fold state [] intlength
   | USeq { elementencoding } ->
-    (match Buffy.R.peek_stop state with
-     | None ->
-       (* TODO: support unsized USeq once we support lazy useq *)
-       Failed { state; error = "unlengthed-seq without a size" }
-     | Some expected_stop ->
-       let rec fold (state : Buffy.R.state) reversed_list =
-         assert (state.readed <= expected_stop);
-         (* reading fails otherwise *)
-         if expected_stop = state.readed
-         then Buffy.R.Readed { state; value = List.to_seq (List.rev reversed_list) }
-         else
-           (* TODO: in case of suspend, we have to recompute the expected_stop,
-             otherwise the expected stop is wrong, this is a bug *)
-           let* v, state = readk state elementencoding in
-           fold state (v :: reversed_list)
-       in
-       fold state [])
+    let rec fold (state : Buffy.R.state) reversed_list =
+      (* we peek-stop at every iteration in case there was a suspension and
+            it has been updated. *)
+      (* TODO? don't use let* and instead check for suspension directly? *)
+      match Buffy.R.peek_stop state with
+      | None ->
+        (* TODO: support unsized USeq once we support lazy useq *)
+        Buffy.R.Failed { state; error = "unlengthed-seq without a size" }
+      | Some expected_stop ->
+        assert (state.readed <= expected_stop);
+        (* reading fails otherwise *)
+        if expected_stop = state.readed
+        then Buffy.R.Readed { state; value = List.to_seq (List.rev reversed_list) }
+        else
+          let* v, state = readk state elementencoding in
+          fold state (v :: reversed_list)
+    in
+    fold state []
   | Array { length; elementencoding } ->
     if Optint.Int63.equal (length :> Optint.Int63.t) Optint.Int63.zero
     then Buffy.R.Readed { state; value = [||] }
