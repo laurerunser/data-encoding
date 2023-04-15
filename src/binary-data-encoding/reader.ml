@@ -47,9 +47,9 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
         (* TODO: support unsized USeq once we support lazy useq *)
         Buffy.R.Failed { state; error = "unlengthed-seq without a size" }
       | Some expected_stop ->
-        assert (state.readed <= expected_stop);
+        assert (Buffy.R.readed state <= expected_stop);
         (* reading fails otherwise *)
-        if expected_stop = state.readed
+        if expected_stop = Buffy.R.readed state
         then Buffy.R.Readed { state; value = List.to_seq (List.rev reversed_list) }
         else
           let* v, state = readk state elementencoding in
@@ -117,7 +117,7 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
        let* v, state = readk state encoding in
        (match Buffy.R.pop_stop state with
         | Ok (expected_stop, state) ->
-          if state.readed = expected_stop
+          if Buffy.R.readed state = expected_stop
           then Buffy.R.Readed { state; value = v }
           else Failed { state; error = "read fewer bytes than expected-length" }
         | Error error -> Failed { state; error })
@@ -132,16 +132,17 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
     (* Because the constructors are nested, the effective size-limit may be
        lower than that provided in the constructor. We compute the largest
        possible size-limit. *)
-    let possible_size_limit = state.maximum_size - state.readed in
+    let possible_size_limit = state.maximum_size - Buffy.R.readed state in
     let possible_size_limit =
       match state.size_limits with
       | [] -> possible_size_limit
-      | previous_limit :: _ -> min (previous_limit - state.readed) possible_size_limit
+      | previous_limit :: _ ->
+        min (previous_limit - Buffy.R.readed state) possible_size_limit
     in
     let possible_size_limit =
       match state.stop_hints with
       | [] -> possible_size_limit
-      | stop :: _ -> min (stop - state.readed) possible_size_limit
+      | stop :: _ -> min (stop - Buffy.R.readed state) possible_size_limit
     in
     if requested_size_limit < possible_size_limit
     then (
@@ -231,8 +232,8 @@ and read_numeral
 
 and read_uint8_tag : Buffy.R.state -> Commons.Sizedints.Uint8.t Buffy.R.readed =
  fun state ->
-  Buffy.R.readf state Size.bool (fun s o ->
-    let v = Buffy.Src.get_uint8 s o in
+  Buffy.R.readf state Size.bool (fun s ->
+    let v = Buffy.Src.get_uint8 s in
     assert (v >= 0);
     assert (v < 256);
     Commons.Sizedints.Uint8.unsafe_of_int v)

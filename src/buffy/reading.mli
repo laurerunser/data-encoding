@@ -17,11 +17,12 @@
 (** A state is a value that tracks indexes and limits whilst reading. *)
 type state = private
   { source : Src.t
-  ; readed : int (* [read] is ambiguous so we make it unambiguously past as [readed] *)
   ; maximum_size : int
   ; size_limits : int list
   ; stop_hints : int list
   }
+
+val readed : state -> int
 
 (** [mk_state source] is a reading [state]. With such a state, the [readk]
     function can read from the bytes of [source].
@@ -127,7 +128,7 @@ type 'a readed =
     It is recommended to use [readf] with values of [reading] which are small.
     One of the reason being this allocation which might be performed here.
     Check out chunk readers (below) if you need to read large values. *)
-val readf : state -> int -> (Src.t -> int -> 'a) -> 'a readed
+val readf : state -> int -> (Src.t -> 'a) -> 'a readed
 
 (** [readcopy buffer state] reads [Bytes.length buffer] bytes from state,
     copying them into [buffer]. *)

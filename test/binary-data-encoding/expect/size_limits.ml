@@ -31,16 +31,20 @@ let%expect_test _ =
          Format.printf
            "Error: %S, Readed: %d, Limits: %a\n"
            error
-           state.readed
+           (Buffy.R.readed state)
            print_limits
            state
        | Readed { value; state } ->
-         Format.printf "Ok, Readed: %d, Limits: %a\n" state.readed print_limits state;
+         Format.printf
+           "Ok, Readed: %d, Limits: %a\n"
+           (Buffy.R.readed state)
+           print_limits
+           state;
          assert (Query.equal_of e v value)
        | Suspended { cont; state } ->
          Format.printf
            "Suspended, Readed: %d, Limits: %a\n"
-           state.readed
+           (Buffy.R.readed state)
            print_limits
            state;
          let rec go offset (cont : Buffy.Src.t -> a Buffy.R.readed) =
@@ -51,16 +55,20 @@ let%expect_test _ =
              Format.printf
                "Error: %S, Readed: %d, Limits: %a\n"
                error
-               state.readed
+               (Buffy.R.readed state)
                print_limits
                state
            | Readed { value; state } ->
-             Format.printf "Ok, Readed: %d, Limits: %a\n" state.readed print_limits state;
+             Format.printf
+               "Ok, Readed: %d, Limits: %a\n"
+               (Buffy.R.readed state)
+               print_limits
+               state;
              assert (Query.equal_of e v value)
            | Suspended { cont; state } ->
              Format.printf
                "Suspended, Readed: %d, Limits: %a\n"
-               state.readed
+               (Buffy.R.readed state)
                print_limits
                state;
              go (offset + length) cont

@@ -33,13 +33,14 @@
    nesting-checks? *)
 type state =
   { source : Src.t
-  ; readed : int (* [read] is ambiguous so we make it unambiguously past as [readed] *)
   ; maximum_size : int
   ; size_limits : int list
       (* this list is grown when there is a size-limit constructor in the encoding *)
   ; stop_hints : int list
       (* this list is grown when there is a size-header in the encoded binary data *)
   }
+
+let readed { source; _ } = Src.readed source
 
 (* checks invariant regarding the size-limits and stop-hints: that they are in
    increasing order and lower than maximum-size *)
@@ -55,8 +56,8 @@ let rec check_stops_and_limits base indices maximum_size =
 let%expect_test _ =
   let w stops maxlen =
     if check_stops_and_limits 0 stops maxlen
-    then Format.printf "Ok\n"
-    else Format.printf "Not\n"
+    then Format.printf "Ok\n%!"
+    else Format.printf "Not\n%!"
   in
   w [] 0;
   [%expect {| Ok |}];
@@ -77,21 +78,14 @@ let%expect_test _ =
 
 let mk_state ?(maximum_size = max_int) source =
   if maximum_size < 0 then failwith "Buffy.R.mk_state: maximum_size cannot be negative";
-  { source; readed = 0; stop_hints = []; size_limits = []; maximum_size }
+  { source; stop_hints = []; size_limits = []; maximum_size }
 ;;
 
 (* The {e internal} version of [mk_state] takes [stop_hints] as additional
    parameters. These are not available in the public API because they are never
    set from the outside, only from the reading process itself. *)
 let internal_mk_state maximum_size size_limits stop_hints source =
-  { source; readed = 0; stop_hints; size_limits; maximum_size }
-;;
-
-let bump_readed state reading =
-  let readed = state.readed + reading in
-  assert (readed <= Src.length state.source);
-  assert (readed <= state.maximum_size);
-  { state with readed }
+  { source; stop_hints; size_limits; maximum_size }
 ;;
 
 (* TODO: there needs to be more tests for size-limits, stop-hints and
@@ -99,7 +93,7 @@ let bump_readed state reading =
 
 let push_stop state length =
   assert (length >= 0);
-  let requested_stop = state.readed + length in
+  let requested_stop = length + Src.readed state.source in
   if requested_stop > state.maximum_size
   then Error "expected-stop exceeds maximum-size"
   else (
@@ -144,7 +138,7 @@ let bring_first_stop_forward source delta =
 
 let push_limit state length =
   assert (length >= 0);
-  let requested_limit = state.readed + length in
+  let requested_limit = length + Src.readed state.source in
   if requested_limit > state.maximum_size
   then Error "size-limit exceeds maximum-size"
   else (
@@ -202,20 +196,22 @@ let rec ( let* ) x f =
 
 let rec unsafe_readcopy scratch scratch_offset state =
   let reading = Bytes.length scratch - scratch_offset in
-  let readable = Src.length state.source - state.readed in
+  let readable = Src.available state.source in
   if reading <= readable
   then (
-    Src.blit_onto_bytes state.source state.readed scratch scratch_offset reading;
-    let state = bump_readed state reading in
+    Src.get_blit_onto_bytes state.source scratch scratch_offset reading;
     Readed { state; value = () })
   else (
     let reading = readable in
-    Src.blit_onto_bytes state.source state.readed scratch scratch_offset reading;
-    let state = bump_readed state reading in
+    Src.get_blit_onto_bytes state.source scratch scratch_offset reading;
     let scratch_offset = scratch_offset + reading in
-    let maximum_size = state.maximum_size - state.readed in
-    let stop_hints = List.map (fun stop -> stop - state.readed) state.stop_hints in
-    let size_limits = List.map (fun limit -> limit - state.readed) state.size_limits in
+    let maximum_size = state.maximum_size - Src.readed state.source in
+    let stop_hints =
+      List.map (fun stop -> stop - Src.readed state.source) state.stop_hints
+    in
+    let size_limits =
+      List.map (fun limit -> limit - Src.readed state.source) state.size_limits
+    in
     assert (check_stops_and_limits 0 stop_hints maximum_size);
     assert (check_stops_and_limits 0 size_limits maximum_size);
     Suspended
@@ -229,7 +225,7 @@ let rec unsafe_readcopy scratch scratch_offset state =
 
 let readf state reading read =
   assert (reading >= 0);
-  let reach = state.readed + reading in
+  let reach = Src.readed state.source + reading in
   if reach > state.maximum_size
   then Failed { state; error = "maximum-size exceeded" }
   else if match state.size_limits with
@@ -240,36 +236,39 @@ let readf state reading read =
           | [] -> false
           | stop :: _ -> reach > stop
   then Failed { state; error = "expected-stop point exceeded" }
-  else if reach <= Src.length state.source
+  else if reading <= Src.available state.source
   then (
-    let value = read state.source state.readed in
-    let state = bump_readed state reading in
+    let value = read state.source in
     Readed { state; value })
-  else if state.readed = Src.length state.source
+  else if Src.available state.source = 0
   then (
     (* the source was fully consumed, we do a simple continuation *)
     (* To avoid the continuation capturing the [source] we compute some values immediately *)
-    let maximum_size = state.maximum_size - state.readed in
-    let stop_hints = List.map (fun stop -> stop - state.readed) state.stop_hints in
-    let size_limits = List.map (fun limit -> limit - state.readed) state.size_limits in
+    let maximum_size = state.maximum_size - Src.readed state.source in
+    let stop_hints =
+      List.map (fun stop -> stop - Src.readed state.source) state.stop_hints
+    in
+    let size_limits =
+      List.map (fun limit -> limit - Src.readed state.source) state.size_limits
+    in
     assert (check_stops_and_limits 0 stop_hints maximum_size);
     assert (check_stops_and_limits 0 size_limits maximum_size);
     Suspended
       { state
       ; cont =
           (fun source ->
-            if reading > Src.length source
+            if reading > Src.available source
             then (
               let state = internal_mk_state maximum_size size_limits stop_hints source in
+              (* TODO: document this allocation, also see TODOs below *)
               let scratch = Bytes.make reading '\x00' in
               let scratch_offset = 0 in
               let* (), state = unsafe_readcopy scratch scratch_offset state in
-              let value = read (Src.of_bytes scratch) 0 in
+              let value = read (Src.of_bytes scratch) in
               Readed { value; state })
             else (
               let state = internal_mk_state maximum_size size_limits stop_hints source in
-              let value = read state.source state.readed in
-              let state = bump_readed state reading in
+              let value = read state.source in
               Readed { state; value }))
       })
   else (
@@ -281,7 +280,7 @@ let readf state reading read =
     (* TODO? provide a copy_limit and return [Failed] if going over *)
     let split_reading_buffer = Bytes.make reading '\x00' in
     let* (), state = unsafe_readcopy split_reading_buffer 0 state in
-    let value = read (Src.of_bytes split_reading_buffer) 0 in
+    let value = read (Src.of_bytes split_reading_buffer) in
     Readed { value; state })
 ;;
 
@@ -289,9 +288,9 @@ let%expect_test _ =
   let pp_state fmt state =
     Format.fprintf
       fmt
-      "source: %S, readed: %d, stops: [%a], maxlen: %d"
+      "source: %S, readed: %d, stops: [%a], maxlen: %d%!"
       (Src.to_string state.source)
-      state.readed
+      (Src.readed state.source)
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
          Format.pp_print_int)
@@ -299,19 +298,20 @@ let%expect_test _ =
       state.maximum_size
   in
   let w state ls =
-    Format.printf "State: %a\n" pp_state state;
+    let state = state () in
+    Format.printf "State: %a\n%!" pp_state state;
     match
       List.fold_left
         (fun state l ->
           match readf state l (fun s -> Src.get_string s l) with
           | Suspended _ ->
-            Format.printf "Suspended!\n";
+            Format.printf "Suspended!\n%!";
             raise Exit
           | Failed { error; state } ->
-            Format.printf "Error: %S\nState: %a\n" error pp_state state;
+            Format.printf "Error: %S\nState: %a\n%!" error pp_state state;
             state
           | Readed { value; state } ->
-            Format.printf "Ok: %S\nState: %a\n" value pp_state state;
+            Format.printf "Ok: %S\nState: %a\n%!" value pp_state state;
             state)
         state
         ls
@@ -319,27 +319,27 @@ let%expect_test _ =
     | exception Exit -> ()
     | _ -> ()
   in
-  let full_source = Src.of_string "foobarbaz" in
-  let state = mk_state full_source in
+  let full_source () = Src.of_string "foobarbaz" in
+  let state () = mk_state (full_source ()) in
   w state [ 3; 0; 6; 1 ];
   [%expect
     {|
     State: source: "foobarbaz", readed: 0, stops: [], maxlen: 4611686018427387903
-    Ok: ""
-    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 4611686018427387903
     Ok: "foo"
     State: source: "foobarbaz", readed: 3, stops: [], maxlen: 4611686018427387903
-    Ok: "baz"
+    Ok: ""
+    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 4611686018427387903
+    Ok: "barbaz"
     State: source: "foobarbaz", readed: 9, stops: [], maxlen: 4611686018427387903
     Suspended! |}];
-  let state = mk_state ~maximum_size:6 full_source in
+  let state () = mk_state ~maximum_size:6 (full_source ()) in
   w state [ 3; 0; 6; 3; 1 ];
   [%expect
     {|
     State: source: "foobarbaz", readed: 0, stops: [], maxlen: 6
-    Ok: ""
-    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 6
     Ok: "foo"
+    State: source: "foobarbaz", readed: 3, stops: [], maxlen: 6
+    Ok: ""
     State: source: "foobarbaz", readed: 3, stops: [], maxlen: 6
     Error: "maximum-size exceeded"
     State: source: "foobarbaz", readed: 3, stops: [], maxlen: 6
@@ -352,7 +352,7 @@ let%expect_test _ =
 
 let readcopy scratch state =
   let reading = Bytes.length scratch in
-  let reach = state.readed + reading in
+  let reach = Src.readed state.source + reading in
   if reach > state.maximum_size
   then Failed { state; error = "maximum-size exceeded" }
   else if match state.size_limits with
@@ -367,7 +367,7 @@ let readcopy scratch state =
 ;;
 
 let read_char state =
-  let reach = state.readed + 1 in
+  let reach = Src.readed state.source + 1 in
   if reach > state.maximum_size
   then Failed { state; error = "maximum-size exceeded" }
   else if match state.size_limits with
@@ -378,14 +378,13 @@ let read_char state =
           | [] -> false
           | stop :: _ -> reach > stop
   then Failed { state; error = "expected-stop point exceeded C" }
-  else if reach <= Src.length state.source
+  else if 1 <= Src.available state.source
   then (
-    let value = Src.get_char state.source state.readed in
-    let state = bump_readed state 1 in
+    let value = Src.get_char state.source in
     Readed { state; value })
   else (
     (* we are reading 1 char, so we can't have left over from before *)
-    assert (state.readed = Src.length state.source);
+    assert (Src.available state.source = 0);
     let maximum_size = state.maximum_size - 1 in
     let stop_hints = List.map (fun stop -> stop - 1) state.stop_hints in
     let size_limits = List.map (fun limit -> limit - 1) state.size_limits in
@@ -396,9 +395,8 @@ let read_char state =
       ; cont =
           (fun source ->
             let state = internal_mk_state maximum_size size_limits stop_hints source in
-            assert (Src.length source > 0);
-            let value = Src.get_char source state.readed in
-            let state = bump_readed state 1 in
+            assert (Src.available source > 0);
+            let value = Src.get_char source in
             Readed { state; value })
       })
 ;;
@@ -409,7 +407,7 @@ let%expect_test _ =
       fmt
       "source: %S, readed: %d, stops: [%a], maxlen: %d"
       (Src.to_string state.source)
-      state.readed
+      (Src.readed state.source)
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
          Format.pp_print_int)
@@ -417,17 +415,17 @@ let%expect_test _ =
       state.maximum_size
   in
   let w state =
-    Format.printf "State: %a\n" pp_state state;
+    Format.printf "State: %a\n%!" pp_state state;
     let rec go state =
       match read_char state with
       | Suspended _ ->
-        Format.printf "Suspended!\n";
+        Format.printf "Suspended!\n%!";
         ()
       | Failed { error; state } ->
-        Format.printf "Error: %S\nState: %a\n" error pp_state state;
+        Format.printf "Error: %S\nState: %a\n%!" error pp_state state;
         ()
       | Readed { value; state } ->
-        Format.printf "Ok: %c\nState: %a\n" value pp_state state;
+        Format.printf "Ok: %c\nState: %a\n%!" value pp_state state;
         go state
     in
     go state
@@ -479,25 +477,24 @@ and 'a chunkreaded =
 
 let rec readchunked : type a. state -> a chunkreader -> a readed =
  fun state read ->
-  let hard_limit = state.maximum_size - state.readed in
+  let hard_limit = state.maximum_size - Src.readed state.source in
   let hard_limit =
     match state.size_limits with
     | [] -> hard_limit
-    | limit :: _ -> min hard_limit (limit - state.readed)
+    | limit :: _ -> min hard_limit (limit - Src.readed state.source)
   in
   let hard_limit =
     match state.stop_hints with
     | [] -> hard_limit
-    | stop :: _ -> min hard_limit (stop - state.readed)
+    | stop :: _ -> min hard_limit (stop - Src.readed state.source)
   in
-  let suspendable_limit = Src.length state.source - state.readed in
+  let suspendable_limit = Src.available state.source in
   let reading = min hard_limit suspendable_limit in
   assert (reading <= hard_limit);
   assert (reading >= 0);
-  match read (Src.of_src state.source ~offset:state.readed ~length:reading) with
+  match read state.source with
   | CReaded { value; readed } ->
     assert (readed <= reading);
-    let state = bump_readed state readed in
     Readed { state; value }
   | CSuspended { readed; cont } ->
     assert (readed <= reading);
@@ -506,10 +503,13 @@ let rec readchunked : type a. state -> a chunkreader -> a readed =
       let error = "chunkreader requests more bytes but hard limit was reached" in
       Failed { error; state })
     else (
-      let state = bump_readed state readed in
-      let maximum_size = state.maximum_size - state.readed in
-      let stop_hints = List.map (fun stop -> stop - state.readed) state.stop_hints in
-      let size_limits = List.map (fun limit -> limit - state.readed) state.size_limits in
+      let maximum_size = state.maximum_size - Src.readed state.source in
+      let stop_hints =
+        List.map (fun stop -> stop - Src.readed state.source) state.stop_hints
+      in
+      let size_limits =
+        List.map (fun limit -> limit - Src.readed state.source) state.size_limits
+      in
       assert (check_stops_and_limits 0 stop_hints maximum_size);
       assert (check_stops_and_limits 0 size_limits maximum_size);
       Suspended
@@ -519,8 +519,7 @@ let rec readchunked : type a. state -> a chunkreader -> a readed =
               let state = internal_mk_state maximum_size size_limits stop_hints source in
               readchunked state cont)
         })
-  | CFailed { readed; error } ->
-    let state = bump_readed state readed in
+  | CFailed { readed = _; error } ->
     let error = "Error in chunk-reader: " ^ error in
     Failed { state; error }
 ;;
@@ -546,7 +545,7 @@ let%expect_test _ =
       fmt
       "source: %S, readed: %d, stops: [%a], maxlen: %d"
       (Src.to_string state.source)
-      state.readed
+      (Src.readed state.source)
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
          Format.pp_print_int)
@@ -554,19 +553,20 @@ let%expect_test _ =
       state.maximum_size
   in
   let w state ls =
-    Format.printf "State: %a\n" pp_state state;
+    let state = state () in
+    Format.printf "State: %a\n%!" pp_state state;
     match
       List.fold_left
         (fun state l ->
           match read_string state l with
           | Suspended _ ->
-            Format.printf "Suspended!\n";
+            Format.printf "Suspended!\n%!";
             raise Exit
           | Failed { error; state } ->
-            Format.printf "Error: %S\nState: %a\n" error pp_state state;
+            Format.printf "Error: %S\nState: %a\n%!" error pp_state state;
             state
           | Readed { value; state } ->
-            Format.printf "Ok: %S\nState: %a\n" value pp_state state;
+            Format.printf "Ok: %S\nState: %a\n%!" value pp_state state;
             state)
         state
         ls
@@ -574,7 +574,7 @@ let%expect_test _ =
     | exception Exit -> ()
     | _ -> ()
   in
-  let state = mk_state (Src.of_string "foobarbaz") in
+  let state () = mk_state (Src.of_string "foobarbaz") in
   w state [ 3; 0; 6; 1 ];
   [%expect
     {|
@@ -586,7 +586,7 @@ let%expect_test _ =
     Ok: "barbaz"
     State: source: "foobarbaz", readed: 9, stops: [], maxlen: 4611686018427387903
     Suspended! |}];
-  let state = mk_state ~maximum_size:6 (Src.of_string "foobarbaz") in
+  let state () = mk_state ~maximum_size:6 (Src.of_string "foobarbaz") in
   w state [ 3; 0; 6; 3; 1 ];
   [%expect
     {|
@@ -606,15 +606,15 @@ let%expect_test _ =
     let rec go ss cont =
       match cont () with
       | Suspended { state; cont } ->
-        Format.printf "Suspended!\nState: %a\n" pp_state state;
+        Format.printf "Suspended!\nState: %a\n%!" pp_state state;
         let s = List.hd ss in
         let ss = List.tl ss in
         go ss (fun () -> cont (Src.of_string s))
       | Failed { error; state } as failed ->
-        Format.printf "Error: %S\nState: %a\n" error pp_state state;
+        Format.printf "Error: %S\nState: %a\n%!" error pp_state state;
         failed, state, ss
       | Readed { value; state } as readed ->
-        Format.printf "Ok: %S\nState: %a\n" value pp_state state;
+        Format.printf "Ok: %S\nState: %a\n%!" value pp_state state;
         readed, state, ss
     in
     let rec reads state ss ls =
@@ -628,7 +628,7 @@ let%expect_test _ =
     let s = List.hd ss in
     let ss = List.tl ss in
     let state = mk_state (Src.of_string s) in
-    Format.printf "Start!\nState: %a\n" pp_state state;
+    Format.printf "Start!\nState: %a\n%!" pp_state state;
     reads state ss ls
   in
   w [ "foo"; "bar"; "baz" ] [ 3; 0; 6 ];
@@ -750,12 +750,12 @@ let%expect_test _ =
     match loop [] (mk_state (Src.of_string s)) with
     | Ok uchars ->
       Format.printf
-        "%a\n"
+        "%a\n%!"
         (Format.pp_print_list
            ~pp_sep:(fun fmt () -> Format.pp_print_char fmt '.')
            (fun fmt u -> Format.fprintf fmt "x%x" (Uchar.to_int u)))
         uchars
-    | Error error -> Format.printf "Error %s\n" error
+    | Error error -> Format.printf "Error %s\n%!" error
   in
   w "";
   [%expect {| |}];
@@ -789,8 +789,7 @@ let of_string read s =
   let state = mk_state (Src.of_string s) in
   match read state with
   | Readed { state; value } ->
-    assert (state.readed <= Src.length state.source);
-    if state.readed < Src.length state.source then Error "Too many bytes" else Ok value
+    if Src.available state.source > 0 then Error "Too many bytes" else Ok value
   | Failed { state = _; error } -> Error error
   | Suspended { state = _; cont = _ } -> Error "Not enough bytes"
 ;;
@@ -801,8 +800,7 @@ let rec of_string_seq_loop seq cont =
   | Seq.Cons (s, seq) ->
     (match cont (Src.of_string s) with
      | Readed { state; value } ->
-       assert (state.readed <= Src.length state.source);
-       if state.readed < Src.length state.source
+       if Src.available state.source > 0
        then Error "Too many bytes"
        else if Seq.is_empty seq
        then Ok value

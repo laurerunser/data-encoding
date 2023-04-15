@@ -31,14 +31,22 @@ let%expect_test _ =
          Format.printf
            "Error: %S, Readed: %d, Stops: %a\n"
            error
-           state.readed
+           (Buffy.R.readed state)
            print_stops
            state
        | Readed { value; state } ->
-         Format.printf "Ok, Readed: %d, Stops: %a\n" state.readed print_stops state;
+         Format.printf
+           "Ok, Readed: %d, Stops: %a\n"
+           (Buffy.R.readed state)
+           print_stops
+           state;
          assert (Query.equal_of e v value)
        | Suspended { cont; state } ->
-         Format.printf "Suspended, Readed: %d, Stops: %a\n" state.readed print_stops state;
+         Format.printf
+           "Suspended, Readed: %d, Stops: %a\n"
+           (Buffy.R.readed state)
+           print_stops
+           state;
          let rec go offset (cont : Buffy.Src.t -> a Buffy.R.readed) =
            let length = min (String.length blob - offset) morereads in
            let source = Buffy.Src.of_string blob ~offset ~length in
@@ -47,16 +55,20 @@ let%expect_test _ =
              Format.printf
                "Error: %S, Readed: %d, Stops: %a\n"
                error
-               state.readed
+               (Buffy.R.readed state)
                print_stops
                state
            | Readed { value; state } ->
-             Format.printf "Ok, Readed: %d, Stops: %a\n" state.readed print_stops state;
+             Format.printf
+               "Ok, Readed: %d, Stops: %a\n"
+               (Buffy.R.readed state)
+               print_stops
+               state;
              assert (Query.equal_of e v value)
            | Suspended { cont; state } ->
              Format.printf
                "Suspended, Readed: %d, Stops: %a\n"
-               state.readed
+               (Buffy.R.readed state)
                print_stops
                state;
              go (offset + length) cont
