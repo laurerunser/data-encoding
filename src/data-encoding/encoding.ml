@@ -193,10 +193,7 @@ end
 
 let%expect_test _ =
   let w e v =
-    let (E binary_descr) =
-      Binary_data_encoding.Encoding.Advanced_low_level.introspect e.binary
-    in
-    let s = Binary_data_encoding.Writer.string_of binary_descr v in
+    let s = Binary_data_encoding.Writer.string_of e.binary v in
     let s = Result.get_ok s in
     Format.printf
       "%a\n"

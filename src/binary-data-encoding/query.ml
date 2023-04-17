@@ -188,9 +188,7 @@ let%expect_test _ =
   in
   w Descr.Unit ();
   [%expect {| 0 |}];
-  w
-    Descr.(TupCons (TStaticIntrinsic, Unit, TupCons (TStaticIntrinsic, Unit, TupNil)))
-    [ (); () ];
+  w Descr.(TupCons (TAnyStatic, Unit, TupCons (TAnyStatic, Unit, TupNil))) [ (); () ];
   [%expect {| 0 |}];
   w Descr.(Numeral { numeral = Int64; endianness = Big_endian }) 0x00L;
   [%expect {| 8 |}];
@@ -271,7 +269,7 @@ let%expect_test _ =
   in
   w Descr.Unit;
   [%expect {| 0 |}];
-  w Descr.(TupCons (TStaticIntrinsic, Unit, TupCons (TStaticIntrinsic, Unit, TupNil)));
+  w Descr.(TupCons (TAnyStatic, Unit, TupCons (TAnyStatic, Unit, TupNil)));
   [%expect {| 0 |}];
   w Descr.(Numeral { numeral = Int64; endianness = Big_endian });
   [%expect {| 8 |}];
@@ -369,8 +367,8 @@ let rec pp_of : type s t. (s, t) Descr.t -> Format.formatter -> t -> unit =
   | Numeral { numeral = UInt30; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
   | Numeral { numeral = UInt16; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
   | Numeral { numeral = UInt8; endianness = _ } -> Format.fprintf fmt "%d" (v :> int)
-  | String _ -> Format.fprintf fmt "%s" v
-  | Bytes _ -> Format.fprintf fmt "%s" (Bytes.unsafe_to_string v)
+  | String _ -> Format.fprintf fmt "%S" v
+  | Bytes _ -> Format.fprintf fmt "%S" (Bytes.unsafe_to_string v)
   | Array { length = _; elementencoding } ->
     Format.(
       fprintf
@@ -509,16 +507,14 @@ let rec sizability : type s a. (s, a) Descr.t -> s = function
     (* TODO? be more thourough and check if all the cases have the same size *)
     Intrinsic Dynamic
   | TupNil -> Intrinsic (Static Commons.Sizedints.Uint62.zero)
-  | TupCons (catenator, head, tail) ->
-    (match catenator with
-     | TStaticIntrinsic ->
-       (match sizability tail with
-        | Intrinsic (Static t) ->
-          let (Intrinsic (Static h)) = sizability head in
-          (* TODO: catch overflow *)
-          Intrinsic (Static (Commons.Sizedints.Uint62.add h t))
-        | Intrinsic Dynamic -> Intrinsic Dynamic)
-     | TDynamicIntrinsic -> Intrinsic Dynamic
-     | TExtrinsicStatic -> Extrinsic
-     | TIntrinsicExtrinsic -> Extrinsic)
+  | TupCons (TAnyStatic, head, tail) ->
+    (match sizability head with
+     | Intrinsic (Static h) ->
+       let (Intrinsic (Static t)) = sizability tail in
+       (* TODO: catch overflow *)
+       Intrinsic (Static (Commons.Sizedints.Uint62.add h t))
+     | Intrinsic Dynamic -> Intrinsic Dynamic
+     | Extrinsic -> Extrinsic)
+  | TupCons (TIntrinsicExtrinsic, _, _) -> Extrinsic
+  | TupCons (TIntrinsicDynamic, _, _) -> Intrinsic Dynamic
 ;;

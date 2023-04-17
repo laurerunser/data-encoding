@@ -1,15 +1,10 @@
-let mk
-  : type a.
-    a Data_encoding.Encoding.t
-    -> (Binary_data_encoding__Sizability.static, a) Binary_data_encoding__Descr.t
-  =
+let mk : type a. a Data_encoding.Encoding.t -> a Binary_data_encoding.Encoding.t =
  fun e ->
   let b = Data_encoding.Encoding.to_binary e in
-  let (E descr) = Binary_data_encoding.Encoding.Advanced_low_level.introspect b in
-  match Binary_data_encoding.Query.sizability descr with
-  | Intrinsic (Static _) -> descr
-  | Intrinsic Dynamic -> failwith "static only here"
-  | Extrinsic -> failwith "static only here"
+  match Binary_data_encoding.Query.sizability b with
+  | S (Intrinsic (Static _)) -> b
+  | S (Intrinsic Dynamic) -> failwith "static only here"
+  | S Extrinsic -> failwith "static only here"
 ;;
 
 let int64_twople =

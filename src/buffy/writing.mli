@@ -13,54 +13,31 @@
     suspension/resumption of the serialisation process to insert concurrency
     cooperation points. *)
 
-(** {2: Destinations} *)
+(** {2: State} *)
 
-(** A [destination] is a value that the [writek] function uses to write bytes
-    to. It is a stateful wrapper around a [bytes] buffer. *)
-type destination = private
-  { buffer : bytes (** [buffer] is the actual bytes that the data is serialised onto *)
-  ; offset : int
-      (** [offset] is the start of the area of [buffer] that the data is
-                     serialised onto *)
-  ; length : int
-      (** [length] is the length of the area of [buffer] that the data is
-                     serialised onto *)
-  ; written : int
-      (** [written] is the number of bytes that have been serialised; it
-                      starts at [0] and is updated when writing *)
-  ; maximum_length : int
-      (** [maximum_length] is the total number of bytes that
+(** A [state] is a value that the [writek] function uses to write bytes
+    to. It is a stateful wrapper around a [Dst.t] buffer. *)
+type state = private
+  { destination : Dst.t
+  ; maximum_size : int
+      (** [maximum_size] is the total number of bytes that
                              can ever be written, on this buffer and all the
                              subsequent buffers that may be needed after a
                              suspend/resume. *)
+  ; size_limits : int list
   }
 
-(** [mk_destination buffer offset length] is a destination. With such a
-    destination, the [writek] function can write on the bytes of [buffer] from
-    the [offset] up to [length] bytes.
+(** [mk_state destination] is a state. With such a
+    state, the [writek] function can write on the [destination].
 
-    @param ?maximum_length is a limit on the maximum number of bytes
-    written. [maximum_length] is a limit for a whole serialisation procedure
-    which might use multiple buffers (see the documentation of [writek]).
+    @param ?maximum_size is a limit on the maximum number of bytes
+    written. [maximum_size] is a limit for a whole serialisation procedure
+    which might use multiple destination (see the documentation of [writek]). *)
+val mk_state : ?maximum_size:int -> Dst.t -> state
 
-    @raise Failure if [offset] and [length] do not form a valid slice of
-    [buffer]. Specifically if
-    [ offset<0 || length<0 || offset+length>Bytes.length buffer ]. *)
-val mk_destination : ?maximum_length:int -> bytes -> int -> int -> destination
-
-(** [set_maximum_length destination maximum_length] is a destination identical
-    to [destination] but with the [maximum_length] field set to
-    [maximum_length].
-
-    Beware, the [destination] returned by a call to [set_maximum_length] shares
-    its buffer with the original. The returned buffer is intended to replace the
-    original one for the caller.
-
-    @raise Invalid_argument if [maximum_length > destination.maximum_length].
-    I.e., if this function is used to increase the limit.
-
-    @raise Invalid_argument if [maximum_length < 0]. *)
-val set_maximum_length : destination -> int -> destination
+val push_limit : state -> int -> (state, string) result
+val remove_limit : state -> (state, string) result
+val written : state -> int
 
 (** [destination_too_small_to_continue_message] is an error message used when a
     suspended destination is provided with a new buffer which is too small to
@@ -90,64 +67,51 @@ in
     *)
 val destination_too_small_to_continue_message : string
 
-(** [slice_of_destination destination] is a tuple [(buffer, offset, written)]
-    where [buffer] and [offset] are as passed by [mk_destination] and where
-    [written] is the number of bytes that have been written onto the buffer.
-
-    In other words, [slice_of_destination destination] is a triplet which
-    indicate the part of the destination which contains serialised data. *)
-val slice_of_destination : destination -> bytes * int * int
-
 (** A [written] is a value returned by [writek] in order to indicate the status
     of the serialisation operation. *)
 type written =
-  | Written of
-      { destination : destination
-          (** The serialisation was successful and complete. Use
-                [slice_of_destination] to extract useful information from this
-                [destination]. *)
-      }
+  | Written of { state : state (** The serialisation was successful and complete. *) }
   | Failed of
-      { destination : destination
-          (** [destination] may contain some serialised data (data up until
+      { state : state
+          (** [state] may contain some serialised data (data up until
                 the error). Depending on your application you may be able to
-                restart based on this [destination]. *)
+                restart based on this [state]. *)
       ; error : string
           (** [error] carries a human-readable message indicating the reason
                 for the failure. *)
       }
   | Suspended of
-      { destination : destination
-          (** The serialisation is partial. Some bytes have been written. Use
-                [slice_of_destination] to extract useful information about from
-                this [destination]. *)
-      ; cont : bytes -> int -> int -> written
+      { state : state (** The serialisation is partial. Some bytes have been written. *)
+      ; cont : Dst.t -> written
           (** The serialisation is suspended because it ran out of bytes to
-                write to. Use [cont buffer offset length] to provide one more
+                write to. Use [cont dst] to provide one more
                 slice that the serialisation can write on.
 
-                You can pass the same buffer as before (after using the data
-                therein) or pass a new buffer. You can also delay the resumption
-                of the serialisation until a later point in your program. *)
+                You can pass the same destination as before (after using the
+                data therein) or pass a new destination. You can also delay the
+                resumption of the serialisation until a later point in your
+                program. *)
       }
 
 (** {2: Simple writing functions} *)
 
-(** [writef destination writing f] writes some content on the destination's
-    buffer. More specifically, [writef]
+(* TODO? [type 'a writer = 'a -> state -> written] *)
+
+(** [writef state writing f] writes some content on the state's destination at
+    the appropriate offset. More specifically, [writef]
 
     - assumes that exactly [writing] bytes are going to be written (it may
       suspend the serialisation based on that information), and
     - calls [f buffer off] so that this function does the writing (it may use
-      [destination.buffer] or a different buffer if it delays the call until
+      [state.destination] or a different destination if it delays the call until
       after a suspension).
 
     As a caller it is your responsibility to ensure that [f] writes exactly
     [writing] bytes on the provided buffer starting at exactly the provided
-    offset.
+    offset. Exceptions may be raised otherwise.
 
     It is recommended to use this function to write data that is at least an
-    order of magnitude smaller than the destination's buffer size. (Or,
+    order of magnitude smaller than the destination's size. (Or,
     equivalently, it is recommended to provide buffers that are at least an
     order of magnitude larger than the largest value of [writing] in your
     serialisation application.) If [writing] is too large (or equivalently if
@@ -155,74 +119,77 @@ type written =
     be engaged when the buffer utilisation is small.
 
     If you need to write large values, consider using [writechunked] below. *)
-val writef : destination -> int -> (bytes -> int -> unit) -> written
+val writef : state -> int -> (Dst.t -> unit) -> written
 
 (** {2: Chunked writing functions} *)
 
 (** [chunkwriter] is the type of functions that can be used to write a single
     value in multiple chunks. See the documentation of [writechunked] below for
     details on usage. *)
-type chunkwriter = bytes -> int -> int -> chunkwritten
+type chunkwriter = Dst.t -> int -> chunkwritten
 
 and chunkwritten =
-  | K of int * chunkwriter
-      (** [K (l,cw)] indicates the chunkwriter has written
-                               [l] bytes and has more bytes to write still. *)
-  | Finish of int (** [Finish l] indicates the chunkwriter has finished writing *)
+  | CWritten of { written : int }
+  | CFailed of
+      { written : int
+      ; error : string
+      }
+  | CSuspended of
+      { written : int
+      ; cont : chunkwriter
+      }
 
-(** [writechunked destination w] interleaves calls to [w] within the
-    suspend-resume mechanism of the [destination] allowing the user to write
-    more bytes than are available in the buffer.
+(** [writechunked state w] interleaves calls to [w] within the
+    suspend-resume mechanism of the [state] allowing the user to write
+    more bytes than are available in the destination.
 
-    [writechunked destination w] calls [w b o l] with [b] the underlying buffer
+    [writechunked state w] calls [w d o l] with [d] the underlying destination
     that [w] should write on, [o] the offset that [w] should write at, [l] the
     maximum number of bytes that [w] should write.
 
     - If [w] needs to write [ll] bytes with [ll<=l], then it should write [ll]
-      bytes and return [Finished ll].
+      bytes and return [CWritten { written = ll }].
     - If [w] needs to write [ll] bytes with [ll>l], then it should write as many
-      bytes as possible within the limit of [l] and return [K (lll,w)] where
-      [lll] is the number of bytes written and [w] is a [chunkwriter] for the
-      bytes that remain.
+      bytes as possible within the limit of [l] and return
+      [CSuspended { written; cont }] where [written] is the number of bytes
+      written and [cont] is a [chunkwriter] for the bytes that remain.
 
     As a caller it is your responsibility to ensure that [w] follows exactly the
     discipline described above. *)
-val writechunked : destination -> chunkwriter -> written
+val writechunked : state -> chunkwriter -> written
 
 (** {2: OCaml base-type writers} *)
 
-(* TODO? place these functions in a module of its own *)
-(* TODO? [type 'a writer = 'a -> destination -> written] *)
+(** [write_string state s] is equivalent to
+    [writef state (String.length s) (fun b o -> Bytes.blit_string s 0 b o (String.length s)].
+    I.e., it writes the whole of the string [s] onto [state.destination]. There
+    is an internal mechanism to make it friendly to small and large strings
+    alike. *)
+val write_string : state -> string -> written
 
-(** [write_small_string destination s] is equivalent to
-    [writef destination (String.length s) (fun b o -> Bytes.blit_string s 0 b o (String.length s)].
-    I.e., it writes the whole of the string [s] onto [destination]. The warning
-    about large writes detailed for [writef] apply too. For large strings
-    consider using [writechunked] or [write_large_string]. *)
-val write_small_string : destination -> string -> written
-
-(** [write_char destination c] is equivalent to
-    [writed destination 1 (fun b o -> Bytes.set b o c)]. *)
-val write_char : destination -> char -> written
-
-(** [write_utf8_uchar destination c] writes the UTF-8 encoding of the unicode
-    point [c]. *)
-val write_utf8_uchar : destination -> Uchar.t -> written
-
-(** [write_large_string destination s] uses the chunkwritter mechanism
-    above to write the string [s] onto the destination. You should use this
-    function when you need to write a string that is on the same order of
-    magnitude of size as the buffer. In such a case, the chunkwritter will
-    ensure that no space is wasted on the buffer. *)
-val write_large_string : destination -> string -> written
-
-(** [write_large_bytes] is similar to [write_large_string] but for bytes. Beware
+(** [write_bytes] is similar to [write_string] but for bytes. Beware
     that in case of suspension, time can elapse in between multiple uses of the
     argument: avoid performing side-effects on the bytes during that time. *)
-val write_large_bytes : destination -> bytes -> written
+val write_bytes : state -> bytes -> written
 
-(* TODO? list/array/seq writing combinator? other combinators? *)
-(* TODO? uint8, uint16, etc. writing functions (wrapping [Bytes.*]) *)
+(** [write_char state c] is equivalent to
+    [writef state 1 (fun b o -> Bytes.set b o c)]. *)
+val write_char : state -> char -> written
+
+(** [write_utf8_uchar state c] writes the UTF-8 encoding of the unicode
+    point [c]. *)
+val write_utf8_uchar : state -> Uchar.t -> written
+
+val write_uint8 : state -> int -> written
+val write_int8 : state -> int -> written
+val write_uint16_be : state -> int -> written
+val write_uint16_le : state -> int -> written
+val write_int16_be : state -> int -> written
+val write_int16_le : state -> int -> written
+val write_int32_be : state -> int32 -> written
+val write_int32_le : state -> int32 -> written
+val write_int64_be : state -> int64 -> written
+val write_int64_le : state -> int64 -> written
 
 (** {2: Composing writing functions} *)
 
@@ -230,12 +197,12 @@ val write_large_bytes : destination -> bytes -> written
     functions. It handles failures and suspension. E.g.,
 
 {[
-let destination = mk_destination … in
-let* destination = write_large_string destination "…" in
-let* destination = write_char destination '!' in
+let state = mk_state … in
+let* state = write_string state "…" in
+let* state = write_char state '!' in
 …
 ]} *)
-val ( let* ) : written -> (destination -> written) -> written
+val ( let* ) : written -> (state -> written) -> written
 
 (** {2 Wrapping writing functions} *)
 
@@ -247,7 +214,7 @@ val ( let* ) : written -> (destination -> written) -> written
     at which point their content is concatenated. If the
     [destination_too_small_to_continue_message] error is encountered when
     resuming, the buffer size is doubled on retry. *)
-val to_string : ?buffer_size:int -> (destination -> written) -> (string, string) result
+val to_string : ?buffer_size:int -> (state -> written) -> (string, string) result
 
 (** [blit_instructions ~buffer writer v] is a sequence of triplets [(b,o,l)].
     For each triplet, the [l] bytes in [b] starting at offset [o] is a part of
@@ -291,7 +258,4 @@ Lwt.return (String.concat "" (List.rev chunks))
 
     @raise Failure When forcing any of the elements of the returned sequence,
     the exception [Failure] may be raised. *)
-val blit_instructions
-  :  buffer:bytes
-  -> (destination -> written)
-  -> (bytes * int * int) Seq.t
+val blit_instructions : buffer:bytes -> (state -> written) -> (bytes * int * int) Seq.t
