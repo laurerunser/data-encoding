@@ -12,10 +12,10 @@ type 'a seq_with_length = 'a Descr.seq_with_length =
   }
 
 type variable_count_spec =
-  [ `UInt62
-  | `UInt30
-  | `UInt16
-  | `UInt8
+  [ `Uint62
+  | `Uint30
+  | `Uint16
+  | `Uint8
   ]
 
 type count_spec =
@@ -24,10 +24,10 @@ type count_spec =
   ]
 
 type 'a numeral = 'a Descr.numeral =
-  | UInt8 : Sizedints.Uint8.t numeral
-  | UInt16 : Sizedints.Uint16.t numeral
-  | UInt30 : Sizedints.Uint30.t numeral
-  | UInt62 : Sizedints.Uint62.t numeral
+  | Uint8 : Sizedints.Uint8.t numeral
+  | Uint16 : Sizedints.Uint16.t numeral
+  | Uint30 : Sizedints.Uint30.t numeral
+  | Uint62 : Sizedints.Uint62.t numeral
   | Int32 : int32 numeral
   | Int64 : int64 numeral
 
@@ -62,10 +62,10 @@ let bool = E Bool
 module Big_endian = struct
   let int64 = E (Numeral { numeral = Int64; endianness = Big_endian })
   let int32 = E (Numeral { numeral = Int32; endianness = Big_endian })
-  let uint30 = E (Numeral { numeral = UInt30; endianness = Big_endian })
-  let uint62 = E (Numeral { numeral = UInt62; endianness = Big_endian })
-  let uint16 = E (Numeral { numeral = UInt16; endianness = Big_endian })
-  let uint8 = E (Numeral { numeral = UInt8; endianness = Big_endian })
+  let uint30 = E (Numeral { numeral = Uint30; endianness = Big_endian })
+  let uint62 = E (Numeral { numeral = Uint62; endianness = Big_endian })
+  let uint16 = E (Numeral { numeral = Uint16; endianness = Big_endian })
+  let uint8 = E (Numeral { numeral = Uint8; endianness = Big_endian })
 end
 
 include Big_endian
@@ -75,10 +75,10 @@ let default_endianness = Big_endian
 module Little_endian = struct
   let int64 = E (Numeral { numeral = Int64; endianness = Little_endian })
   let int32 = E (Numeral { numeral = Int32; endianness = Little_endian })
-  let uint30 = E (Numeral { numeral = UInt30; endianness = Little_endian })
-  let uint62 = E (Numeral { numeral = UInt62; endianness = Little_endian })
-  let uint16 = E (Numeral { numeral = UInt16; endianness = Little_endian })
-  let uint8 = E (Numeral { numeral = UInt8; endianness = Little_endian })
+  let uint30 = E (Numeral { numeral = Uint30; endianness = Little_endian })
+  let uint62 = E (Numeral { numeral = Uint62; endianness = Little_endian })
+  let uint16 = E (Numeral { numeral = Uint16; endianness = Little_endian })
+  let uint8 = E (Numeral { numeral = Uint8; endianness = Little_endian })
 end
 
 let option (E t) =
@@ -146,10 +146,10 @@ let array : type a. count_spec -> a t -> a array t =
            ~maximum_size:
              (let maximum_length =
                 match lengthencoding with
-                | `UInt8 -> Sizedints.Uint8.(to_uint62 max_int)
-                | `UInt16 -> Sizedints.Uint16.(to_uint62 max_int)
-                | `UInt30 -> Sizedints.Uint30.(to_uint62 max_int)
-                | `UInt62 -> Sizedints.Uint62.max_int
+                | `Uint8 -> Sizedints.Uint8.(to_uint62 max_int)
+                | `Uint16 -> Sizedints.Uint16.(to_uint62 max_int)
+                | `Uint30 -> Sizedints.Uint30.(to_uint62 max_int)
+                | `Uint62 -> Sizedints.Uint62.max_int
               in
               Optint.Int63.mul
                 (maximum_length :> Optint.Int63.t)
@@ -192,10 +192,10 @@ let string lengthencoding =
         ~equal:String.equal
         ~maximum_size:
           (match lengthencoding with
-           | `UInt8 -> (Sizedints.Uint8.(to_uint62 max_int) :> Optint.Int63.t)
-           | `UInt16 -> (Sizedints.Uint16.(to_uint62 max_int) :> Optint.Int63.t)
-           | `UInt30 -> (Sizedints.Uint30.(to_uint62 max_int) :> Optint.Int63.t)
-           | `UInt62 -> (Sizedints.Uint62.max_int :> Optint.Int63.t))
+           | `Uint8 -> (Sizedints.Uint8.(to_uint62 max_int) :> Optint.Int63.t)
+           | `Uint16 -> (Sizedints.Uint16.(to_uint62 max_int) :> Optint.Int63.t)
+           | `Uint30 -> (Sizedints.Uint30.(to_uint62 max_int) :> Optint.Int63.t)
+           | `Uint62 -> (Sizedints.Uint62.max_int :> Optint.Int63.t))
     in
     E descr
 ;;
@@ -214,10 +214,10 @@ let bytes lengthencoding =
         ~maximum_size:
           (match lengthencoding with
            | `Fixed n -> (n :> Optint.Int63.t)
-           | `UInt8 -> (Sizedints.Uint8.(to_uint62 max_int) :> Optint.Int63.t)
-           | `UInt16 -> (Sizedints.Uint16.(to_uint62 max_int) :> Optint.Int63.t)
-           | `UInt30 -> (Sizedints.Uint30.(to_uint62 max_int) :> Optint.Int63.t)
-           | `UInt62 -> (Sizedints.Uint62.max_int :> Optint.Int63.t))
+           | `Uint8 -> (Sizedints.Uint8.(to_uint62 max_int) :> Optint.Int63.t)
+           | `Uint16 -> (Sizedints.Uint16.(to_uint62 max_int) :> Optint.Int63.t)
+           | `Uint30 -> (Sizedints.Uint30.(to_uint62 max_int) :> Optint.Int63.t)
+           | `Uint62 -> (Sizedints.Uint62.max_int :> Optint.Int63.t))
     in
     E descr
 ;;
@@ -228,7 +228,7 @@ let ellastic_uint30 : Sizedints.Uint30.t t =
   let payload_width = (* number of significant bits in each byte of payload *) 7 in
   let descr =
     Encoding_internals.fold
-      ~chunkencoding:(Numeral { numeral = UInt8; endianness = Big_endian })
+      ~chunkencoding:(Numeral { numeral = Uint8; endianness = Big_endian })
       ~chunkify:(fun (u30 : Sizedints.Uint30.t) ->
         let u30 = (u30 :> int) in
         let rec chunkify u30 () =

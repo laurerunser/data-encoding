@@ -78,9 +78,9 @@ let%expect_test _ =
   (* a complex encoding with some nesting structure *)
   let encoding =
     let open Encoding in
-    let base = with_size_limit 56 (seq `UInt8 uint16) in
-    let tup = with_size_limit 32 (seq `UInt8 (tuple [ base; base ])) in
-    let arr = array `UInt30 tup in
+    let base = with_size_limit 56 (seq `Uint8 uint16) in
+    let tup = with_size_limit 32 (seq `Uint8 (tuple [ base; base ])) in
+    let arr = array `Uint30 tup in
     arr
   in
   let uint16 n = Seq.return (Option.get @@ Encoding.Sizedints.Uint16.of_int n) in
@@ -120,13 +120,13 @@ let%expect_test _ =
       with_size_limit
         128
         (With_size.seq_with_size
-           `UInt8
+           `Uint8
            (with_size_limit
               64
               (tuple
-                 [ With_size.seq_with_size `UInt8 uint16; string `UInt8; string `UInt8 ])))
+                 [ With_size.seq_with_size `Uint8 uint16; string `Uint8; string `Uint8 ])))
     in
-    array `UInt30 tup
+    array `Uint30 tup
   in
   let v =
     let open Encoding.Hlist in
@@ -168,10 +168,10 @@ let%expect_test _ =
     let tup =
       with_size_limit
         8
-        (tuple [ With_size.seq_with_size `UInt8 uint16; string `UInt8; string `UInt8 ])
+        (tuple [ With_size.seq_with_size `Uint8 uint16; string `Uint8; string `Uint8 ])
     in
-    let seq = with_size_limit 128 (With_size.seq_with_size `UInt8 tup) in
-    array `UInt30 seq
+    let seq = with_size_limit 128 (With_size.seq_with_size `Uint8 tup) in
+    array `Uint30 seq
   in
   w 10 6 encoding [||];
   [%expect {|
@@ -201,13 +201,13 @@ let%expect_test _ =
       with_size_limit
         1024
         (tuple
-           [ With_size.seq_with_size `UInt8 uint16
-           ; with_size_limit 10 (string `UInt8)
-           ; string `UInt8
+           [ With_size.seq_with_size `Uint8 uint16
+           ; with_size_limit 10 (string `Uint8)
+           ; string `Uint8
            ])
     in
-    let seq = with_size_limit 64 (With_size.seq_with_size `UInt8 tup) in
-    array `UInt30 seq
+    let seq = with_size_limit 64 (With_size.seq_with_size `Uint8 tup) in
+    array `Uint30 seq
   in
   let v sz =
     let open Encoding.Hlist in

@@ -192,15 +192,15 @@ and write_numeral
   | Int64, Little_endian -> Buffy.W.write_int64_le state v
   | Int32, Big_endian -> Buffy.W.write_int32_be state v
   | Int32, Little_endian -> Buffy.W.write_int32_le state v
-  | UInt62, Big_endian ->
+  | Uint62, Big_endian ->
     Buffy.W.write_int64_be state (Optint.Int63.to_int64 (v :> Optint.Int63.t))
-  | UInt62, Little_endian ->
+  | Uint62, Little_endian ->
     Buffy.W.write_int64_le state (Optint.Int63.to_int64 (v :> Optint.Int63.t))
-  | UInt30, Big_endian -> Buffy.W.write_int32_be state (Int32.of_int (v :> int))
-  | UInt30, Little_endian -> Buffy.W.write_int32_le state (Int32.of_int (v :> int))
-  | UInt16, Big_endian -> Buffy.W.write_uint16_be state (v :> int)
-  | UInt16, Little_endian -> Buffy.W.write_uint16_le state (v :> int)
-  | UInt8, _ -> Buffy.W.write_uint8 state (v :> int)
+  | Uint30, Big_endian -> Buffy.W.write_int32_be state (Int32.of_int (v :> int))
+  | Uint30, Little_endian -> Buffy.W.write_int32_le state (Int32.of_int (v :> int))
+  | Uint16, Big_endian -> Buffy.W.write_uint16_be state (v :> int)
+  | Uint16, Little_endian -> Buffy.W.write_uint16_le state (v :> int)
+  | Uint8, _ -> Buffy.W.write_uint8 state (v :> int)
 ;;
 
 let write

@@ -18,7 +18,7 @@ let all_ground_encodings : any_encoding Seq.t =
     ; AnyE ("ui30le", Little_endian.uint30)
     ; AnyE ("ui16le", Little_endian.uint16)
     ; AnyE ("ui8le", Little_endian.uint8)
-    ; AnyE ("str[ui8]", string `UInt8) (* TODO: support bigger strings *)
+    ; AnyE ("str[ui8]", string `Uint8) (* TODO: support bigger strings *)
     ]
 ;;
 
@@ -46,15 +46,15 @@ let sequences : any_encoding Seq.t -> any_encoding Seq.t =
   let open Binary_data_encoding.Encoding in
   Seq.flat_map (fun (AnyE (s, e)) ->
     let l : any_encoding list =
-      [ AnyE (Format.asprintf "array[ui8](%s)" s, array `UInt8 e)
+      [ AnyE (Format.asprintf "array[ui8](%s)" s, array `Uint8 e)
       ; AnyE (Format.asprintf "array[4](%s)" s, array (`Fixed four) e)
-      ; AnyE (Format.asprintf "seql[ui8](%s)" s, seq `UInt8 e)
+      ; AnyE (Format.asprintf "seql[ui8](%s)" s, seq `Uint8 e)
         (*       ; AnyE (Format.asprintf "seql[4](%s)" s, seq (`Fixed four) e) *)
       ]
     in
     let l =
       (* TODO: better detect zeroability *)
-      match With_size.seq_with_size `UInt16 e with
+      match With_size.seq_with_size `Uint16 e with
       | exception Invalid_argument _ ->
         (* We cannot apply [seq_with_size] to zero-length elements *)
         l
@@ -67,8 +67,8 @@ let large_sequences : any_encoding Seq.t -> any_encoding Seq.t =
   let open Binary_data_encoding.Encoding in
   Seq.flat_map (fun (AnyE (s, e)) ->
     List.to_seq
-      [ AnyE (Format.asprintf "array[ui30](%s)" s, array `UInt30 e)
-      ; AnyE (Format.asprintf "seql[ui30](%s)" s, seq `UInt30 e)
+      [ AnyE (Format.asprintf "array[ui30](%s)" s, array `Uint30 e)
+      ; AnyE (Format.asprintf "seql[ui30](%s)" s, seq `Uint30 e)
       ])
 ;;
 

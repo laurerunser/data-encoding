@@ -13,12 +13,12 @@ let rec generator_of_descr
   | Bool -> QCheck2.Gen.bool
   | Numeral { numeral = Int64; endianness = _ } -> QCheck2.Gen.int64
   | Numeral { numeral = Int32; endianness = _ } -> QCheck2.Gen.int32
-  | Numeral { numeral = UInt30; endianness = _ } ->
+  | Numeral { numeral = Uint30; endianness = _ } ->
     QCheck2.Gen.(
       map
         (fun v -> Option.get @@ Commons.Sizedints.Uint30.of_int v)
         (0 -- (Commons.Sizedints.Uint30.max_int :> int)))
-  | Numeral { numeral = UInt62; endianness = _ } ->
+  | Numeral { numeral = Uint62; endianness = _ } ->
     QCheck2.Gen.(
       map
         (fun v -> Option.get @@ Commons.Sizedints.Uint62.of_int64 v)
@@ -36,12 +36,12 @@ let rec generator_of_descr
                 else (
                   let shrunk = Int64.shift_right i64 1 in
                   Some (shrunk, shrunk))))))
-  | Numeral { numeral = UInt16; endianness = _ } ->
+  | Numeral { numeral = Uint16; endianness = _ } ->
     QCheck2.Gen.(
       map
         (fun v -> Option.get @@ Commons.Sizedints.Uint16.of_int v)
         (0 -- (Commons.Sizedints.Uint16.max_int :> int)))
-  | Numeral { numeral = UInt8; endianness = _ } ->
+  | Numeral { numeral = Uint8; endianness = _ } ->
     QCheck2.Gen.(
       map
         (fun v -> Option.get @@ Commons.Sizedints.Uint8.of_int v)
