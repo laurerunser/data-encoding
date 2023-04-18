@@ -128,8 +128,14 @@ let rec size_of : type s t. (s, t) Descr.t -> t -> (Optint.Int63.t, string) resu
        let* size = size_of descr v in
        Ok (Optint.Int63.add Optint.Int63.one size))
   | Headered
-      { mkheader; headerdescr; writers = _; descr_of_header; equal = _; maximum_size = _ }
-    ->
+      { mkheader
+      ; headerdescr
+      ; writers = _
+      ; readers = _
+      ; descr_of_header
+      ; equal = _
+      ; maximum_size = _
+      } ->
     let* header = mkheader v in
     let* headersize = size_of headerdescr header in
     let* descr = descr_of_header header in
@@ -242,6 +248,7 @@ let rec maximum_size_of : type s t. (s, t) Descr.t -> Optint.Int63.t = function
       { mkheader = _
       ; headerdescr
       ; writers = _
+      ; readers = _
       ; descr_of_header = _
       ; equal = _
       ; maximum_size
@@ -268,9 +275,9 @@ let rec maximum_size_of : type s t. (s, t) Descr.t -> Optint.Int63.t = function
     let payload_size =
       match cases with
       | [] -> assert false
-      | AnyC { tag = _; descr; write = _; inject = _ } :: cases ->
+      | AnyC { tag = _; descr; write = _; read = _; inject = _ } :: cases ->
         List.fold_left
-          (fun sz (Descr.AnyC { tag = _; descr; write = _; inject = _ }) ->
+          (fun sz (Descr.AnyC { tag = _; descr; write = _; read = _; inject = _ }) ->
             let nsz = maximum_size_of descr in
             if Optint.Int63.compare sz nsz > 0 then nsz else sz)
           (maximum_size_of descr)
@@ -352,6 +359,7 @@ let rec equal_of : type s t. (s, t) Descr.t -> t -> t -> bool = function
       { mkheader = _
       ; headerdescr = _
       ; writers = _
+      ; readers = _
       ; descr_of_header = _
       ; equal
       ; maximum_size = _
@@ -427,6 +435,7 @@ let rec pp_of : type s t. (s, t) Descr.t -> Format.formatter -> t -> unit =
       { mkheader
       ; headerdescr = _
       ; writers = _
+      ; readers = _
       ; descr_of_header
       ; equal = _
       ; maximum_size = _
@@ -459,7 +468,9 @@ let rec pp_of : type s t. (s, t) Descr.t -> Format.formatter -> t -> unit =
   | Size_headered { size = _; descr } -> pp_of descr fmt v
   | Size_limit { at_most = _; descr } -> pp_of descr fmt v
   | Union { tag = tag_encoding; serialisation; deserialisation = _; cases = _ } ->
-    let (AnyP ({ Descr.tag; descr; write = _; inject = _ }, payload)) = serialisation v in
+    let (AnyP ({ Descr.tag; descr; write = _; read = _; inject = _ }, payload)) =
+      serialisation v
+    in
     Format.fprintf fmt "case(%a:%a)" (pp_of tag_encoding) tag (pp_of descr) payload
   | TupNil -> ()
   | TupCons { tupler = _; head; tail = TupNil } ->
@@ -508,6 +519,7 @@ let rec sizability : type s a. (s, a) Descr.t -> s = function
       { mkheader = _
       ; headerdescr
       ; writers = _
+      ; readers = _
       ; descr_of_header = _
       ; equal = _
       ; maximum_size = _

@@ -59,8 +59,18 @@ module Helpers = struct
         end)
         cache_size
     in
+    let readers =
+      Commons.BoundedCache.make
+        (module struct
+          type t = h
+
+          let equal = Query.equal_of headerdescr
+          let hash = Hashtbl.hash
+        end)
+        cache_size
+    in
     Descr.Headered
-      { mkheader; headerdescr; writers; descr_of_header; equal; maximum_size }
+      { mkheader; headerdescr; writers; readers; descr_of_header; equal; maximum_size }
  ;;
 
   let fold ~chunkdescr ~chunkify ~readinit ~reducer ~equal ~maximum_size =
@@ -547,10 +557,12 @@ module Union = struct
   let case tag (E descr) inject =
     match Query.sizability descr with
     | Extrinsic -> raise (Invalid_argument "extrinsic payload encoding in tag")
-    | Intrinsic _ -> ECase { tag; descr; write = None; inject }
+    | Intrinsic _ -> ECase { tag; descr; write = None; read = None; inject }
   ;;
 
-  let case_unit tag inject = ECase { tag; descr = Unit; write = None; inject }
+  let case_unit tag inject =
+    ECase { tag; descr = Unit; write = None; read = None; inject }
+  ;;
 
   let union
     : type a tag.

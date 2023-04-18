@@ -98,7 +98,14 @@ let rec writek : type s a. (s, a) Descr.t -> Buffy.W.state -> a -> Buffy.W.writt
          let* state = Buffy.W.write_uint8 state (Magic.option_some_tag :> int) in
          writet state v)
   | Headered
-      { mkheader; headerdescr; writers; descr_of_header; equal = _; maximum_size = _ } ->
+      { mkheader
+      ; headerdescr
+      ; writers
+      ; readers = _
+      ; descr_of_header
+      ; equal = _
+      ; maximum_size = _
+      } ->
     let writeheader = writek headerdescr in
     fun state v ->
       (match mkheader v with
@@ -207,7 +214,7 @@ let rec writek : type s a. (s, a) Descr.t -> Buffy.W.state -> a -> Buffy.W.writt
   | Union { tag; serialisation; deserialisation = _; cases = _ } ->
     let writetag = writek tag in
     fun state v ->
-      let (AnyP (({ Descr.tag; descr; write; inject = _ } as case), payload)) =
+      let (AnyP (({ Descr.tag; descr; write; read = _; inject = _ } as case), payload)) =
         serialisation v
       in
       let* state = writetag state tag in

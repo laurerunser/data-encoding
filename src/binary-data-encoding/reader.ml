@@ -99,6 +99,7 @@ let rec readk : type s a. (s, a) Descr.t -> Buffy.R.state -> a Buffy.R.readed = 
       { mkheader = _
       ; headerdescr
       ; writers = _
+      ; readers
       ; descr_of_header
       ; equal = _
       ; maximum_size = _
@@ -106,12 +107,22 @@ let rec readk : type s a. (s, a) Descr.t -> Buffy.R.state -> a Buffy.R.readed = 
     let readheader = readk headerdescr in
     fun state ->
       let* header, state = readheader state in
-      (match descr_of_header header with
-       | Error msg ->
-         let error = "error in user-provided encoding function: " ^ msg in
-         Failed { state; error }
-       | Ok (EDynamic descr) -> readk descr state
-       | Ok (EStatic descr) -> readk descr state)
+      let readt =
+        match Commons.BoundedCache.find readers header with
+        | Some readt -> readt
+        | None ->
+          let readt =
+            match descr_of_header header with
+            | Error msg ->
+              let error = "error in user-provided encoding function: " ^ msg in
+              fun state -> Buffy.R.Failed { state; error }
+            | Ok (EDynamic encoding) -> readk encoding
+            | Ok (EStatic encoding) -> readk encoding
+          in
+          Commons.BoundedCache.put readers header readt;
+          readt
+      in
+      readt state
   | Fold { chunkdescr; chunkify = _; readinit; reducer; equal = _; maximum_size = _ } ->
     let readchunk = readk chunkdescr in
     fun state ->
@@ -186,14 +197,20 @@ let rec readk : type s a. (s, a) Descr.t -> Buffy.R.state -> a Buffy.R.readed = 
     fun state ->
       let* found_tag, state = readtag state in
       (match deserialisation found_tag with
-       | Ok (AnyC { tag = expected_tag; descr; write = _; inject }) ->
-         (* TODO: preapplied query.equal to avoid interpretation *)
-         if Query.equal_of tag found_tag expected_tag
-         then
-           let* payload, state = readk descr state in
-           let value = inject payload in
-           Buffy.R.Readed { state; value }
-         else Buffy.R.Failed { state; error = "inconsistent tag in union" }
+       | Ok (AnyC ({ tag = expected_tag; descr; write = _; read; inject } as case)) ->
+         (* NOTE: this assert is actually about user-provided input *)
+         assert (Query.equal_of tag found_tag expected_tag);
+         let readpayload =
+           match read with
+           | Some readpayload -> readpayload
+           | None ->
+             let readpayload = readk descr in
+             case.read <- Some readpayload;
+             readpayload
+         in
+         let* payload, state = readpayload state in
+         let value = inject payload in
+         Buffy.R.Readed { state; value }
        | Error error -> Buffy.R.Failed { state; error })
   | TupNil -> fun state -> Buffy.R.Readed { state; value = [] }
   | TupCons { tupler = TAnyStatic; head; tail } ->
