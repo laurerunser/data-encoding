@@ -170,7 +170,8 @@ module Helpers : sig
     -> 'a Descr.anyintrinsic
 
   val with_header
-    :  headerdescr:('a Sizability.intrinsic, 'b) Descr.t
+    :  cache_size:int
+    -> headerdescr:('a Sizability.intrinsic, 'b) Descr.t
     -> mkheader:('c -> ('b, string) result)
     -> descr_of_header:('b -> ('c Descr.anyintrinsic, string) result)
     -> equal:('c -> 'c -> bool)

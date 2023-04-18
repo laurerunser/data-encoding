@@ -97,7 +97,8 @@ let rec writek : type s a. (s, a) Descr.t -> Buffy.W.state -> a -> Buffy.W.writt
        | Some v ->
          let* state = Buffy.W.write_uint8 state (Magic.option_some_tag :> int) in
          writet state v)
-  | Headered { mkheader; headerdescr; descr_of_header; equal = _; maximum_size = _ } ->
+  | Headered
+      { mkheader; headerdescr; writers; descr_of_header; equal = _; maximum_size = _ } ->
     let writeheader = writek headerdescr in
     fun state v ->
       (match mkheader v with
@@ -106,12 +107,22 @@ let rec writek : type s a. (s, a) Descr.t -> Buffy.W.state -> a -> Buffy.W.writt
          Failed { state; error }
        | Ok header ->
          let* state = writeheader state header in
-         (match descr_of_header header with
-          | Error msg ->
-            let error = "error in user-provided encoding function: " ^ msg in
-            Failed { state; error }
-          | Ok (EDynamic descr) -> writek descr state v
-          | Ok (EStatic descr) -> writek descr state v))
+         let writet =
+           match Commons.BoundedCache.find writers header with
+           | Some writet -> writet
+           | None ->
+             let writet =
+               match descr_of_header header with
+               | Error msg ->
+                 let error = "error in user-provided encoding function: " ^ msg in
+                 fun state _ -> Buffy.W.Failed { state; error }
+               | Ok (EDynamic encoding) -> writek encoding
+               | Ok (EStatic encoding) -> writek encoding
+             in
+             Commons.BoundedCache.put writers header writet;
+             writet
+         in
+         writet state v)
   | Fold { chunkdescr; chunkify; readinit = _; reducer = _; equal = _; maximum_size = _ }
     ->
     let writechunk = writek chunkdescr in
@@ -196,9 +207,19 @@ let rec writek : type s a. (s, a) Descr.t -> Buffy.W.state -> a -> Buffy.W.writt
   | Union { tag; serialisation; deserialisation = _; cases = _ } ->
     let writetag = writek tag in
     fun state v ->
-      let (AnyP ({ Descr.tag; descr; inject = _ }, payload)) = serialisation v in
+      let (AnyP (({ Descr.tag; descr; write; inject = _ } as case), payload)) =
+        serialisation v
+      in
       let* state = writetag state tag in
-      writek descr state payload
+      let writepayload =
+        match write with
+        | Some writepayload -> writepayload
+        | None ->
+          let writepayload = writek descr in
+          case.write <- Some writepayload;
+          writepayload
+      in
+      writepayload state payload
   | TupNil -> fun state [] -> Written { state }
   | TupCons { tupler = _; head; tail } ->
     let writehead = writek head in

@@ -70,7 +70,9 @@ let rec generator_of_descr
   | Option { optioner = _; descr } ->
     let g = generator_of_descr descr in
     QCheck2.Gen.option g
-  | Headered { mkheader; headerdescr; descr_of_header; equal = _; maximum_size = _ } ->
+  | Headered
+      { mkheader; headerdescr; writers = _; descr_of_header; equal = _; maximum_size = _ }
+    ->
     let headert =
       match headerdescr with
       | Numeral { numeral; endianness = _ } ->
@@ -109,7 +111,9 @@ let rec generator_of_descr
     ignore descr;
     failwith "TODO_"
   | Union { tag = _; serialisation = _; deserialisation = _; cases } ->
-    QCheck2.Gen.bind (QCheck2.Gen.oneofl cases) (fun (AnyC { tag = _; descr; inject }) ->
+    QCheck2.Gen.bind
+      (QCheck2.Gen.oneofl cases)
+      (fun (AnyC { tag = _; descr; write = _; inject }) ->
       QCheck2.Gen.map inject (generator_of_descr descr))
   | TupNil -> QCheck2.Gen.pure Commons.Hlist.[]
   | TupCons { tupler = _; head; tail } ->

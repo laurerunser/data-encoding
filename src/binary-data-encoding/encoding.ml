@@ -35,9 +35,33 @@ module Helpers = struct
     | K of 'step
     | Finish of 'finish
 
-  let with_header ~headerdescr ~mkheader ~descr_of_header ~equal ~maximum_size =
-    Descr.Headered { mkheader; headerdescr; descr_of_header; equal; maximum_size }
-  ;;
+  let default_cache_size = 16
+
+  let with_header
+    : type h v.
+      cache_size:int
+      -> headerdescr:('a Sizability.intrinsic, h) Descr.t
+      -> mkheader:(v -> (h, string) result)
+      -> descr_of_header:(h -> (v Descr.anyintrinsic, string) result)
+      -> equal:(v -> v -> bool)
+      -> maximum_size:Optint.Int63.t
+      -> (Sizability.dynamic, v) Descr.t
+    =
+   fun ~cache_size ~headerdescr ~mkheader ~descr_of_header ~equal ~maximum_size ->
+    if cache_size <= 0 then raise (Invalid_argument "cache-size must be >=1");
+    let writers =
+      Commons.BoundedCache.make
+        (module struct
+          type t = h
+
+          let equal = Query.equal_of headerdescr
+          let hash = Hashtbl.hash
+        end)
+        cache_size
+    in
+    Descr.Headered
+      { mkheader; headerdescr; writers; descr_of_header; equal; maximum_size }
+ ;;
 
   let fold ~chunkdescr ~chunkify ~readinit ~reducer ~equal ~maximum_size =
     Descr.Fold { chunkdescr; chunkify; readinit; reducer; equal; maximum_size }
@@ -56,6 +80,7 @@ module Helpers = struct
     match length_spec with
     | `Uint62 ->
       with_header
+        ~cache_size:default_cache_size
         ~headerdescr:(Numeral { numeral = Uint62; endianness = Big_endian })
         ~mkheader:(fun v -> Ok (length v))
         ~descr_of_header
@@ -63,6 +88,7 @@ module Helpers = struct
         ~maximum_size
     | `Uint30 ->
       with_header
+        ~cache_size:default_cache_size
         ~headerdescr:(Numeral { numeral = Uint30; endianness = Big_endian })
         ~mkheader:(fun v ->
           let length = length v in
@@ -78,6 +104,7 @@ module Helpers = struct
         ~maximum_size
     | `Uint16 ->
       with_header
+        ~cache_size:default_cache_size
         ~headerdescr:(Numeral { numeral = Uint16; endianness = Big_endian })
         ~mkheader:(fun v ->
           let length = length v in
@@ -93,6 +120,7 @@ module Helpers = struct
         ~maximum_size
     | `Uint8 ->
       with_header
+        ~cache_size:default_cache_size
         ~headerdescr:(Numeral { numeral = Uint8; endianness = Big_endian })
         ~mkheader:(fun v ->
           let length = length v in
@@ -153,6 +181,7 @@ module Helpers = struct
     match length_spec with
     | `Uint62 ->
       with_header
+        ~cache_size:default_cache_size
         ~headerdescr:(Numeral { numeral = Uint62; endianness = Big_endian })
         ~mkheader:(fun (s : eltt seq_with_length) -> Ok (Lazy.force s.length))
         ~descr_of_header
@@ -160,6 +189,7 @@ module Helpers = struct
         ~maximum_size
     | `Uint30 ->
       with_header
+        ~cache_size:default_cache_size
         ~headerdescr:(Numeral { numeral = Uint30; endianness = Big_endian })
         ~mkheader:(fun v ->
           let length = Lazy.force v.length in
@@ -177,6 +207,7 @@ module Helpers = struct
         ~maximum_size
     | `Uint16 ->
       with_header
+        ~cache_size:default_cache_size
         ~headerdescr:(Numeral { numeral = Uint16; endianness = Big_endian })
         ~mkheader:(fun v ->
           let length = Lazy.force v.length in
@@ -194,6 +225,7 @@ module Helpers = struct
         ~maximum_size
     | `Uint8 ->
       with_header
+        ~cache_size:default_cache_size
         ~headerdescr:(Numeral { numeral = Uint8; endianness = Big_endian })
         ~mkheader:(fun v ->
           let length = Lazy.force v.length in
@@ -515,10 +547,10 @@ module Union = struct
   let case tag (E descr) inject =
     match Query.sizability descr with
     | Extrinsic -> raise (Invalid_argument "extrinsic payload encoding in tag")
-    | Intrinsic _ -> ECase { tag; descr; inject }
+    | Intrinsic _ -> ECase { tag; descr; write = None; inject }
   ;;
 
-  let case_unit tag inject = ECase { tag; descr = Unit; inject }
+  let case_unit tag inject = ECase { tag; descr = Unit; write = None; inject }
 
   let union
     : type a tag.

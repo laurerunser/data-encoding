@@ -86,8 +86,14 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
       let* v, state = readk state descr in
       Buffy.R.Readed { state; value = Some v }
     else Failed { state; error = "Unknown tag for Option" }
-  | Headered { mkheader = _; headerdescr; descr_of_header; equal = _; maximum_size = _ }
-    ->
+  | Headered
+      { mkheader = _
+      ; headerdescr
+      ; writers = _
+      ; descr_of_header
+      ; equal = _
+      ; maximum_size = _
+      } ->
     let* header, state = readk state headerdescr in
     (match descr_of_header header with
      | Error msg ->
@@ -158,7 +164,7 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
   | Union { tag; serialisation = _; deserialisation; cases = _ } ->
     let* found_tag, state = readk state tag in
     (match deserialisation found_tag with
-     | Ok (AnyC { tag = expected_tag; descr; inject }) ->
+     | Ok (AnyC { tag = expected_tag; descr; write = _; inject }) ->
        if Query.equal_of tag found_tag expected_tag
        then
          let* payload, state = readk state descr in

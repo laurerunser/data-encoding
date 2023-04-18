@@ -127,7 +127,9 @@ let rec size_of : type s t. (s, t) Descr.t -> t -> (Optint.Int63.t, string) resu
      | Some v ->
        let* size = size_of descr v in
        Ok (Optint.Int63.add Optint.Int63.one size))
-  | Headered { mkheader; headerdescr; descr_of_header; equal = _; maximum_size = _ } ->
+  | Headered
+      { mkheader; headerdescr; writers = _; descr_of_header; equal = _; maximum_size = _ }
+    ->
     let* header = mkheader v in
     let* headersize = size_of headerdescr header in
     let* descr = descr_of_header header in
@@ -236,8 +238,14 @@ let rec maximum_size_of : type s t. (s, t) Descr.t -> Optint.Int63.t = function
     Optint.Int63.mul (length :> Optint.Int63.t) (maximum_size_of descr)
   | Option { optioner = _; descr } ->
     Optint.Int63.add Optint.Int63.one (maximum_size_of descr)
-  | Headered { mkheader = _; headerdescr; descr_of_header = _; equal = _; maximum_size }
-    -> Optint.Int63.add (maximum_size_of headerdescr) maximum_size
+  | Headered
+      { mkheader = _
+      ; headerdescr
+      ; writers = _
+      ; descr_of_header = _
+      ; equal = _
+      ; maximum_size
+      } -> Optint.Int63.add (maximum_size_of headerdescr) maximum_size
   | Fold
       { chunkdescr = _; chunkify = _; readinit = _; reducer = _; equal = _; maximum_size }
     -> maximum_size
@@ -260,9 +268,9 @@ let rec maximum_size_of : type s t. (s, t) Descr.t -> Optint.Int63.t = function
     let payload_size =
       match cases with
       | [] -> assert false
-      | AnyC { tag = _; descr; inject = _ } :: cases ->
+      | AnyC { tag = _; descr; write = _; inject = _ } :: cases ->
         List.fold_left
-          (fun sz (Descr.AnyC { tag = _; descr; inject = _ }) ->
+          (fun sz (Descr.AnyC { tag = _; descr; write = _; inject = _ }) ->
             let nsz = maximum_size_of descr in
             if Optint.Int63.compare sz nsz > 0 then nsz else sz)
           (maximum_size_of descr)
@@ -341,8 +349,13 @@ let rec equal_of : type s t. (s, t) Descr.t -> t -> t -> bool = function
   | LSeq { descr; length = _ } -> fun s1 s2 -> Seq.equal (equal_of descr) s1.seq s2.seq
   | USeq { descr } -> fun s1 s2 -> Seq.equal (equal_of descr) s1 s2
   | Headered
-      { mkheader = _; headerdescr = _; descr_of_header = _; equal; maximum_size = _ } ->
-    equal
+      { mkheader = _
+      ; headerdescr = _
+      ; writers = _
+      ; descr_of_header = _
+      ; equal
+      ; maximum_size = _
+      } -> equal
   | Fold
       { chunkdescr = _; chunkify = _; readinit = _; reducer = _; equal; maximum_size = _ }
     -> equal
@@ -410,8 +423,14 @@ let rec pp_of : type s t. (s, t) Descr.t -> Format.formatter -> t -> unit =
       "seq(%a)"
       Format.(pp_print_seq ~pp_sep:(fun fmt () -> pp_print_char fmt ',') (pp_of descr))
       v
-  | Headered { mkheader; headerdescr = _; descr_of_header; equal = _; maximum_size = _ }
-    ->
+  | Headered
+      { mkheader
+      ; headerdescr = _
+      ; writers = _
+      ; descr_of_header
+      ; equal = _
+      ; maximum_size = _
+      } ->
     let ( let* ) = Result.bind in
     (match
        let* header = mkheader v in
@@ -440,7 +459,7 @@ let rec pp_of : type s t. (s, t) Descr.t -> Format.formatter -> t -> unit =
   | Size_headered { size = _; descr } -> pp_of descr fmt v
   | Size_limit { at_most = _; descr } -> pp_of descr fmt v
   | Union { tag = tag_encoding; serialisation; deserialisation = _; cases = _ } ->
-    let (AnyP ({ Descr.tag; descr; inject = _ }, payload)) = serialisation v in
+    let (AnyP ({ Descr.tag; descr; write = _; inject = _ }, payload)) = serialisation v in
     Format.fprintf fmt "case(%a:%a)" (pp_of tag_encoding) tag (pp_of descr) payload
   | TupNil -> ()
   | TupCons { tupler = _; head; tail = TupNil } ->
@@ -486,7 +505,13 @@ let rec sizability : type s a. (s, a) Descr.t -> s = function
        else Extrinsic
      | Intrinsic Dynamic -> Extrinsic)
   | Headered
-      { mkheader = _; headerdescr; descr_of_header = _; equal = _; maximum_size = _ } ->
+      { mkheader = _
+      ; headerdescr
+      ; writers = _
+      ; descr_of_header = _
+      ; equal = _
+      ; maximum_size = _
+      } ->
     (* TODO? should we support zero-sized headers? I don't think we should *)
     (match sizability headerdescr with
      | Intrinsic (Static n) ->
