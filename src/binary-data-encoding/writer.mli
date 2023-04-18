@@ -32,15 +32,15 @@
     Depending on your use-case, you can provide [cont] with a fresh buffer, or
     you can re-use the buffer in [destination] (after you extract whatever
     information you need from it). *)
-val writek : Buffy.W.state -> ('s, 'a) Descr.t -> 'a -> Buffy.W.written
+val writek : ('s, 'a) Descr.t -> Buffy.W.state -> 'a -> Buffy.W.written
 
 (** {1 High-level writers} *)
 
 val write
-  :  dst:bytes
+  :  ('s, 'a) Descr.t
+  -> dst:bytes
   -> offset:int
   -> length:int
-  -> ('s, 'a) Descr.t
   -> 'a
   -> (int, int * string) result
 

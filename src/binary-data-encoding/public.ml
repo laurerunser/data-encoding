@@ -54,24 +54,24 @@ module Reader = struct
 end
 
 module Writer = struct
-  let writek : type a. Buffy.W.state -> a Encoding.t -> a -> Buffy.W.written =
-   fun state encoding v ->
-    let (Descr.E encoding) = Encoding.introspect encoding in
-    Writer.writek state encoding v
+  let writek : type a. a Encoding.t -> Buffy.W.state -> a -> Buffy.W.written =
+   fun encoding ->
+    let (Descr.E descr) = Encoding.introspect encoding in
+    Writer.writek descr
  ;;
 
   let write
     : type a.
-      dst:bytes
+      a Encoding.t
+      -> dst:bytes
       -> offset:int
       -> length:int
-      -> a Encoding.t
       -> a
       -> (int, int * string) result
     =
-   fun ~dst ~offset ~length encoding v ->
-    let (Descr.E encoding) = Encoding.introspect encoding in
-    Writer.write ~dst ~offset ~length encoding v
+   fun encoding ->
+    let (Descr.E descr) = Encoding.introspect encoding in
+    Writer.write descr
  ;;
 
   let string_of : type a. ?buffer_size:int -> a Encoding.t -> a -> (string, string) result

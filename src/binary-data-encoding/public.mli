@@ -68,14 +68,14 @@ end
 
 module Writer : sig
   (** low-level *)
-  val writek : Buffy.W.state -> 'a Encoding.t -> 'a -> Buffy.W.written
+  val writek : 'a Encoding.t -> Buffy.W.state -> 'a -> Buffy.W.written
 
   (** high-level *)
   val write
-    :  dst:bytes
+    :  'a Encoding.t
+    -> dst:bytes
     -> offset:int
     -> length:int
-    -> 'a Encoding.t
     -> 'a
     -> (int, int * string) result
 
