@@ -44,8 +44,8 @@ let rec writek : type s a. (s, a) Descr.t -> Buffy.W.state -> a -> Buffy.W.writt
       else Buffy.W.write_bytes state v
   | LSeq { length; descr } ->
     let writeelt = writek descr in
+    let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
     fun state v ->
-      let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
       let rec fold state s length =
         match s () with
         | Seq.Nil ->
@@ -141,11 +141,11 @@ let rec writek : type s a. (s, a) Descr.t -> Buffy.W.state -> a -> Buffy.W.writt
   | Size_headered { size = size_numeral; descr } ->
     let writesize = write_numeral size_numeral Encoding.default_endianness in
     let writet = writek descr in
+    let size_size_limit =
+      (* a size-header implies a size-limit; e.g., uint8 implies 256 *)
+      (Query.max_int_of size_numeral :> Optint.Int63.t)
+    in
     fun state v ->
-      let size_size_limit =
-        (* a size-header implies a size-limit; e.g., uint8 implies 256 *)
-        (Query.max_int_of size_numeral :> Optint.Int63.t)
-      in
       let other_size_limit = state.maximum_size - Buffy.W.written state in
       let other_size_limit =
         match state.size_limits with

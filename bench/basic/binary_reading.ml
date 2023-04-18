@@ -11,7 +11,7 @@ let run name encoding =
       let sources =
         Benchlib.strs_seq_of_file (Benchlib.payload_file_name name size) buffer
       in
-      let read state = Binary_data_encoding.Reader.readk state encoding in
+      let read = Binary_data_encoding.Reader.readk encoding in
       let deserialisations =
         Benchlib.measurer Benchlib.repeats (deserialise read) sources
       in

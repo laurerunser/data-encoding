@@ -155,7 +155,7 @@ let to_test
     let queried_size = Optint.Int63.to_int queried_size in
     if String.length s <> queried_size
     then failwith "Computed size inconsistent with written size";
-    let* vv = Binary_data_encoding.Reader.read_string s encoding in
+    let* vv = Binary_data_encoding.Reader.read_string encoding s in
     if not (equal v vv)
     then
       Format.kasprintf

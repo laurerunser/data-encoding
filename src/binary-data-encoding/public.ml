@@ -32,24 +32,24 @@ module Query = struct
 end
 
 module Reader = struct
-  let readk s encoding =
-    let (Descr.E encoding) = Encoding.introspect encoding in
-    Reader.readk s encoding
+  let readk encoding =
+    let (Descr.E descr) = Encoding.introspect encoding in
+    Reader.readk descr
   ;;
 
-  let read ~src ~offset ~length encoding =
-    let (Descr.E encoding) = Encoding.introspect encoding in
-    Reader.read ~src ~offset ~length encoding
+  let read encoding =
+    let (Descr.E descr) = Encoding.introspect encoding in
+    Reader.read descr
   ;;
 
-  let read_strings s encoding =
-    let (Descr.E encoding) = Encoding.introspect encoding in
-    Reader.read_strings s encoding
+  let read_strings encoding =
+    let (Descr.E descr) = Encoding.introspect encoding in
+    Reader.read_strings descr
   ;;
 
-  let read_string s encoding =
-    let (Descr.E encoding) = Encoding.introspect encoding in
-    Reader.read_string s encoding
+  let read_string encoding =
+    let (Descr.E descr) = Encoding.introspect encoding in
+    Reader.read_string descr
   ;;
 end
 
