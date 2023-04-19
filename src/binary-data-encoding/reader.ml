@@ -1,10 +1,10 @@
 let ( let* ) = Buffy.R.( let* )
 
-(* TODO: in order to read an extrinsic encoding we must be provided with an expected stop. *)
+(* TODO: in order to read an extrinsic descr we must be provided with an expected stop. *)
 
 let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
- fun state encoding ->
-  match encoding with
+ fun state descr ->
+  match descr with
   | Unit -> Buffy.R.Readed { state; value = () }
   | Bool ->
     let* v, state = read_uint8_tag state in
@@ -24,7 +24,7 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
        should take an int63? *)
     let size = Optint.Int63.to_int (n :> Optint.Int63.t) in
     Buffy.R.read_bytes state size
-  | LSeq { length; elementencoding } ->
+  | LSeq { length; descr } ->
     let intlength = Optint.Int63.to_int (length :> Optint.Int63.t) in
     let rec fold state reversed_list remaining_length =
       if remaining_length = 0
@@ -33,11 +33,11 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
         let value = { Descr.seq; length = lazy length } in
         Buffy.R.Readed { state; value })
       else
-        let* v, state = readk state elementencoding in
+        let* v, state = readk state descr in
         fold state (v :: reversed_list) (remaining_length - 1)
     in
     fold state [] intlength
-  | USeq { elementencoding } ->
+  | USeq { descr } ->
     let rec fold (state : Buffy.R.state) reversed_list =
       (* we peek-stop at every iteration in case there was a suspension and
             it has been updated. *)
@@ -52,11 +52,11 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
         if expected_stop = Buffy.R.readed state
         then Buffy.R.Readed { state; value = List.to_seq (List.rev reversed_list) }
         else
-          let* v, state = readk state elementencoding in
+          let* v, state = readk state descr in
           fold state (v :: reversed_list)
     in
     fold state []
-  | Array { length; elementencoding } ->
+  | Array { length; descr } ->
     if Optint.Int63.equal (length :> Optint.Int63.t) Optint.Int63.zero
     then Buffy.R.Readed { state; value = [||] }
     else (
@@ -64,55 +64,55 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
         (* TODO: check for overflow *)
         Optint.Int63.to_int (length :> Optint.Int63.t)
       in
-      let* v, state = readk state elementencoding in
+      let* v, state = readk state descr in
       let array = Array.make length v in
       let rec fold state index =
         if index >= length
         then Buffy.R.Readed { state; value = array }
         else
-          let* v, state = readk state elementencoding in
+          let* v, state = readk state descr in
           Array.set array index v;
           fold state (index + 1)
       in
       fold state 1)
-  | Option (_, t) ->
+  | Option { optioner = _; descr } ->
     let* tag, state = read_uint8_tag state in
     if tag = Magic.option_none_tag
     then Buffy.R.Readed { state; value = None }
     else if tag = Magic.option_some_tag
     then
-      let* v, state = readk state t in
+      let* v, state = readk state descr in
       Buffy.R.Readed { state; value = Some v }
     else Failed { state; error = "Unknown tag for Option" }
-  | Headered { mkheader = _; headerencoding; mkencoding; equal = _; maximum_size = _ } ->
-    let* header, state = readk state headerencoding in
-    (match mkencoding header with
+  | Headered { mkheader = _; headerdescr; descr_of_header; equal = _; maximum_size = _ }
+    ->
+    let* header, state = readk state headerdescr in
+    (match descr_of_header header with
      | Error msg ->
        let error = "error in user-provided encoding function: " ^ msg in
        Failed { state; error }
-     | Ok (EDynamic encoding) -> readk state encoding
-     | Ok (EStatic encoding) -> readk state encoding)
-  | Fold { chunkencoding; chunkify = _; readinit; reducer; equal = _; maximum_size = _ }
-    ->
+     | Ok (EDynamic descr) -> readk state descr
+     | Ok (EStatic descr) -> readk state descr)
+  | Fold { chunkdescr; chunkify = _; readinit; reducer; equal = _; maximum_size = _ } ->
     let rec reduce acc state =
-      let* chunk, state = readk state chunkencoding in
+      let* chunk, state = readk state chunkdescr in
       match reducer acc chunk with
       | K acc -> reduce acc state
       | Finish value -> Buffy.R.Readed { state; value }
     in
     reduce readinit state
-  | Conv { serialisation = _; deserialisation; encoding } ->
-    let* v, state = readk state encoding in
+  | Conv { serialisation = _; deserialisation; descr } ->
+    let* v, state = readk state descr in
     (match deserialisation v with
      | Ok value -> Buffy.R.Readed { state; value }
      | Error error -> Failed { state; error })
-  | Size_headered { size; encoding } ->
+  | Size_headered { size; descr } ->
     let* readed_size, state = read_numeral state size Encoding.default_endianness in
     let readed_size = Query.int_of_numeral size readed_size in
     assert (readed_size >= 0);
     (match Buffy.R.push_stop state readed_size with
      | Ok state ->
-       let* v, state = readk state encoding in
+       let* v, state = readk state descr in
        (match Buffy.R.pop_stop state with
         | Ok (expected_stop, state) ->
           if Buffy.R.readed state = expected_stop
@@ -122,7 +122,7 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
      | Error msg ->
        (* TODO: context of error message*)
        Failed { state; error = msg })
-  | Size_limit { at_most; encoding } ->
+  | Size_limit { at_most; descr } ->
     let requested_size_limit =
       (* TODO: support 32bit plateforms *)
       Optint.Int63.to_int (at_most :> Optint.Int63.t)
@@ -147,43 +147,43 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
       match Buffy.R.push_limit state requested_size_limit with
       | Error _ -> assert false (* the [min]s above prevent this *)
       | Ok state ->
-        let* value, state = readk state encoding in
+        let* value, state = readk state descr in
         (match Buffy.R.remove_limit state with
          | Error _ ->
            assert false (* the only remove is here and it is paired with the push *)
          | Ok state -> Readed { value; state }))
-    else readk state encoding
+    else readk state descr
   | Union { tag; serialisation = _; deserialisation; cases = _ } ->
     let* found_tag, state = readk state tag in
     (match deserialisation found_tag with
-     | Ok (AnyC { tag = expected_tag; encoding; inject }) ->
+     | Ok (AnyC { tag = expected_tag; descr; inject }) ->
        if Query.equal_of tag found_tag expected_tag
        then
-         let* payload, state = readk state encoding in
+         let* payload, state = readk state descr in
          let value = inject payload in
          Buffy.R.Readed { state; value }
        else Buffy.R.Failed { state; error = "inconsistent tag in union" }
      | Error error -> Buffy.R.Failed { state; error })
   | TupNil -> Buffy.R.Readed { state; value = [] }
-  | TupCons (TAnyStatic, t, ts) ->
-    (match Query.sizability t with
+  | TupCons { tupler = TAnyStatic; head; tail } ->
+    (match Query.sizability head with
      | Extrinsic ->
-       let (Intrinsic (Static n)) = Query.sizability ts in
+       let (Intrinsic (Static n)) = Query.sizability tail in
        let state =
          Buffy.R.bring_first_stop_forward
            state
            (Optint.Int63.to_int (* catch overflow *) (n :> Optint.Int63.t))
        in
-       let* v, state = readk state t in
-       let* vs, state = readk state ts in
+       let* v, state = readk state head in
+       let* vs, state = readk state tail in
        Buffy.R.Readed { state; value = Descr.Hlist.( :: ) (v, vs) }
      | Intrinsic _ ->
-       let* v, state = readk state t in
-       let* vs, state = readk state ts in
+       let* v, state = readk state head in
+       let* vs, state = readk state tail in
        Buffy.R.Readed { state; value = Descr.Hlist.( :: ) (v, vs) })
-  | TupCons (_, t, ts) ->
-    let* v, state = readk state t in
-    let* vs, state = readk state ts in
+  | TupCons { tupler = _; head; tail } ->
+    let* v, state = readk state head in
+    let* vs, state = readk state tail in
     Buffy.R.Readed { state; value = Descr.Hlist.( :: ) (v, vs) }
 
 and read_numeral
@@ -428,11 +428,11 @@ let read
   : type s a.
     src:string -> offset:int -> length:int -> (s, a) Descr.t -> (a, string) result
   =
- fun ~src ~offset ~length encoding ->
+ fun ~src ~offset ~length descr ->
   let source =
     Buffy.R.mk_state ~maximum_size:length (Buffy.Src.of_string src ~offset ~length)
   in
-  match readk source encoding with
+  match readk source descr with
   | Buffy.R.Readed { state = _; value } -> Ok value
   | Buffy.R.Failed { state = _; error } -> Error error
   | Buffy.R.Suspended _ ->

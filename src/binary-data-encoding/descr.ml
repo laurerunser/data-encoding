@@ -58,7 +58,7 @@ type 'a seq_with_length =
     could have a single constructor, say [String], and represent bytes with
 {[
 Conv
-  { encoding = String
+  { descr = String
   ; serialisation = Bytes.unsafe_to_string
   ; deserialisation = Bytes.unsafe_of_string }
 ]}
@@ -91,7 +91,10 @@ type (_, _) t =
       (** The constructor's parameter is the length of the bytes *)
   | TupNil : (Sizability.static, unit Hlist.t) t (** The empty tuple *)
   | TupCons :
-      ('l, 'r, 's) Sizability.tupler * ('l, 'a) t * ('r, 'b Hlist.t) t
+      { tupler : ('l, 'r, 's) Sizability.tupler
+      ; head : ('l, 'a) t
+      ; tail : ('r, 'b Hlist.t) t
+      }
       -> ('s, ('a * 'b) Hlist.t) t
       (** The tuple constructor. The [tupler] parameter enforces the tuple is
          deserialisable and keeps track of the sizability of the result. *)
@@ -102,47 +105,51 @@ type (_, _) t =
       ; cases : ('tag, 'a) anycase list
       }
       -> (* TODO? support dynamically sized tags? *)
-         (* if all the [cases] have encodings of the same static size then the
-           encoding is static, but this level of fined-grained tracking requires
+         (* if all the [cases] have descrs of the same static size then the
+           descr is static, but this level of fined-grained tracking requires
            dependent types. *)
       (Sizability.dynamic, 'a) t
   | Array :
       { length : Sizedints.Uint62.t
-      ; elementencoding : ('s Sizability.intrinsic, 'a) t
+      ; descr : ('s Sizability.intrinsic, 'a) t
       }
       -> ('s Sizability.intrinsic, 'a array) t
       (** The [length] parameter is the number of elements in the array. *)
   | LSeq :
       { length : Sizedints.Uint62.t
-      ; elementencoding : ('s Sizability.intrinsic, 'a) t
+      ; descr : ('s Sizability.intrinsic, 'a) t
       }
       -> ('s Sizability.intrinsic, 'a seq_with_length) t
       (** The [length] parameter is the number of elements in the sequence. *)
-  | Option : ('s, 'ss) Sizability.optioner * ('s, 'a) t -> ('ss, 'a option) t
+  | Option :
+      { optioner : ('s, 'ss) Sizability.optioner
+      ; descr : ('s, 'a) t
+      }
+      -> ('ss, 'a option) t
   | USeq :
-      { elementencoding : ('s Sizability.intrinsic, 'a) t }
+      { descr : ('s Sizability.intrinsic, 'a) t }
       -> (* INVARIANT (not encoded in the type-system):
-            - [elementencoding] cannot take zero-bytes of space otherwise it is
+            - [descr] cannot take zero-bytes of space otherwise it is
               impossible to distinguish sequences of different lengths.
             - To encode this into the type system we need to make it possible to
-              distinguish zero-byte and non-zero-byte encodings. But doing so
+              distinguish zero-byte and non-zero-byte descr. But doing so
               requires to make the distinction everywhere. This is problematic
               for, amongst other things, [String n] where the zero-byte-ability
               would depend on the value of [n]. *)
       (Sizability.extrinsic, 'a Seq.t) t
   | Headered :
       { mkheader : 'a -> ('header, string) result
-      ; headerencoding : ('s Sizability.intrinsic, 'header) t
-      ; mkencoding : 'header -> ('a anyintrinsic, string) result
+      ; headerdescr : ('s Sizability.intrinsic, 'header) t
+      ; descr_of_header : 'header -> ('a anyintrinsic, string) result
       ; equal : 'a -> 'a -> bool
       ; maximum_size : Optint.Int63.t (* the max size of the payload *)
       }
-      -> (* if [headerencoding] is static and [mkencoding] returns all encodings of
-         the same static size then the encoding is static, but this level of
+      -> (* if [headerdescr] is static and [descr_of_header] returns all descrs
+         of the same static size then the descr is static, but this level of
          fined-grained tracking requires dependent types. *)
       (Sizability.dynamic, 'a) t
   | Fold :
-      { chunkencoding : ('s Sizability.intrinsic, 'chunk) t
+      { chunkdescr : ('s Sizability.intrinsic, 'chunk) t
       ; chunkify : 'a -> 'chunk Seq.t
       ; readinit : 'acc
       ; reducer : 'acc -> 'chunk -> ('acc, 'a) reducer
@@ -153,19 +160,19 @@ type (_, _) t =
   | Conv :
       { serialisation : 'a -> 'b
       ; deserialisation : 'b -> ('a, string) result
-      ; encoding : ('s, 'b) t
+      ; descr : ('s, 'b) t
       }
       -> ('s, 'a) t
   | Size_headered :
       { size : _ numeral
-      ; encoding : (Sizability.extrinsic, 'a) t
+      ; descr : (Sizability.extrinsic, 'a) t
       }
       -> (* NOTE: it's only possible to add a size-header to an extrinsic
-           encoding *)
+           descr *)
       (Sizability.dynamic, 'a) t
   | Size_limit :
       { at_most : Sizedints.Uint62.t
-      ; encoding : ('s, 'a) t
+      ; descr : ('s, 'a) t
       }
       -> ('s, 'a) t
 
@@ -176,7 +183,7 @@ and 'a anyintrinsic =
 
 and ('s, 'tag, 'payload, 'union) case_descr =
   { tag : 'tag
-  ; encoding : ('s Sizability.intrinsic, 'payload) t
+  ; descr : ('s Sizability.intrinsic, 'payload) t
   ; inject : 'payload -> 'union
   }
 

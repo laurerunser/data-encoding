@@ -6,9 +6,7 @@ let ( let* ) x f =
 
 let rec generator_of_descr
   : type s t. (s, t) Binary_data_encoding__Descr.t -> t QCheck2.Gen.t
-  =
- fun encoding ->
-  match encoding with
+  = function
   | Unit -> QCheck2.Gen.unit
   | Bool -> QCheck2.Gen.bool
   | Numeral { numeral = Int64; endianness = _ } -> QCheck2.Gen.int64
@@ -54,42 +52,41 @@ let rec generator_of_descr
     QCheck2.Gen.map
       (Bytes.make (Optint.Int63.to_int (n :> Optint.Int63.t)))
       QCheck2.Gen.printable
-  | LSeq { length; elementencoding } ->
+  | LSeq { length; descr } ->
     QCheck2.Gen.map
       (fun l -> { Binary_data_encoding.Descr.seq = List.to_seq l; length = lazy length })
       QCheck2.Gen.(
         list_size
           (let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
            pure length)
-          (generator_of_descr elementencoding))
-  | USeq { elementencoding } ->
+          (generator_of_descr descr))
+  | USeq { descr } ->
     QCheck2.Gen.map
       (fun l -> List.to_seq l)
-      QCheck2.Gen.(
-        list_size (QCheck2.Gen.int_range 0 4) (generator_of_descr elementencoding))
-  | Array { length; elementencoding } ->
+      QCheck2.Gen.(list_size (QCheck2.Gen.int_range 0 4) (generator_of_descr descr))
+  | Array { length; descr } ->
     let length = Optint.Int63.to_int (length :> Optint.Int63.t) in
-    QCheck2.Gen.array_size (QCheck2.Gen.pure length) (generator_of_descr elementencoding)
-  | Option (_, t) ->
-    let t = generator_of_descr t in
-    QCheck2.Gen.option t
-  | Headered { mkheader; headerencoding; mkencoding; equal = _; maximum_size = _ } ->
+    QCheck2.Gen.array_size (QCheck2.Gen.pure length) (generator_of_descr descr)
+  | Option { optioner = _; descr } ->
+    let g = generator_of_descr descr in
+    QCheck2.Gen.option g
+  | Headered { mkheader; headerdescr; descr_of_header; equal = _; maximum_size = _ } ->
     let headert =
-      match headerencoding with
+      match headerdescr with
       | Numeral { numeral; endianness = _ } ->
         (* large int-sizes are generally for large collections which take too long
          to test in PBT *)
         QCheck2.Gen.map
           (Binary_data_encoding.Query.numeral_of_int numeral)
           (QCheck2.Gen.int_range 0 20)
-      | headerencoding -> generator_of_descr headerencoding
+      | headerdescr -> generator_of_descr headerdescr
     in
     QCheck2.Gen.bind headert (fun header ->
-      let* payloadencoding = mkencoding header in
+      let* payloaddescr = descr_of_header header in
       let payloadgenerator =
-        match payloadencoding with
-        | EStatic payloadencoding -> generator_of_descr payloadencoding
-        | EDynamic payloadencoding -> generator_of_descr payloadencoding
+        match payloaddescr with
+        | EStatic payloaddescr -> generator_of_descr payloaddescr
+        | EDynamic payloaddescr -> generator_of_descr payloaddescr
       in
       QCheck2.Gen.map
         (fun payload ->
@@ -97,27 +94,25 @@ let rec generator_of_descr
           payload)
         payloadgenerator)
   | Fold _ -> failwith "TODO"
-  | Conv { serialisation = _; deserialisation; encoding } ->
-    let t = generator_of_descr encoding in
+  | Conv { serialisation = _; deserialisation; descr } ->
+    let t = generator_of_descr descr in
     QCheck2.Gen.map
       (fun v ->
         let* v = deserialisation v in
         v)
       t
-  | Size_headered { size = _; encoding } ->
+  | Size_headered { size = _; descr } ->
     (* TODO: check for overflow against size *)
-    generator_of_descr encoding
-  | Size_limit { at_most; encoding } ->
+    generator_of_descr descr
+  | Size_limit { at_most; descr } ->
     ignore at_most;
-    ignore encoding;
+    ignore descr;
     failwith "TODO_"
   | Union { tag = _; serialisation = _; deserialisation = _; cases } ->
-    QCheck2.Gen.bind
-      (QCheck2.Gen.oneofl cases)
-      (fun (AnyC { tag = _; encoding; inject }) ->
-      QCheck2.Gen.map inject (generator_of_descr encoding))
+    QCheck2.Gen.bind (QCheck2.Gen.oneofl cases) (fun (AnyC { tag = _; descr; inject }) ->
+      QCheck2.Gen.map inject (generator_of_descr descr))
   | TupNil -> QCheck2.Gen.pure Commons.Hlist.[]
-  | TupCons (_, head, tail) ->
+  | TupCons { tupler = _; head; tail } ->
     let head = generator_of_descr head in
     let tail = generator_of_descr tail in
     QCheck2.Gen.map2 (fun h t -> Commons.Hlist.( :: ) (h, t)) head tail
