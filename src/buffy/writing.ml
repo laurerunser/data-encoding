@@ -1,4 +1,5 @@
 (* TODO: expect tests *)
+(* TODO: make size_limits mutable? *)
 
 type state =
   { destination : Dst.t
@@ -51,16 +52,16 @@ let destination_too_small_to_continue_message =
   "new destination buffer is too small to continue"
 ;;
 
-let writef state writing write =
-  assert (writing >= 0);
-  let reach = Dst.added state.destination + writing in
+let writef state width write =
+  assert (width >= 0);
+  let reach = Dst.added state.destination + width in
   if reach > state.maximum_size
   then Failed { state; error = "maximum-size exceeded" }
   else if match state.size_limits with
           | [] -> false
           | limit :: _ -> reach > limit
   then Failed { state; error = "size-limit exceeded" }
-  else if writing <= Dst.available state.destination
+  else if width <= Dst.available state.destination
   then (
     write state.destination;
     Written { state })
@@ -77,7 +78,7 @@ let writef state writing write =
       ; cont =
           (fun destination ->
             let state = internal_mk_state maximum_size size_limits destination in
-            if Dst.available destination < writing
+            if Dst.available destination < width
             then Failed { state; error = destination_too_small_to_continue_message }
             else (
               write state.destination;
@@ -240,22 +241,22 @@ and chunkwritten =
    which is larger than the current buffer can accomodate, this is intended for
    writing string and other such potentially big blobs. *)
 let rec writechunked state write =
-  let writing =
+  let width =
     min
       (state.maximum_size - Dst.added state.destination)
       (Dst.available state.destination)
   in
-  let writing =
+  let width =
     match state.size_limits with
-    | [] -> writing
-    | limit :: _ -> min (limit - Dst.added state.destination) writing
+    | [] -> width
+    | limit :: _ -> min (limit - Dst.added state.destination) width
   in
-  assert (writing >= 0);
-  match write state.destination writing with
+  assert (width >= 0);
+  match write state.destination width with
   | CWritten { written = _ } -> Written { state }
   | CFailed { written = _; error } -> Failed { state; error }
   | CSuspended { written; cont } ->
-    if written > writing
+    if written > width
     then
       raise
         (Failure "Suspendable_buffers.Writing.writechunked: chunkwriter exceeded limit");

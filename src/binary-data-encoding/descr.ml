@@ -22,7 +22,7 @@ type 'a seq_with_length =
   ; length : Sizedints.Uint62.t Lazy.t
   }
 
-(** {1: "The GADT"}
+(** {1 "The GADT"}
 
     This GADT describes OCaml values and their representation. E.g.,
     [Numeral { numeral = Int64; endianness = Big_endian }] describes an OCaml
@@ -43,7 +43,7 @@ type 'a seq_with_length =
     E.g., a [(dynamic, int array) t] describes integer arrays which are
     represented in a dynamically-sized form.
 
-    {2: Design}
+    {2 Design}
 
     This GADT is designed with two conflicting goals in mind: simplicity and
     efficiency. For simplicity, we want to keep the GADT small with a few
@@ -67,7 +67,7 @@ Conv
     two distinct constructors ([String] and [Bytes]) which leads to some
     (near) duplication in the code of the functions that match this AST.
 
-    {2: Organisation}
+    {2 Organisation}
 
     The GADT has constructors for:
 

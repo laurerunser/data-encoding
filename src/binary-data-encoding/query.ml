@@ -18,12 +18,12 @@ let max_int_of : type n. n Descr.numeral -> Commons.Sizedints.Uint62.t = functio
 ;;
 
 let size_of_numeral : type n. n Descr.numeral -> Commons.Sizedints.Uint62.t = function
-  | Uint8 -> Size.As_uint62.uint8
-  | Uint16 -> Size.As_uint62.uint16
-  | Uint30 -> Size.As_uint62.uint30
-  | Uint62 -> Size.As_uint62.uint62
-  | Int32 -> Size.As_uint62.int32
-  | Int64 -> Size.As_uint62.int64
+  | Uint8 -> Width.As_uint62.uint8
+  | Uint16 -> Width.As_uint62.uint16
+  | Uint30 -> Width.As_uint62.uint30
+  | Uint62 -> Width.As_uint62.uint62
+  | Int32 -> Width.As_uint62.int32
+  | Int64 -> Width.As_uint62.int64
 ;;
 
 let numeral_of_int : type n. n Descr.numeral -> int -> n =
@@ -454,7 +454,7 @@ let rec pp_of : type s t. (s, t) Descr.t -> Format.formatter -> t -> unit =
 
 let rec sizability : type s a. (s, a) Descr.t -> s = function
   | Unit -> Intrinsic (Static Commons.Sizedints.Uint62.zero)
-  | Bool -> Intrinsic (Static Size.As_uint62.bool)
+  | Bool -> Intrinsic (Static Width.As_uint62.bool)
   | Numeral { numeral; endianness = _ } -> Intrinsic (Static (size_of_numeral numeral))
   | String n -> Intrinsic (Static n)
   | Bytes n -> Intrinsic (Static n)

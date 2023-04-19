@@ -1,4 +1,4 @@
-(** {1: JSON representations}
+(** {1 JSON representations}
 
     This module provides multiple OCaml type definitions, each to represent JSON
     values. Along with these different representations, the module provides

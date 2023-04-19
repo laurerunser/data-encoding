@@ -2,7 +2,7 @@
 (* TODO: documentation of string/bytes ownership and mutation discipline *)
 (* TODO: more variants of write *)
 
-(** {1: Low-level writer}
+(** {1 Low-level writer}
 
     The function in this section ([writek]) is a low-level building
     block intended primarily for defining high-level functions. The next
@@ -34,7 +34,7 @@
     information you need from it). *)
 val writek : Buffy.W.state -> ('s, 'a) Descr.t -> 'a -> Buffy.W.written
 
-(** {2: High-level writers} *)
+(** {1 High-level writers} *)
 
 val write
   :  dst:bytes

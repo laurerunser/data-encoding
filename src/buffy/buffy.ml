@@ -1,4 +1,4 @@
-(** {1: Buffy}
+(** {1 Buffy}
 
 {v
 > Thanks for the dadaist pep talk, I feel much more abstract now.
@@ -6,7 +6,7 @@
 -- Buffy Summers
 v}
 
-    Buffy is a library for generic de/serialisation buffers with support for
+    Buffy is a library for abstract de/serialisation buffers with support for
     suspending and resuming the de/serialisation based on buffer space
     availability.
 
@@ -21,6 +21,8 @@ v}
     further space (or further bytes). The user provides this space (or those
     bytes) to resume the process. *)
 
+(** {2 Reading} *)
+
 (** [Src] is for {e sources}. A source is a value that a reading function can
     get bytes (and other bits) from. *)
 module Src = Src
@@ -28,6 +30,8 @@ module Src = Src
 (** [R] is for {e reading}. Reading is the process of extracting information
     from sources ([Src]). *)
 module R = Reading
+
+(** {2 Writing} *)
 
 (** [Dst] is for {e destinations}. A destination is a value that a writing
     function can put bytes (and other bits) into. *)

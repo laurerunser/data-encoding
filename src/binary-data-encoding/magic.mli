@@ -1,4 +1,6 @@
-(** Magic constants *)
+(** {1 Magic constants}
+
+    These are values for representing some parts of the binary data. *)
 
 val bool_true : Commons.Sizedints.Uint8.t
 val bool_false : Commons.Sizedints.Uint8.t

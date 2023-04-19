@@ -1,7 +1,7 @@
 module Hlist = Commons.Hlist
 module Sizedints = Commons.Sizedints
 
-(** {1: Prelude}
+(** {1 Prelude}
 
     This section contains basic type definitions. *)
 
@@ -36,7 +36,7 @@ type endianness = Descr.endianness =
   | Big_endian
   | Little_endian
 
-(** {1: Core type} *)
+(** {1 Core type} *)
 
 (** ['a t] is the types of encodings for values of the type ['a].  *)
 type 'a t
@@ -47,13 +47,20 @@ val introspect : 'a t -> 'a Descr.introspectable
 (** [detrospect d] returns the encoding corresponding to the (wrapped) [d]. *)
 val detrospect : 'a Descr.introspectable -> 'a t
 
-(** {1: Combinators} *)
+(** {1 Combinators} *)
 
-(* simple *)
+(** {2 Simple ground types} *)
+
 val unit : unit t
 val bool : bool t
 
-(* numerals *)
+(** {2 Strings and bytes} *)
+
+val string : count_spec -> string t
+val bytes : count_spec -> bytes t
+
+(** {2 Numerals} *)
+
 module type Endianed = sig
   val int64 : int64 t
   val int32 : int32 t
@@ -73,10 +80,13 @@ val default_endianness : endianness
 
 module Little_endian : Endianed
 
-(* collections *)
+val ellastic_uint30 : Sizedints.Uint30.t t
+
+(** {2 Collections} *)
 
 (** In [With_length] the collections are preceeded by a header indicating the
-    length of the collection (the number of elements). *)
+    length of the collection (the number of elements). (Or nothing if the
+    [count_spec] is [`Fixed].) *)
 module With_length : sig
   val array : count_spec -> 'a t -> 'a array t
   val seq : count_spec -> 'a t -> 'a Seq.t t
@@ -86,37 +96,28 @@ end
 include module type of With_length
 
 (** In [With_size] the collections are preceeded by a header indicating the size
-    in bytes. (Or nothing if  *)
+    in bytes.  *)
 module With_size : sig
   val seq : variable_count_spec -> 'a t -> 'a Seq.t t
   val array : variable_count_spec -> 'a t -> 'a array t
   val list : variable_count_spec -> 'a t -> 'a list t
 end
 
-(* other type constructors *)
+(** {2 Other common type constructors} *)
+
 val option : 'a t -> 'a option t
 val either : 'l t -> 'r t -> ('l, 'r) Either.t t
 
-(* strings and bytes *)
-val string : count_spec -> string t
-val bytes : count_spec -> bytes t
+(** {2 Product types} *)
 
-val conv
-  :  serialisation:('a -> 'b)
-  -> deserialisation:('b -> ('a, string) result)
-  -> 'b t
-  -> 'a t
-
-val ellastic_uint30 : Sizedints.Uint30.t t
-
-(* products *)
 type _ tuple =
   | [] : unit Hlist.t tuple
   | ( :: ) : 'a t * 'b Hlist.t tuple -> ('a * 'b) Hlist.t tuple
 
 val tuple : 'a tuple -> 'a t
 
-(* unions *)
+(** {2 Sum types} *)
+
 type ('tag, 'payload, 'union) case_descr
 type ('tag, 'a) anycase
 
@@ -144,19 +145,20 @@ val union
   -> ('tag -> (('tag, 'a) anycase, string) result)
   -> 'a t
 
-(* raise is <0 *)
-val with_size_limit : int -> 'a t -> 'a t
-
-(* may raise at de/serialisation time if [mkencoding] returns extrinsic *)
-val with_length_header
-  :  length_spec:variable_count_spec
-  -> length:('a -> Sizedints.Uint62.t)
-  -> mkencoding:(Sizedints.Uint62.t -> ('a t, string) result)
-  -> equal:('a -> 'a -> bool)
-  -> maximum_size:Optint.Int63.t
+(** {2 Multi-purpose combinator} *)
+val conv
+  :  serialisation:('a -> 'b)
+  -> deserialisation:('b -> ('a, string) result)
+  -> 'b t
   -> 'a t
 
-(** {1: Advanced helper functions}
+(** [with_size_limit limit e] is [e] but only [limit] bytes can be read
+    (resp. written) during the deserialisation (resp serialisation).
+
+    @raise Invalid_argument if [limit<0] *)
+val with_size_limit : int -> 'a t -> 'a t
+
+(** {1 Advanced helper functions}
 
     You should only need this if you are trying to define some advanced encoding
     for some custom strange types. *)

@@ -448,6 +448,7 @@ let bytes length_spec =
     E descr
 ;;
 
+(* TODO: generalise this: ellastic_uint*/ellastic_int* *)
 let ellastic_uint30 : Sizedints.Uint30.t t =
   let payload_mask = (* significant bits of each byte *) 0b0111_1111 in
   let tag_mask = (* metadata bits of each byte *) 0b1000_0000 in
@@ -559,6 +560,7 @@ let with_size_limit limit (E descr) =
   | Some at_most -> E (Size_limit { at_most; descr })
 ;;
 
+(* Currently not exposed bc can cause failures at de/serialisation time
 let with_length_header ~length_spec ~length ~mkencoding ~equal ~maximum_size =
   let descr =
     Helpers.with_length_header
@@ -577,3 +579,4 @@ let with_length_header ~length_spec ~length ~mkencoding ~equal ~maximum_size =
   in
   E descr
 ;;
+*)

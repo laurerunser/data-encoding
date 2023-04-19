@@ -1,5 +1,3 @@
-type t = int
-
 let int64 = 8
 let int32 = 4
 let uint62 = 8

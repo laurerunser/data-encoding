@@ -230,7 +230,7 @@ and read_numeral
 
 and read_uint8_tag : Buffy.R.state -> Commons.Sizedints.Uint8.t Buffy.R.readed =
  fun state ->
-  Buffy.R.readf state Size.bool (fun s ->
+  Buffy.R.readf state Width.bool (fun s ->
     let v = Buffy.Src.get_uint8 s in
     assert (v >= 0);
     assert (v < 256);
