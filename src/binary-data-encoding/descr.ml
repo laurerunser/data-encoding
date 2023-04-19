@@ -5,7 +5,7 @@ type ('step, 'finish) reducer =
   | K of 'step
   | Finish of 'finish
 
-type _ numeral =
+type 'a numeral = 'a Sizedints.numeral =
   | Uint8 : Sizedints.Uint8.t numeral
   | Uint16 : Sizedints.Uint16.t numeral
   | Uint30 : Sizedints.Uint30.t numeral

@@ -56,8 +56,7 @@ let rec generator_of_descr
       QCheck2.Gen.printable
   | LSeq { length; elementencoding } ->
     QCheck2.Gen.map
-      (fun l ->
-        { Binary_data_encoding.Internals.Descr.seq = List.to_seq l; length = lazy length })
+      (fun l -> { Binary_data_encoding.Descr.seq = List.to_seq l; length = lazy length })
       QCheck2.Gen.(
         list_size
           (let length = Optint.Int63.to_int (length :> Optint.Int63.t) in

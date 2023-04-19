@@ -1,5 +1,3 @@
-module Encoding = Encoding_public
-
 module Query : sig
   val zero_of_numeral : 'a Encoding.numeral -> 'a
   val max_int_of : 'a Encoding.numeral -> Commons.Sizedints.Uint62.t

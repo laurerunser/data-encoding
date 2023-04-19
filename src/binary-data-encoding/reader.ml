@@ -107,9 +107,7 @@ let rec readk : type s a. Buffy.R.state -> (s, a) Descr.t -> a Buffy.R.readed =
      | Ok value -> Buffy.R.Readed { state; value }
      | Error error -> Failed { state; error })
   | Size_headered { size; encoding } ->
-    let* readed_size, state =
-      read_numeral state size Encoding_public.default_endianness
-    in
+    let* readed_size, state = read_numeral state size Encoding.default_endianness in
     let readed_size = Query.int_of_numeral size readed_size in
     assert (readed_size >= 0);
     (match Buffy.R.push_stop state readed_size with
@@ -266,25 +264,25 @@ let%expect_test _ =
   let w
     : type a.
       (string * int * int) Seq.t
-      -> a Encoding_public.t
+      -> a Encoding.t
       -> (Format.formatter -> a -> unit)
       -> unit
     =
    fun sources e f ->
-    let (E descr) = Encoding_public.introspect e in
+    let (E descr) = Encoding.introspect e in
     match read_strings sources descr with
     | Ok value -> Format.printf "Ok: %a" f value
     | Error error -> Format.printf "Error: %s" error
   in
   w
     (List.to_seq [ "LooooooL", 0, 8 ])
-    Encoding_public.int64
+    Encoding.int64
     (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
   [%expect {|
     Ok: 4c6f6f6f6f6f6f4c |}];
   w
     (List.to_seq [ "Looo", 0, 4; "oooL", 0, 4 ])
-    Encoding_public.int64
+    Encoding.int64
     (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
   [%expect {|
     Ok: 4c6f6f6f6f6f6f4c |}];
@@ -301,7 +299,7 @@ let%expect_test _ =
   in
   ww
     "LooLLooL"
-    Encoding_public.(tuple [ unit; int32; int32; unit ])
+    Encoding.(tuple [ unit; int32; int32; unit ])
     (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx\n" l r);
   [%expect
     {|
@@ -325,7 +323,7 @@ let%expect_test _ =
   in
   www
     "LooLLooL"
-    Encoding_public.(tuple [ unit; int32; int32; unit ])
+    Encoding.(tuple [ unit; int32; int32; unit ])
     (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx\n" l r);
   [%expect
     {|
@@ -339,83 +337,83 @@ let%expect_test _ =
     Ok: 4c6f6f4c_4c6f6f4c |}];
   w
     Seq.(ints 0 |> take 8 |> map (fun i -> "LooLLooL", i, 1))
-    Encoding_public.(tuple [ unit; int32; int32; unit ])
+    Encoding.(tuple [ unit; int32; int32; unit ])
     (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx" l r);
   [%expect {| Ok: 4c6f6f4c_4c6f6f4c |}];
   w
     Seq.(ints 0 |> take 4 |> map (fun i -> "LooLLooL", i * 2, 2))
-    Encoding_public.(tuple [ unit; int32; int32; unit ])
+    Encoding.(tuple [ unit; int32; int32; unit ])
     (fun fmt [ (); l; r; () ] -> Format.fprintf fmt "%lx_%lx" l r);
   [%expect {| Ok: 4c6f6f4c_4c6f6f4c |}];
   w
     (List.to_seq [ "FOO", 0, 3 ])
-    Encoding_public.(string (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 3L)))
+    Encoding.(string (`Fixed (Option.get @@ Commons.Sizedints.Uint62.of_int64 3L)))
     Format.pp_print_string;
   [%expect {|
     Ok: FOO |}];
   w
     (List.to_seq [ "\000\000\000\000\000\000\000\000", 0, 8 ])
-    Encoding_public.uint62
+    Encoding.uint62
     (fun fmt u62 -> Format.fprintf fmt "%a" Optint.Int63.pp (u62 :> Optint.Int63.t));
   [%expect {|
     Ok: 0 |}];
   w
     (List.to_seq [ "<ooooooL", 0, 8 ])
-    Encoding_public.uint62
+    Encoding.uint62
     (fun fmt u62 -> Format.fprintf fmt "%a" Optint.Int63.pp (u62 :> Optint.Int63.t));
   [%expect {|
     Ok: 4354821889092185932 |}];
   w
     (List.to_seq [ "?\255\255\255\255\255\255\255", 0, 8 ])
-    Encoding_public.uint62
+    Encoding.uint62
     (fun fmt u62 -> Format.fprintf fmt "%a" Optint.Int63.pp (u62 :> Optint.Int63.t));
   [%expect {|
     Ok: 4611686018427387903 |}];
   w
     (List.to_seq [ "LooooooL", 0, 8 ])
-    Encoding_public.(with_size_limit 0 int64)
+    Encoding.(with_size_limit 0 int64)
     (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
   [%expect {|
     Error: size-limit exceeded |}];
   w
     (List.to_seq [ "LooooooL", 0, 8 ])
-    Encoding_public.(with_size_limit 2 int64)
+    Encoding.(with_size_limit 2 int64)
     (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
   [%expect {|
     Error: size-limit exceeded |}];
   w
     (List.to_seq [ "LooooooL", 0, 8 ])
-    Encoding_public.(with_size_limit 8 int64)
+    Encoding.(with_size_limit 8 int64)
     (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
   [%expect {|
     Ok: 4c6f6f6f6f6f6f4c |}];
   w
     (List.to_seq [ "LooooooL", 0, 8 ])
-    Encoding_public.(with_size_limit max_int int64)
+    Encoding.(with_size_limit max_int int64)
     (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
   [%expect {|
     Ok: 4c6f6f6f6f6f6f4c |}];
   w
     (List.to_seq [ "LooooooL", 0, 8 ])
-    Encoding_public.(with_size_limit 100 (with_size_limit 1000 int64))
+    Encoding.(with_size_limit 100 (with_size_limit 1000 int64))
     (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
   [%expect {|
     Ok: 4c6f6f6f6f6f6f4c |}];
   w
     (List.to_seq [ "LooooooL", 0, 8 ])
-    Encoding_public.(with_size_limit 1000 (with_size_limit 100 int64))
+    Encoding.(with_size_limit 1000 (with_size_limit 100 int64))
     (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
   [%expect {|
     Ok: 4c6f6f6f6f6f6f4c |}];
   w
     (List.to_seq [ "LooooooL", 0, 8 ])
-    Encoding_public.(with_size_limit 4 (with_size_limit 8 int64))
+    Encoding.(with_size_limit 4 (with_size_limit 8 int64))
     (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
   [%expect {|
     Error: size-limit exceeded |}];
   w
     (List.to_seq [ "LooooooL", 0, 8 ])
-    Encoding_public.(with_size_limit 8 (with_size_limit 4 int64))
+    Encoding.(with_size_limit 8 (with_size_limit 4 int64))
     (fun fmt i64 -> Format.fprintf fmt "%Lx" i64);
   [%expect {|
     Error: size-limit exceeded |}];

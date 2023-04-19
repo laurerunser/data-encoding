@@ -104,18 +104,18 @@ let%expect_test _ =
   w
     Encoding.(
       tuple
-        [ With_size.seq_with_size `Uint16 int32
+        [ With_size.array `Uint16 int32
         ; either uint30 bool
         ; either Little_endian.uint8 Little_endian.uint16
         ])
-    [ Array.to_seq [| 0l; 0l |]
+    [ [| 0l; 0l |]
     ; Either.Left Commons.Sizedints.Uint30.zero
     ; Either.Left Commons.Sizedints.Uint8.zero
     ];
   [%expect
     {|
-    Ok: seq(0,0);case(true:0);case(true:0)
+    Ok: conved(seq(0,0));case(true:0);case(true:0)
     Ok: 00080000000000000000ff00000000ff00
-    Ok: seq(0,0);case(true:0);case(true:0) |}];
+    Ok: conved(seq(0,0));case(true:0);case(true:0) |}];
   ()
 ;;

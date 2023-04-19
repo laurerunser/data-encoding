@@ -142,9 +142,7 @@ let rec writek : type s a. Buffy.W.state -> (s, a) Descr.t -> a -> Buffy.W.writt
            (* TODO: 32bit machines *)
            Query.numeral_of_int size_numeral (Optint.Int63.to_int size)
          in
-         let* state =
-           write_numeral state size_numeral Encoding_public.default_endianness size
-         in
+         let* state = write_numeral state size_numeral Encoding.default_endianness size in
          writek state encoding v))
   | Size_limit { at_most; encoding } ->
     let requested_size_limit =

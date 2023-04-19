@@ -54,9 +54,9 @@ let sequences : any_encoding Seq.t -> any_encoding Seq.t =
     in
     let l =
       (* TODO: better detect zeroability *)
-      match With_size.seq_with_size `Uint16 e with
+      match With_size.seq `Uint16 e with
       | exception Invalid_argument _ ->
-        (* We cannot apply [seq_with_size] to zero-length elements *)
+        (* We cannot apply [seq] to zero-length elements *)
         l
       | ee -> AnyE (Format.asprintf "sequ[ui16](%s)" s, ee) :: l
     in
