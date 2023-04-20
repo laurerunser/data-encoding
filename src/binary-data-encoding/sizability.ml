@@ -24,7 +24,8 @@ type s = S : _ t -> s
 
 (* et là tu pleure *)
 type ('l, 'r, 's) tupler =
-  | TAnyStatic : ('any t, static, 'any t) tupler
+  | TExtrinsicStatic : (extrinsic, static, extrinsic) tupler
+  | TIntrinsicStatic : ('i intrinsic, static, 'i intrinsic) tupler
   | TIntrinsicExtrinsic : (_ intrinsic, extrinsic, extrinsic) tupler
   | TIntrinsicDynamic : (_ intrinsic, dynamic, dynamic) tupler
 

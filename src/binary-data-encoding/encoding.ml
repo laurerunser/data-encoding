@@ -265,16 +265,18 @@ let rec tuple : type a. a tuple -> a t = function
   | E head :: tail ->
     let open Sizability in
     let (E tail) = tuple tail in
-    (match Query.sizability tail with
-     | Intrinsic (Static _) -> E (TupCons { tupler = TAnyStatic; head; tail })
-     | Intrinsic Dynamic ->
-       (match Query.sizability head with
-        | Intrinsic _ -> E (TupCons { tupler = TIntrinsicDynamic; head; tail })
-        | Extrinsic -> failwith "forbidden extrinsic-dynamic construction in tuple")
-     | Extrinsic ->
-       (match Query.sizability head with
-        | Intrinsic _ -> E (TupCons { tupler = TIntrinsicExtrinsic; head; tail })
-        | Extrinsic -> failwith "forbidden extrinsic-extrinsic construction in tuple"))
+    (match Query.sizability head, Query.sizability tail with
+     | Extrinsic, Intrinsic (Static _) ->
+       E (TupCons { tupler = TExtrinsicStatic; head; tail })
+     | Intrinsic _, Intrinsic (Static _) ->
+       E (TupCons { tupler = TIntrinsicStatic; head; tail })
+     | Intrinsic _, Intrinsic Dynamic ->
+       E (TupCons { tupler = TIntrinsicDynamic; head; tail })
+     | Intrinsic _, Extrinsic -> E (TupCons { tupler = TIntrinsicExtrinsic; head; tail })
+     | Extrinsic, Intrinsic Dynamic ->
+       failwith "forbidden extrinsic-dynamic construction in tuple"
+     | Extrinsic, Extrinsic ->
+       failwith "forbidden extrinsic-extrinsic construction in tuple")
 ;;
 
 let unit = E Unit

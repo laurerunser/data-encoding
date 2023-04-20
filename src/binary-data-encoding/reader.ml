@@ -217,25 +217,19 @@ let rec readk : type s a. (s, a) Descr.t -> Buffy.R.state -> a Buffy.R.readed = 
          Buffy.R.Readed { state; value }
        | Error error -> Buffy.R.Failed { state; error })
   | TupNil -> fun state -> Buffy.R.Readed { state; value = [] }
-  | TupCons { tupler = TAnyStatic; head; tail } ->
+  | TupCons { tupler = TExtrinsicStatic; head; tail } ->
     let readhead = readk head in
     let readtail = readk tail in
     let (Intrinsic (Static n)) = Query.sizability tail in
     fun state ->
-      (match Query.sizability head with
-       | Extrinsic ->
-         let state =
-           Buffy.R.bring_first_stop_forward
-             state
-             (Optint.Int63.to_int (* catch overflow *) (n :> Optint.Int63.t))
-         in
-         let* v, state = readhead state in
-         let* vs, state = readtail state in
-         Buffy.R.Readed { state; value = Descr.Hlist.( :: ) (v, vs) }
-       | Intrinsic _ ->
-         let* v, state = readhead state in
-         let* vs, state = readtail state in
-         Buffy.R.Readed { state; value = Descr.Hlist.( :: ) (v, vs) })
+      let state =
+        Buffy.R.bring_first_stop_forward
+          state
+          (Optint.Int63.to_int (* catch overflow *) (n :> Optint.Int63.t))
+      in
+      let* v, state = readhead state in
+      let* vs, state = readtail state in
+      Buffy.R.Readed { state; value = Descr.Hlist.( :: ) (v, vs) }
   | TupCons { tupler = _; head; tail } ->
     let readhead = readk head in
     let readtail = readk tail in

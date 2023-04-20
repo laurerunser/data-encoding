@@ -141,14 +141,14 @@ let rec sizability : type s a. (s, a) Descr.t -> s = function
     (* TODO? be more thourough and check if all the cases have the same size *)
     Intrinsic Dynamic
   | TupNil -> Intrinsic (Static Commons.Sizedints.Uint62.zero)
-  | TupCons { tupler = TAnyStatic; head; tail } ->
+  | TupCons { tupler = TExtrinsicStatic; head = _; tail = _ } -> Extrinsic
+  | TupCons { tupler = TIntrinsicStatic; head; tail } ->
     (match sizability head with
      | Intrinsic (Static h) ->
        let (Intrinsic (Static t)) = sizability tail in
        (* TODO: catch overflow *)
        Intrinsic (Static (Commons.Sizedints.Uint62.add h t))
-     | Intrinsic Dynamic -> Intrinsic Dynamic
-     | Extrinsic -> Extrinsic)
+     | Intrinsic Dynamic -> Intrinsic Dynamic)
   | TupCons { tupler = TIntrinsicExtrinsic; head = _; tail = _ } -> Extrinsic
   | TupCons { tupler = TIntrinsicDynamic; head = _; tail = _ } -> Intrinsic Dynamic
 ;;
@@ -334,9 +334,9 @@ let%expect_test _ =
   w
     Descr.(
       TupCons
-        { tupler = TAnyStatic
+        { tupler = TIntrinsicStatic
         ; head = Unit
-        ; tail = TupCons { tupler = TAnyStatic; head = Unit; tail = TupNil }
+        ; tail = TupCons { tupler = TIntrinsicStatic; head = Unit; tail = TupNil }
         })
     [ (); () ];
   [%expect {| 0 |}];
@@ -435,9 +435,9 @@ let%expect_test _ =
   w
     Descr.(
       TupCons
-        { tupler = TAnyStatic
+        { tupler = TIntrinsicStatic
         ; head = Unit
-        ; tail = TupCons { tupler = TAnyStatic; head = Unit; tail = TupNil }
+        ; tail = TupCons { tupler = TIntrinsicStatic; head = Unit; tail = TupNil }
         });
   [%expect {| 0 |}];
   w Descr.(Numeral { numeral = Int64; endianness = Big_endian });
