@@ -49,28 +49,26 @@ module Helpers = struct
     =
    fun ~cache_size ~headerdescr ~mkheader ~descr_of_header ~equal ~maximum_size ->
     if cache_size <= 0 then raise (Invalid_argument "cache-size must be >=1");
-    let writers =
-      Commons.BoundedCache.make
-        (module struct
-          type t = h
+    let module HashedHeader : Hashtbl.HashedType with type t = h = struct
+      type t = h
 
-          let equal = Query.equal_of headerdescr
-          let hash = Hashtbl.hash
-        end)
-        cache_size
+      let equal = Query.equal_of headerdescr
+      let hash = Hashtbl.hash
+    end
     in
-    let readers =
-      Commons.BoundedCache.make
-        (module struct
-          type t = h
-
-          let equal = Query.equal_of headerdescr
-          let hash = Hashtbl.hash
-        end)
-        cache_size
-    in
+    let writers = Commons.BoundedCache.make (module HashedHeader) cache_size in
+    let readers = Commons.BoundedCache.make (module HashedHeader) cache_size in
+    let sizers = Commons.BoundedCache.make (module HashedHeader) cache_size in
     Descr.Headered
-      { mkheader; headerdescr; writers; readers; descr_of_header; equal; maximum_size }
+      { mkheader
+      ; headerdescr
+      ; writers
+      ; readers
+      ; sizers
+      ; descr_of_header
+      ; equal
+      ; maximum_size
+      }
  ;;
 
   let fold ~chunkdescr ~chunkify ~readinit ~reducer ~equal ~maximum_size =
@@ -557,11 +555,11 @@ module Union = struct
   let case tag (E descr) inject =
     match Query.sizability descr with
     | Extrinsic -> raise (Invalid_argument "extrinsic payload encoding in tag")
-    | Intrinsic _ -> ECase { tag; descr; write = None; read = None; inject }
+    | Intrinsic _ -> ECase { tag; descr; write = None; read = None; size = None; inject }
   ;;
 
   let case_unit tag inject =
-    ECase { tag; descr = Unit; write = None; read = None; inject }
+    ECase { tag; descr = Unit; write = None; read = None; size = None; inject }
   ;;
 
   let union

@@ -102,6 +102,7 @@ let rec writek : type s a. (s, a) Descr.t -> Buffy.W.state -> a -> Buffy.W.writt
       ; headerdescr
       ; writers
       ; readers = _
+      ; sizers = _
       ; descr_of_header
       ; equal = _
       ; maximum_size = _
@@ -170,7 +171,6 @@ let rec writek : type s a. (s, a) Descr.t -> Buffy.W.state -> a -> Buffy.W.writt
         else other_size_limit
       in
       (* TODO: have [Query.size_of_with_limit] to fail earlier *)
-      (* TODO: preapplication in Query.size_of to avoid interpretation here *)
       (match Query.size_of descr v with
        | Error error -> Failed { error; state }
        | Ok size ->
@@ -214,7 +214,10 @@ let rec writek : type s a. (s, a) Descr.t -> Buffy.W.state -> a -> Buffy.W.writt
   | Union { tag; serialisation; deserialisation = _; cases = _ } ->
     let writetag = writek tag in
     fun state v ->
-      let (AnyP (({ Descr.tag; descr; write; read = _; inject = _ } as case), payload)) =
+      let (AnyP
+            ( ({ Descr.tag; descr; write; read = _; size = _; inject = _ } as case)
+            , payload ))
+        =
         serialisation v
       in
       let* state = writetag state tag in

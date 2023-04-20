@@ -100,6 +100,7 @@ let rec readk : type s a. (s, a) Descr.t -> Buffy.R.state -> a Buffy.R.readed = 
       ; headerdescr
       ; writers = _
       ; readers
+      ; sizers = _
       ; descr_of_header
       ; equal = _
       ; maximum_size = _
@@ -197,7 +198,10 @@ let rec readk : type s a. (s, a) Descr.t -> Buffy.R.state -> a Buffy.R.readed = 
     fun state ->
       let* found_tag, state = readtag state in
       (match deserialisation found_tag with
-       | Ok (AnyC ({ tag = expected_tag; descr; write = _; read; inject } as case)) ->
+       | Ok
+           (AnyC
+             ({ tag = expected_tag; descr; write = _; read; size = _; inject } as case))
+         ->
          (* NOTE: this assert is actually about user-provided input *)
          assert (Query.equal_of tag found_tag expected_tag);
          let readpayload =

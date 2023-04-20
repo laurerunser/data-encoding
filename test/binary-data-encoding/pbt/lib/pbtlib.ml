@@ -75,6 +75,7 @@ let rec generator_of_descr
       ; headerdescr
       ; writers = _
       ; readers = _
+      ; sizers = _
       ; descr_of_header
       ; equal = _
       ; maximum_size = _
@@ -119,7 +120,7 @@ let rec generator_of_descr
   | Union { tag = _; serialisation = _; deserialisation = _; cases } ->
     QCheck2.Gen.bind
       (QCheck2.Gen.oneofl cases)
-      (fun (AnyC { tag = _; descr; write = _; read = _; inject }) ->
+      (fun (AnyC { tag = _; descr; write = _; read = _; size = _; inject }) ->
       QCheck2.Gen.map inject (generator_of_descr descr))
   | TupNil -> QCheck2.Gen.pure Commons.Hlist.[]
   | TupCons { tupler = _; head; tail } ->

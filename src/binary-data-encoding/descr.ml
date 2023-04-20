@@ -143,6 +143,7 @@ type (_, _) t =
       ; headerdescr : ('s Sizability.intrinsic, 'header) t
       ; writers : ('header, Buffy.W.state -> 'a -> Buffy.W.written) BoundedCache.t
       ; readers : ('header, Buffy.R.state -> 'a Buffy.R.readed) BoundedCache.t
+      ; sizers : ('header, 'a -> (Optint.Int63.t, string) result) BoundedCache.t
       ; descr_of_header : 'header -> ('a anyintrinsic, string) result
       ; equal : 'a -> 'a -> bool
       ; maximum_size : Optint.Int63.t (* the max size of the payload *)
@@ -189,6 +190,7 @@ and ('s, 'tag, 'payload, 'union) case_descr =
   ; descr : ('s Sizability.intrinsic, 'payload) t
   ; mutable write : (Buffy.W.state -> 'payload -> Buffy.W.written) option
   ; mutable read : (Buffy.R.state -> 'payload Buffy.R.readed) option
+  ; mutable size : ('payload -> (Optint.Int63.t, string) result) option
   ; inject : 'payload -> 'union
   }
 
