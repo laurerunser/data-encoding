@@ -1,5 +1,18 @@
-module Encoding = Encoding_public
+(** {1 Public interface wrappers}
 
+    The binary-data-encoding library uses descriptions in order to
+    drive de/serialisations. However, the description type ({!Descr.t}) is
+    public and complex (it tracks sizability). And so the binary-data-encoding
+    library exposes an API based on encodings ({!Encoding.t}) which are private
+    and simpler.
+
+    The functions below are wrappers around core functions of
+    binary-data-encoding which apply to encodings rather than descriptions. They
+    are used in the top-level module of the library ({!Binary_data_encoding}) in
+    order to expose a more consistent set of simpler primitives to the user.
+    *)
+
+(** Queries about the properties of some encodings. *)
 module Query : sig
   val zero_of_numeral : 'a Encoding.numeral -> 'a
   val max_int_of : 'a Encoding.numeral -> Commons.Sizedints.Uint62.t
@@ -14,7 +27,7 @@ module Query : sig
 end
 
 module Reader : sig
-  (** {1: Low-level reader}
+  (** {1 Low-level reader}
 
     The function in this section ([readk]) is a low-level building
     block intended primarily for defining high-level functions. The next
@@ -40,7 +53,7 @@ module Reader : sig
     subsequent calls to [cont]s never exceeds this limit. *)
   val readk : Buffy.R.state -> 'a Encoding.t -> 'a Buffy.R.readed
 
-  (** {2: High-level readers} *)
+  (** {2 High-level readers} *)
 
   val read
     :  src:string

@@ -6,13 +6,13 @@ type t =
   { blob : string
   ; offset : int
   ; length : int
-  ; mutable readed : int
+  ; mutable gotten : int
   }
 
-let available { length; readed; _ } = length - readed
-let readed { readed; _ } = readed
+let available { length; gotten; _ } = length - gotten
+let gotten { gotten; _ } = gotten
 
-let to_string { blob; offset; length; readed = _ } =
+let to_string { blob; offset; length; gotten = _ } =
   if offset = 0 && length = String.length blob
   then blob
   else String.sub blob offset length
@@ -28,7 +28,7 @@ let of_string ?(offset = 0) ?length blob =
   if length < 0 then failwith "Buffy.Src.of_string: negative length";
   if offset + length > String.length blob
   then failwith "Buffy.Src.of_string: offset+length overflow";
-  { blob; offset; length; readed = 0 }
+  { blob; offset; length; gotten = 0 }
 ;;
 
 let of_bytes ?offset ?length blob =
@@ -36,9 +36,9 @@ let of_bytes ?offset ?length blob =
 ;;
 
 let wrap_getter getter width src =
-  if src.readed + width > src.length then failwith "Buffy.Src: overflow";
-  let v = getter src.blob (src.offset + src.readed) in
-  src.readed <- src.readed + width;
+  if src.gotten + width > src.length then failwith "Buffy.Src: overflow";
+  let v = getter src.blob (src.offset + src.gotten) in
+  src.gotten <- src.gotten + width;
   v
 ;;
 
@@ -56,9 +56,9 @@ let get_int64_le = wrap_getter String.get_int64_le 8
 let get_string t l = wrap_getter (fun s o -> String.sub s o l) l t
 
 let get_blit_onto_bytes t dest doff len =
-  if t.readed + len > t.length then failwith "Buffy.Src: overflow";
+  if t.gotten + len > t.length then failwith "Buffy.Src: overflow";
   if doff < 0 then failwith "Buffy.Src: blit underflow";
   if doff + len > Bytes.length dest then failwith "Buffy.Src: blit overflow";
-  Bytes.blit_string t.blob (t.offset + t.readed) dest doff len;
-  t.readed <- t.readed + len
+  Bytes.blit_string t.blob (t.offset + t.gotten) dest doff len;
+  t.gotten <- t.gotten + len
 ;;

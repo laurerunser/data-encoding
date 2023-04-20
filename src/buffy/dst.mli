@@ -1,28 +1,27 @@
-(** {1: Destinations }
+(** {1 Destinations }
 
-    Destinations are an abstractions for things you can send bytes (and other
-    low-level byte-like values) to. *)
+    Destinations are an abstractions for things you can put bytes into. *)
 
 (** A value of the type [t] is a destination. *)
 type t
 
-(** [available t] is the remaining available space in [t]. *)
+(** [available t] is the remaining available space (in number of bytes) in [t]. *)
 val available : t -> int
 
 (** [added t] is the number of bytes already added to [t]. *)
 val added : t -> int
 
-(** {2: Setters}
+(** {2 Adders}
 
     [add_X t x] adds the binary representation of [x] to [t].
 
     @raise Invalid_argument if adding the binary representation would exceed the
     length of [t]. *)
 
-(** [add_char] sets a character *)
+(** [add_char] adds a character (one byte). *)
 val add_char : t -> char -> unit
 
-(** [add_uint8] sets an unsigned 8-bit integer.
+(** [add_uint8] adds an unsigned 8-bit integer (one byte).
 
     The behaviour is unspecified if the provided int is beyond the range of uint8.
     It may even raise an exception.
@@ -31,7 +30,7 @@ val add_char : t -> char -> unit
   *)
 val add_uint8 : t -> int -> unit
 
-(** [add_int8] sets a signed 8-bit integer.
+(** [add_int8] adds a signed 8-bit integer (one byte).
 
     The behaviour is unspecified if the provided int is beyond the range of
     int8. It may even raise an exception.
@@ -40,7 +39,8 @@ val add_uint8 : t -> int -> unit
   *)
 val add_int8 : t -> int -> unit
 
-(** [add_uint16_be] sets an unsigned 16-bit integer in big-endian representation.
+(** [add_uint16_be] adds an unsigned 16-bit integer in big-endian representation
+    (two bytes).
 
     The behaviour is unspecified if the provided int is beyond the range of
     uint16. It may even raise an exception.
@@ -49,7 +49,8 @@ val add_int8 : t -> int -> unit
   *)
 val add_uint16_be : t -> int -> unit
 
-(** [add_uint16_le] sets an unsigned 16-bit integer in little-endian representation.
+(** [add_uint16_le] adds an unsigned 16-bit integer in little-endian representation
+    (two bytes).
 
     The behaviour is unspecified if the provided int is beyond the range of
     uint16. It may even raise an exception.
@@ -58,7 +59,8 @@ val add_uint16_be : t -> int -> unit
   *)
 val add_uint16_le : t -> int -> unit
 
-(** [add_int16_be] sets a signed 16-bit integer in big-endian representation.
+(** [add_int16_be] adds a signed 16-bit integer in big-endian representation
+    (two bytes).
 
     The behaviour is unspecified if the provided int is beyond the range of
     int16. It may even raise an exception.
@@ -67,7 +69,8 @@ val add_uint16_le : t -> int -> unit
   *)
 val add_int16_be : t -> int -> unit
 
-(** [add_int16_le] sets a signed 16-bit integer in little-endian representation.
+(** [add_int16_le] adds a signed 16-bit integer in little-endian representation
+    (two bytes).
 
     The behaviour is unspecified if the provided int is beyond the range of
     int16. It may even raise an exception.
@@ -76,23 +79,27 @@ val add_int16_be : t -> int -> unit
   *)
 val add_int16_le : t -> int -> unit
 
-(** [add_int32_be] sets a 32-bit integer in big-endian representation. *)
+(** [add_int32_be] adds a 32-bit integer in big-endian representation (four
+    bytes). *)
 val add_int32_be : t -> int32 -> unit
 
-(** [add_int32_le] sets a 32-bit integer in little-endian representation. *)
+(** [add_int32_le] adds a 32-bit integer in little-endian representation (four
+    bytes). *)
 val add_int32_le : t -> int32 -> unit
 
-(** [add_int64_be] sets a 64-bit integer in big-endian representation. *)
+(** [add_int64_be] adds a 64-bit integer in big-endian representation (eight
+    bytes). *)
 val add_int64_be : t -> int64 -> unit
 
-(** [add_int64_be] sets a 64-bit integer in little-endian representation. *)
+(** [add_int64_be] adds a 64-bit integer in little-endian representation (eight
+    bytes). *)
 val add_int64_le : t -> int64 -> unit
 
-(** [add_string] sets a full string. This is equivalent to setting each of the
+(** [add_string] adds a full string. This is equivalent to setting each of the
     byte one after the other with increasing indices. *)
 val add_string : t -> string -> unit
 
-(** [add_string_slice] sets a slice of a string designated by an offset and a
+(** [add_string_slice] adds a slice of a string designated by an offset and a
     length.
 
     The behaviour is unspecified if the provided offset and length do not
@@ -102,11 +109,11 @@ val add_string : t -> string -> unit
     valid for the string. *)
 val add_string_slice : t -> string -> int -> int -> unit
 
-(** [add_bytes] sets a full bytes. This is equivalent to setting each of the
+(** [add_bytes] adds a full bytes. This is equivalent to setting each of the
     byte one after the other with increasing indices. *)
 val add_bytes : t -> bytes -> unit
 
-(** [add_bytes_slice] sets a slice of a bytes designated by an offset and a
+(** [add_bytes_slice] adds a slice of a bytes designated by an offset and a
     length.
 
     The behaviour is unspecified if the provided offset and length do not
@@ -116,24 +123,26 @@ val add_bytes : t -> bytes -> unit
     valid for the bytes. *)
 val add_bytes_slice : t -> bytes -> int -> int -> unit
 
-(** {2: Makers}
+(** {2 Makers}
 
     The functions of this section are used to produce destinations. *)
 
 (** [of_bytes b] is a destination such that writing writes on the underlying
-    bytes [b].
+    bytes [b]. The number of available bytes in the destination starts as the
+    length of [b], it decreases as values are added.
 
-    All setter and other indices are relative to the [offset]. For example,
-    [add_char (of_bytes ~offset:x b) '1'] has the same effect as
-    [Bytes.set b x '1']. The content prior to [offset] or beyond
-    [offset+length] cannot be altered.
+    @param [offset] (default: [0]) Adders set the content of the bytes starting
+    at this offset. E.g., [add_char (of_bytes ~offset b) '1'] has the same
+    effect on [b] as [Bytes.set b offset '1'].
 
-    @param [offset] (default: [0])
+    @param [length] (default: [Bytes.length b - offset]) Specifies the starting
+    amount of available space.
 
-    @param [length] (default: [Bytes.length b - offset]) *)
+    @raise Invalid_argument if [offset] and [length] do not designate a valid
+    slice of [b]. *)
 val of_bytes : ?offset:int -> ?length:int -> bytes -> t
 
-(** {2: Contents}
+(** {2 Contents}
 
     The functions of this section are used to extract information from a
     destination. *)
@@ -144,7 +153,7 @@ val to_string : t -> string
 (** [blit_onto_bytes t soff b doff len] blits [len] bytes from [t] starting at
     offset [soff] onto [b] starting at offset [doff].
 
-    @parameter [soff] is relative to the writable part of the destination.
+    @param [soff] is relative to the writable part of the destination.
 
     @raise [Invalid_argument] if the offsets or length are out of bounds. *)
 val blit_onto_bytes : t -> int -> bytes -> int -> int -> unit

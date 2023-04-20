@@ -1,4 +1,4 @@
-(** {1: Sources}
+(** {1 Sources}
 
     Sources are an abstractions for things you can get bytes (and other
     low-level byte-like values) from. *)
@@ -6,10 +6,13 @@
 (** A value of the type [t] is a source. *)
 type t
 
+(** [available t] is the remaining available content (in number of bytes) in [t]. *)
 val available : t -> int
-val readed : t -> int
 
-(** {2: Getters}
+(** [gotten t] is the number of bytes already gotten from [t]. *)
+val gotten : t -> int
+
+(** {2 Getters}
 
     [get_X t o] gets an [X] from [t] at offset [o].
 
@@ -61,7 +64,8 @@ val get_int64_le : t -> int64
 (** [get_string] is a getter for string. The length of the string is determined
     by the additional parameter.
 
-    See [blit_onto_bytes] which may be of interest. *)
+    Note that this function allocates a new string. This may be what you want.
+    Alternatively, see [get_blit_onto_bytes] which may be of interest. *)
 val get_string : t -> int -> string
 
 (** [get_blit_onto_bytes t b doff len] blits [len] bytes from [t] onto [b]
@@ -70,7 +74,7 @@ val get_string : t -> int -> string
     @raise [Invalid_argument] if the offsets or length are out of bounds. *)
 val get_blit_onto_bytes : t -> bytes -> int -> int -> unit
 
-(** {2: Makers}
+(** {2 Makers}
 
     The functions of this section are used to produce sources. *)
 
@@ -90,7 +94,7 @@ val of_string : ?offset:int -> ?length:int -> string -> t
     {b Warning:} modifying [b] will modify the source. *)
 val of_bytes : ?offset:int -> ?length:int -> bytes -> t
 
-(** {2: Contents}
+(** {2 Contents}
 
     The functions in this section are used to inspect the content of sources. *)
 

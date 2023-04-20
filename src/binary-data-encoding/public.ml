@@ -1,5 +1,3 @@
-module Encoding = Encoding_public
-
 module Query = struct
   include Query
 

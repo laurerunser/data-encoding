@@ -1,4 +1,7 @@
 (* TODO: expect tests *)
+(* TODO? consolidate maximum-size, size-limits, and stop-hints into a single
+   list (or list-like structure?) to simplify overflow-checks and
+   nesting-checks? *)
 
 (* The state when reading.
 
@@ -28,9 +31,6 @@
    used to stop at the expected offset. A stop-point can overshoot the length of
    the source, in which case all the stop-hints are patched when a suspension is
    resumed. *)
-(* TODO? consolidate maximum-size, size-limits, and stop-hints into a single
-   list (or list-like structure?) to simplify overflow-checks and
-   nesting-checks? *)
 type state =
   { source : Src.t
   ; maximum_size : int
@@ -40,7 +40,7 @@ type state =
       (* this list is grown when there is a size-header in the encoded binary data *)
   }
 
-let readed { source; _ } = Src.readed source
+let readed { source; _ } = Src.gotten source
 
 (* checks invariant regarding the size-limits and stop-hints: that they are in
    increasing order and lower than maximum-size *)
@@ -93,7 +93,7 @@ let internal_mk_state maximum_size size_limits stop_hints source =
 
 let push_stop state length =
   assert (length >= 0);
-  let requested_stop = length + Src.readed state.source in
+  let requested_stop = length + Src.gotten state.source in
   if requested_stop > state.maximum_size
   then Error "expected-stop exceeds maximum-size"
   else (
@@ -138,7 +138,7 @@ let bring_first_stop_forward source delta =
 
 let push_limit state length =
   assert (length >= 0);
-  let requested_limit = length + Src.readed state.source in
+  let requested_limit = length + Src.gotten state.source in
   if requested_limit > state.maximum_size
   then Error "size-limit exceeds maximum-size"
   else (
@@ -195,22 +195,22 @@ let rec ( let* ) x f =
 ;;
 
 let rec unsafe_readcopy scratch scratch_offset state =
-  let reading = Bytes.length scratch - scratch_offset in
+  let width = Bytes.length scratch - scratch_offset in
   let readable = Src.available state.source in
-  if reading <= readable
+  if width <= readable
   then (
-    Src.get_blit_onto_bytes state.source scratch scratch_offset reading;
+    Src.get_blit_onto_bytes state.source scratch scratch_offset width;
     Readed { state; value = () })
   else (
-    let reading = readable in
-    Src.get_blit_onto_bytes state.source scratch scratch_offset reading;
-    let scratch_offset = scratch_offset + reading in
-    let maximum_size = state.maximum_size - Src.readed state.source in
+    let width = readable in
+    Src.get_blit_onto_bytes state.source scratch scratch_offset width;
+    let scratch_offset = scratch_offset + width in
+    let maximum_size = state.maximum_size - Src.gotten state.source in
     let stop_hints =
-      List.map (fun stop -> stop - Src.readed state.source) state.stop_hints
+      List.map (fun stop -> stop - Src.gotten state.source) state.stop_hints
     in
     let size_limits =
-      List.map (fun limit -> limit - Src.readed state.source) state.size_limits
+      List.map (fun limit -> limit - Src.gotten state.source) state.size_limits
     in
     assert (check_stops_and_limits 0 stop_hints maximum_size);
     assert (check_stops_and_limits 0 size_limits maximum_size);
@@ -223,9 +223,9 @@ let rec unsafe_readcopy scratch scratch_offset state =
       })
 ;;
 
-let readf state reading read =
-  assert (reading >= 0);
-  let reach = Src.readed state.source + reading in
+let readf state width read =
+  assert (width >= 0);
+  let reach = Src.gotten state.source + width in
   if reach > state.maximum_size
   then Failed { state; error = "maximum-size exceeded" }
   else if match state.size_limits with
@@ -236,7 +236,7 @@ let readf state reading read =
           | [] -> false
           | stop :: _ -> reach > stop
   then Failed { state; error = "expected-stop point exceeded" }
-  else if reading <= Src.available state.source
+  else if width <= Src.available state.source
   then (
     let value = read state.source in
     Readed { state; value })
@@ -244,12 +244,12 @@ let readf state reading read =
   then (
     (* the source was fully consumed, we do a simple continuation *)
     (* To avoid the continuation capturing the [source] we compute some values immediately *)
-    let maximum_size = state.maximum_size - Src.readed state.source in
+    let maximum_size = state.maximum_size - Src.gotten state.source in
     let stop_hints =
-      List.map (fun stop -> stop - Src.readed state.source) state.stop_hints
+      List.map (fun stop -> stop - Src.gotten state.source) state.stop_hints
     in
     let size_limits =
-      List.map (fun limit -> limit - Src.readed state.source) state.size_limits
+      List.map (fun limit -> limit - Src.gotten state.source) state.size_limits
     in
     assert (check_stops_and_limits 0 stop_hints maximum_size);
     assert (check_stops_and_limits 0 size_limits maximum_size);
@@ -257,11 +257,11 @@ let readf state reading read =
       { state
       ; cont =
           (fun source ->
-            if reading > Src.available source
+            if width > Src.available source
             then (
               let state = internal_mk_state maximum_size size_limits stop_hints source in
               (* TODO: document this allocation, also see TODOs below *)
-              let scratch = Bytes.make reading '\x00' in
+              let scratch = Bytes.make width '\x00' in
               let scratch_offset = 0 in
               let* (), state = unsafe_readcopy scratch scratch_offset state in
               let value = read (Src.of_bytes scratch) in
@@ -278,7 +278,7 @@ let readf state reading read =
          when the partial read of the remaining of the previous source is
          copied and when is it kept a reference of. *)
     (* TODO? provide a copy_limit and return [Failed] if going over *)
-    let split_reading_buffer = Bytes.make reading '\x00' in
+    let split_reading_buffer = Bytes.make width '\x00' in
     let* (), state = unsafe_readcopy split_reading_buffer 0 state in
     let value = read (Src.of_bytes split_reading_buffer) in
     Readed { value; state })
@@ -290,7 +290,7 @@ let%expect_test _ =
       fmt
       "source: %S, readed: %d, stops: [%a], maxlen: %d%!"
       (Src.to_string state.source)
-      (Src.readed state.source)
+      (Src.gotten state.source)
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
          Format.pp_print_int)
@@ -351,8 +351,8 @@ let%expect_test _ =
 ;;
 
 let readcopy scratch state =
-  let reading = Bytes.length scratch in
-  let reach = Src.readed state.source + reading in
+  let width = Bytes.length scratch in
+  let reach = Src.gotten state.source + width in
   if reach > state.maximum_size
   then Failed { state; error = "maximum-size exceeded" }
   else if match state.size_limits with
@@ -367,7 +367,7 @@ let readcopy scratch state =
 ;;
 
 let read_char state =
-  let reach = Src.readed state.source + 1 in
+  let reach = Src.gotten state.source + 1 in
   if reach > state.maximum_size
   then Failed { state; error = "maximum-size exceeded" }
   else if match state.size_limits with
@@ -407,7 +407,7 @@ let%expect_test _ =
       fmt
       "source: %S, readed: %d, stops: [%a], maxlen: %d"
       (Src.to_string state.source)
-      (Src.readed state.source)
+      (Src.gotten state.source)
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
          Format.pp_print_int)
@@ -458,7 +458,7 @@ let%expect_test _ =
   ()
 ;;
 
-type 'a chunkreader = Src.t -> 'a chunkreaded
+type 'a chunkreader = Src.t -> int -> 'a chunkreaded
 
 (* similar to [readed] but the state is just the readed count *)
 and 'a chunkreaded =
@@ -477,38 +477,38 @@ and 'a chunkreaded =
 
 let rec readchunked : type a. state -> a chunkreader -> a readed =
  fun state read ->
-  let hard_limit = state.maximum_size - Src.readed state.source in
+  let hard_limit = state.maximum_size - Src.gotten state.source in
   let hard_limit =
     match state.size_limits with
     | [] -> hard_limit
-    | limit :: _ -> min hard_limit (limit - Src.readed state.source)
+    | limit :: _ -> min hard_limit (limit - Src.gotten state.source)
   in
   let hard_limit =
     match state.stop_hints with
     | [] -> hard_limit
-    | stop :: _ -> min hard_limit (stop - Src.readed state.source)
+    | stop :: _ -> min hard_limit (stop - Src.gotten state.source)
   in
   let suspendable_limit = Src.available state.source in
-  let reading = min hard_limit suspendable_limit in
-  assert (reading <= hard_limit);
-  assert (reading >= 0);
-  match read state.source with
+  let max_width = min hard_limit suspendable_limit in
+  assert (max_width <= hard_limit);
+  assert (max_width >= 0);
+  match read state.source max_width with
   | CReaded { value; readed } ->
-    assert (readed <= reading);
+    assert (readed <= max_width);
     Readed { state; value }
   | CSuspended { readed; cont } ->
-    assert (readed <= reading);
+    assert (readed <= max_width);
     if readed = hard_limit
     then (
       let error = "chunkreader requests more bytes but hard limit was reached" in
       Failed { error; state })
     else (
-      let maximum_size = state.maximum_size - Src.readed state.source in
+      let maximum_size = state.maximum_size - Src.gotten state.source in
       let stop_hints =
-        List.map (fun stop -> stop - Src.readed state.source) state.stop_hints
+        List.map (fun stop -> stop - Src.gotten state.source) state.stop_hints
       in
       let size_limits =
-        List.map (fun limit -> limit - Src.readed state.source) state.size_limits
+        List.map (fun limit -> limit - Src.gotten state.source) state.size_limits
       in
       assert (check_stops_and_limits 0 stop_hints maximum_size);
       assert (check_stops_and_limits 0 size_limits maximum_size);
@@ -545,7 +545,7 @@ let%expect_test _ =
       fmt
       "source: %S, readed: %d, stops: [%a], maxlen: %d"
       (Src.to_string state.source)
-      (Src.readed state.source)
+      (Src.gotten state.source)
       (Format.pp_print_list
          ~pp_sep:(fun fmt () -> Format.pp_print_char fmt ',')
          Format.pp_print_int)

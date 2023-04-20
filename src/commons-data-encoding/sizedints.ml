@@ -120,3 +120,11 @@ module Uint8 = struct
   let to_uint62 v = Optint.Int63.of_int v
   let get = String.get_uint8
 end
+
+type 'a numeral =
+  | Uint8 : Uint8.t numeral
+  | Uint16 : Uint16.t numeral
+  | Uint30 : Uint30.t numeral
+  | Uint62 : Uint62.t numeral
+  | Int32 : int32 numeral
+  | Int64 : int64 numeral

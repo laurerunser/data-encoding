@@ -119,12 +119,11 @@ let%expect_test _ =
     let tup =
       with_size_limit
         128
-        (With_size.seq_with_size
+        (With_size.seq
            `Uint8
            (with_size_limit
               64
-              (tuple
-                 [ With_size.seq_with_size `Uint8 uint16; string `Uint8; string `Uint8 ])))
+              (tuple [ With_size.seq `Uint8 uint16; string `Uint8; string `Uint8 ])))
     in
     array `Uint30 tup
   in
@@ -168,9 +167,9 @@ let%expect_test _ =
     let tup =
       with_size_limit
         8
-        (tuple [ With_size.seq_with_size `Uint8 uint16; string `Uint8; string `Uint8 ])
+        (tuple [ With_size.seq `Uint8 uint16; string `Uint8; string `Uint8 ])
     in
-    let seq = with_size_limit 128 (With_size.seq_with_size `Uint8 tup) in
+    let seq = with_size_limit 128 (With_size.seq `Uint8 tup) in
     array `Uint30 seq
   in
   w 10 6 encoding [||];
@@ -201,12 +200,12 @@ let%expect_test _ =
       with_size_limit
         1024
         (tuple
-           [ With_size.seq_with_size `Uint8 uint16
+           [ With_size.seq `Uint8 uint16
            ; with_size_limit 10 (string `Uint8)
            ; string `Uint8
            ])
     in
-    let seq = with_size_limit 64 (With_size.seq_with_size `Uint8 tup) in
+    let seq = with_size_limit 64 (With_size.seq `Uint8 tup) in
     array `Uint30 seq
   in
   let v sz =
