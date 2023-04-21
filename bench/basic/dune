@@ -1,5 +1,5 @@
 (executables
- (names bench_binary bench_json)
+ (names binary_reading binary_writing json_writing)
  (libraries
   buffy
   binary-data-encoding

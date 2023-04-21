@@ -1,31 +1,10 @@
-let serialise encoding data dst =
-  let state = Buffy.W.mk_state dst in
-  Binary_data_encoding.Writer.writek state encoding data
-;;
-
 let deserialise encoding src =
   let state = Buffy.R.mk_state src in
   Binary_data_encoding.Reader.readk state encoding
 ;;
 
 let run name encoding make_data =
-  Format.printf "%s.to_string (%d samples)\n" name Benchlib.repeats;
-  let buffer = Bytes.make Benchlib.buffer_size '0' in
-  List.iter
-    (fun size ->
-      let data = make_data size in
-      let serialisations =
-        Benchlib.measurew Benchlib.repeats (serialise encoding data) buffer
-      in
-      let serialisations = Benchlib.flatten serialisations in
-      let size =
-        Optint.Int63.to_int
-        @@ Result.get_ok
-        @@ Binary_data_encoding.Query.size_of encoding data
-      in
-      Benchlib.print_summary size Benchlib.buffer_size serialisations)
-    Benchlib.sizes;
-  Format.printf "\n%s.of_string (%d samples)\n" name Benchlib.repeats;
+  Format.kasprintf Benchlib.log "\n%s.of_string (%d samples)\n" name Benchlib.repeats;
   List.iter
     (fun size ->
       let blob =
@@ -47,8 +26,7 @@ let run name encoding make_data =
       in
       let deserialisations = Benchlib.flatten deserialisations in
       Benchlib.print_summary (String.length blob) Benchlib.buffer_size deserialisations)
-    Benchlib.sizes;
-  ()
+    Benchlib.sizes
 ;;
 
 module M0 = struct

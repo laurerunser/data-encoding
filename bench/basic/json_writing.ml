@@ -3,10 +3,8 @@ let serialise encoding data dst =
   Json_data_encoding.Construct.write state encoding data
 ;;
 
-(* TODO: deserialise *)
-
 let run name encoding make_data =
-  Format.printf "%s.to_JSON_string (%d samples)\n" name Benchlib.repeats;
+  Format.kasprintf Benchlib.log "%s.to_JSON_string (%d samples)\n" name Benchlib.repeats;
   let buffer = Bytes.make Benchlib.buffer_size '0' in
   List.iter
     (fun size ->

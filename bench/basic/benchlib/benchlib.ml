@@ -1,3 +1,30 @@
+let repeats =
+  match Sys.getenv_opt "BENCHREPEAT" with
+  | None -> 5
+  | Some s -> int_of_string s
+;;
+
+let buffer_size =
+  match Sys.getenv_opt "BENCHBUFFSIZE" with
+  | None -> 1_000_000
+  | Some s -> int_of_string s
+;;
+
+let sizes =
+  match Sys.getenv_opt "BENCHDATASIZES" with
+  | None -> [ 1_000; 5_000; 25_000; 125_000; 625_000; 3_125_000 ]
+  | Some s ->
+    let ss = String.split_on_char ',' s in
+    List.map int_of_string ss
+;;
+
+let quiet =
+  match Sys.getenv_opt "BENCHQUIET" with
+  | None -> false
+  | Some "yes" -> true
+  | Some _ -> false
+;;
+
 type result =
   { chunks : Mtime.Span.t list
   ; totals : Mtime.Span.t list
@@ -104,37 +131,22 @@ let pp_ns fmt ns =
 ;;
 
 let print_summary size buffer_size { chunks; totals } =
-  Format.printf
-    "size %12d  -  buffer %07d  -  average chunk %a  -  max chunk %a  -  average total \
-     %a  -  max total %a\n"
-    size
-    buffer_size
-    pp_ns
-    (average_ns chunks)
-    pp_ns
-    (max_ns chunks)
-    pp_ns
-    (average_ns totals)
-    pp_ns
-    (max_ns totals)
+  if quiet
+  then ()
+  else
+    Format.printf
+      "size %12d  -  buffer %07d  -  average chunk %a  -  max chunk %a  -  average total \
+       %a  -  max total %a\n"
+      size
+      buffer_size
+      pp_ns
+      (average_ns chunks)
+      pp_ns
+      (max_ns chunks)
+      pp_ns
+      (average_ns totals)
+      pp_ns
+      (max_ns totals)
 ;;
 
-let repeats =
-  match Sys.getenv_opt "BENCHREPEAT" with
-  | None -> 5
-  | Some s -> int_of_string s
-;;
-
-let buffer_size =
-  match Sys.getenv_opt "BENCHBUFFSIZE" with
-  | None -> 1_000_000
-  | Some s -> int_of_string s
-;;
-
-let sizes =
-  match Sys.getenv_opt "BENCHDATASIZES" with
-  | None -> [ 1_000; 5_000; 25_000; 125_000; 625_000; 3_125_000 ]
-  | Some s ->
-    let ss = String.split_on_char ',' s in
-    List.map int_of_string ss
-;;
+let log s = if quiet then () else print_endline s
