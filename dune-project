@@ -45,6 +45,8 @@
    (qcheck-core :with-test)
    (ppx_expect :with-test)
    (ocamlformat (and :with-test (= 0.24.1)))
+   (landmarks :dev)
+   (landmarks-ppx :dev)
  )
 )
 
@@ -61,6 +63,8 @@
    (qcheck-core :with-test)
    (ppx_expect :with-test)
    (ocamlformat (and :with-test (= 0.24.1)))
+   (landmarks :dev)
+   (landmarks-ppx :dev)
  )
 )
 
@@ -72,5 +76,7 @@
    (ocaml (>= 4.14))
    dune
    (ocamlformat (and :with-test (= 0.24.1)))
+   (landmarks :dev)
+   (landmarks-ppx :dev)
  )
 )

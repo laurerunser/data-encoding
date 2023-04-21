@@ -3,6 +3,8 @@
  (public_name binary-data-encoding)
  (js_of_ocaml)
  (inline_tests)
+ (instrumentation
+  (backend landmarks))
  (preprocess
   (pps ppx_expect))
  (libraries data-encoding.commons buffy optint))

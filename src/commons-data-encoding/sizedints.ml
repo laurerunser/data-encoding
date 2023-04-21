@@ -1,3 +1,5 @@
+[@@@landmark "auto"]
+
 module Uint62 = struct
   type t = Optint.Int63.t
 

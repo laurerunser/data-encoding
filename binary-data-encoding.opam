@@ -18,6 +18,8 @@ depends: [
   "qcheck-core" {with-test}
   "ppx_expect" {with-test}
   "ocamlformat" {with-test & = "0.24.1"}
+  "landmarks" {dev}
+  "landmarks-ppx" {dev}
   "odoc" {with-doc}
 ]
 build: [

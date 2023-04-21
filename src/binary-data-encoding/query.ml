@@ -1,3 +1,5 @@
+[@@@landmark "auto"]
+
 let zero_of_numeral : type n. n Descr.numeral -> n = function
   | Uint8 -> Commons.Sizedints.Uint8.zero
   | Uint16 -> Commons.Sizedints.Uint16.zero

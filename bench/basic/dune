@@ -6,4 +6,5 @@
   json-data-encoding
   mtime
   mtime.clock.os
-  benchlib))
+  benchlib
+  landmarks))

@@ -3,5 +3,7 @@
  (public_name buffy)
  (js_of_ocaml)
  (inline_tests)
+ (instrumentation
+  (backend landmarks))
  (preprocess
   (pps ppx_expect)))

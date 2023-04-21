@@ -1,3 +1,5 @@
+[@@@landmark "auto"]
+
 (* TODO: more documentation *)
 (* TODO: more assertion checks *)
 (* TODO: benchmark and optimise (later, after we add more features) *)

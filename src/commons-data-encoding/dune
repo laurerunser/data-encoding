@@ -2,4 +2,6 @@
  (name commons)
  (public_name data-encoding.commons)
  (js_of_ocaml)
+ (instrumentation
+  (backend landmarks))
  (libraries optint))

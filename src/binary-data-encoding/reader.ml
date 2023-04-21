@@ -1,3 +1,5 @@
+[@@@landmark "auto"]
+
 let ( let* ) = Buffy.R.( let* )
 
 (* TODO: in order to read an extrinsic descr we must be provided with an expected stop. *)

@@ -1,0 +1,25 @@
+(lang dune 3.0)
+
+(context default)
+(context
+  (default
+    (name profiling)
+    (instrument_with landmarks)
+    (env
+      (_
+         (env-vars ("OCAML_LANDMARKS" "on"))
+         (flags (:standard -noassert)))
+    )
+  )
+)
+(context
+  (default
+    (name profiling-auto)
+    (instrument_with landmarks)
+    (env
+      (_
+         (env-vars ("OCAML_LANDMARKS" "auto"))
+         (flags (:standard -noassert)))
+    )
+  )
+)
