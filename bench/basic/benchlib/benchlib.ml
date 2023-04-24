@@ -25,6 +25,20 @@ let quiet =
   | Some _ -> false
 ;;
 
+let payload_file_name name size =
+  Format.asprintf "payload-%08x-%d" (Stdlib.Hashtbl.hash name) size
+;;
+
+let src_seq_of_file fname buffer : Buffy.Src.t Seq.t =
+  let ic = open_in fname in
+  let rec go () =
+    match input ic buffer 0 (Bytes.length buffer) with
+    | 0 -> Seq.Nil
+    | n -> Seq.Cons ((buffer, 0, n), go)
+  in
+  Seq.map (fun (b, offset, length) -> Buffy.Src.of_bytes ~offset ~length b) go
+;;
+
 type result =
   { chunks : Mtime.Span.t list
   ; totals : Mtime.Span.t list
@@ -67,13 +81,12 @@ let measurew repeats f buffer =
   measures
 ;;
 
-let timer f ss =
+let timer (f : Buffy.Src.t -> _ Buffy.R.readed) (ss : Buffy.Src.t Seq.t) =
   let t0 = Mtime_clock.now () in
   let rec run tacc f ss =
-    match ss with
-    | [] -> assert false
-    | blob :: ss ->
-      let src = Buffy.Src.of_string blob in
+    match ss () with
+    | Seq.Nil -> assert false
+    | Seq.Cons (src, ss) ->
       (match f src with
        | Buffy.R.Readed _ | Buffy.R.Failed _ -> tacc
        | Buffy.R.Suspended { cont; _ } ->
@@ -135,8 +148,8 @@ let print_summary size buffer_size { chunks; totals } =
   then ()
   else
     Format.printf
-      "size %12d  -  buffer %07d  -  average chunk %a  -  max chunk %a  -  average total \
-       %a  -  max total %a\n"
+      "size(abstract) %12d  -  buffer(bytes) %07d  -  average chunk %a  -  max chunk %a  \
+       -  average total %a  -  max total %a\n"
       size
       buffer_size
       pp_ns
@@ -150,3 +163,5 @@ let print_summary size buffer_size { chunks; totals } =
 ;;
 
 let log s = if quiet then () else print_endline s
+
+include Benchable

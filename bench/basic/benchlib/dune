@@ -1,3 +1,9 @@
 (library
  (name benchlib)
- (libraries buffy mtime mtime.clock.os))
+ (libraries
+  data-encoding
+  binary-data-encoding
+  json-data-encoding
+  buffy
+  mtime
+  mtime.clock.os))
