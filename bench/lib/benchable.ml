@@ -114,3 +114,91 @@ module Benchable1 : S = struct
 
   let name = "array[ui30](either(conv(i64,i64),option(conv(ui30,list(i8)))))"
 end
+
+module Benchable2 : S = struct
+  type a =
+    { x : int64 option
+    ; y : int64 option
+    }
+
+  type b =
+    { x : int64
+    ; y : int64
+    }
+
+  type c = string list option
+
+  type datum =
+    | A of a
+    | B of b
+    | C of c
+    | D
+
+  type data = datum list
+
+  let encoding : data Data_encoding.Encoding.t =
+    let open Data_encoding.Encoding in
+    list
+      `Uint30
+      (let open Union in
+      let case_a =
+        (case 0L "A" (tuple [ option int64; option int64 ]))
+          (fun Commons.Hlist.[ x; y ] -> A { x; y })
+      in
+      let anycase_a = AnyC case_a in
+      let case_b =
+        (case 1L "B" (tuple [ int64; int64 ])) (fun Commons.Hlist.[ x; y ] -> B { x; y })
+      in
+      let anycase_b = AnyC case_b in
+      let case_c = case 2L "C" (option (list `Uint30 (string `Uint30))) (fun p -> C p) in
+      let anycase_c = AnyC case_c in
+      let case_d = case_unit 3L "D" (fun () -> D) in
+      let anycase_d = AnyC case_d in
+      union
+        Binary_data_encoding.Encoding.int64
+        [ anycase_a; anycase_b; anycase_c; anycase_d ]
+        (function
+         | A { x; y } -> AnyP (case_a, [ x; y ])
+         | B { x; y } -> AnyP (case_b, [ x; y ])
+         | C p -> AnyP (case_c, p)
+         | D -> AnyP (case_d, ()))
+        (function
+         | 0L -> Ok anycase_a
+         | 1L -> Ok anycase_b
+         | 2L -> Ok anycase_c
+         | 3L -> Ok anycase_d
+         | _ -> Error "unkown tag")
+        (function
+         | "A" -> Ok anycase_a
+         | "B" -> Ok anycase_b
+         | "C" -> Ok anycase_c
+         | "D" -> Ok anycase_d
+         | _ -> Error "unkown tag"))
+  ;;
+
+  let make_data sz : data =
+    let prng = Random.State.make [| sz |] in
+    let opt prng f = if Random.State.int prng 4 = 0 then Some (f prng) else None in
+    List.init sz (fun k ->
+      match Random.State.int prng 4 with
+      | 0 ->
+        let x = opt prng (fun prng -> Random.State.int64 prng 1024L) in
+        let y = opt prng (fun prng -> Random.State.int64 prng 1024L) in
+        A { x; y }
+      | 1 ->
+        let x = Random.State.int64 prng 1024L in
+        let y = Random.State.int64 prng 1024L in
+        B { x; y }
+      | 2 ->
+        let p =
+          opt prng (fun prng ->
+            List.init (Random.State.int prng 5) (fun i ->
+              String.make (i + (k mod 256)) '0'))
+        in
+        C p
+      | 3 -> D
+      | _ -> assert false)
+  ;;
+
+  let name = "list(union(…))"
+end

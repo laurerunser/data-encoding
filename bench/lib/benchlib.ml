@@ -29,20 +29,44 @@ let payload_file_name name size =
   Format.asprintf "payload-%08x-%d" (Stdlib.Hashtbl.hash name) size
 ;;
 
-let src_seq_of_file fname buffer : Buffy.Src.t Seq.t =
+let blits_seq_of_file fname buffer : (bytes * int * int) Seq.t =
   let ic = open_in fname in
   let rec go () =
     match input ic buffer 0 (Bytes.length buffer) with
     | 0 -> Seq.Nil
     | n -> Seq.Cons ((buffer, 0, n), go)
   in
-  Seq.map (fun (b, offset, length) -> Buffy.Src.of_bytes ~offset ~length b) go
+  fun () -> go ()
+;;
+
+let src_seq_of_file fname buffer : Buffy.Src.t Seq.t =
+  Seq.map
+    (fun (b, offset, length) -> Buffy.Src.of_bytes ~offset ~length b)
+    (blits_seq_of_file fname buffer)
+;;
+
+let strs_seq_of_file fname buffer : string Seq.t =
+  Seq.memoize
+    (Seq.map
+       (fun (b, offset, length) -> Bytes.sub_string b offset length)
+       (blits_seq_of_file fname buffer))
 ;;
 
 type result =
   { chunks : Mtime.Span.t list
   ; totals : Mtime.Span.t list
   }
+
+let ww f buffer =
+  let rec run f =
+    let dst = Buffy.Dst.of_bytes buffer in
+    match f dst with
+    | Buffy.W.Written _ -> Ok ()
+    | Buffy.W.Failed { error; _ } -> Error error
+    | Buffy.W.Suspended { cont; _ } -> run cont
+  in
+  run f
+;;
 
 let timew f buffer =
   let rec run tacc f =
@@ -81,12 +105,26 @@ let measurew repeats f buffer =
   measures
 ;;
 
-let timer (f : Buffy.Src.t -> _ Buffy.R.readed) (ss : Buffy.Src.t Seq.t) =
+let rr (f : Buffy.Src.t -> _ Buffy.R.readed) (ss : Buffy.Src.t Seq.t) =
+  let rec run f ss =
+    match ss () with
+    | Seq.Nil -> assert false
+    | Seq.Cons (src, ss) ->
+      (match f src with
+       | Buffy.R.Readed { value; _ } -> Ok value
+       | Buffy.R.Failed { error; _ } -> Error error
+       | Buffy.R.Suspended { cont; _ } -> run cont ss)
+  in
+  run f ss
+;;
+
+let timer (f : Buffy.Src.t -> _ Buffy.R.readed) (ss : string Seq.t) =
   let t0 = Mtime_clock.now () in
   let rec run tacc f ss =
     match ss () with
     | Seq.Nil -> assert false
-    | Seq.Cons (src, ss) ->
+    | Seq.Cons (s, ss) ->
+      let src = Buffy.Src.of_string s in
       (match f src with
        | Buffy.R.Readed _ | Buffy.R.Failed _ -> tacc
        | Buffy.R.Suspended { cont; _ } ->

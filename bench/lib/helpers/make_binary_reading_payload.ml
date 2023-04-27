@@ -15,3 +15,4 @@ let run (module M : Benchlib.S) =
 
 let () = run (module Benchlib.Benchable0)
 let () = run (module Benchlib.Benchable1)
+let () = run (module Benchlib.Benchable2)
