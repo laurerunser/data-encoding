@@ -32,8 +32,10 @@ and _ field =
 val unit : unit t
 val bool : bool t
 val int64 : int64 t
-val string : string t
+val string : Binary_data_encoding.Encoding.count_spec -> string t
 val bytes : bytes t
+val list : Binary_data_encoding.Encoding.count_spec -> 'a t -> 'a list t
+val option : 'a t -> 'a option t
 
 val conv
   :  serialisation:('a -> 'b)

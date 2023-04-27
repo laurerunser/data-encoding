@@ -46,9 +46,9 @@ let int64 =
   }
 ;;
 
-let string =
+let string count_spec =
   { json = Json_data_encoding.Encoding.string
-  ; binary = Binary_data_encoding.Encoding.string `Uint30
+  ; binary = Binary_data_encoding.Encoding.string count_spec
   }
 ;;
 
@@ -60,6 +60,18 @@ let bytes =
           ~deserialisation:(fun s -> Ok (Bytes.of_string s))
           string)
   ; binary = Binary_data_encoding.Encoding.bytes `Uint30
+  }
+;;
+
+let list count_spec { json; binary } =
+  { json = Json_data_encoding.Encoding.list json
+  ; binary = Binary_data_encoding.Encoding.With_length.list count_spec binary
+  }
+;;
+
+let option { json; binary } =
+  { json = Json_data_encoding.Encoding.Union.option json
+  ; binary = Binary_data_encoding.Encoding.option binary
   }
 ;;
 
