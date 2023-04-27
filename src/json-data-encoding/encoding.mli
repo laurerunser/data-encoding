@@ -100,4 +100,5 @@ module Union : sig
     -> 'a t
 
   val either : 'a t -> 'b t -> ('a, 'b) Either.t t
+  val option : 'a t -> 'a option t
 end

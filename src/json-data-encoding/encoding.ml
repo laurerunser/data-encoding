@@ -184,4 +184,20 @@ module Union = struct
        | "Right" -> Ok anycrc
        | _ -> Error "Unexpected tag in union")
   ;;
+
+  let option t =
+    let nc = case "None" unit (fun () -> None) in
+    let anycnc = AnyC nc in
+    let sc = case "Some" t Option.some in
+    let anycsc = AnyC sc in
+    union
+      [ anycnc; anycsc ]
+      (function
+       | None -> AnyP (nc, ())
+       | Some v -> AnyP (sc, v))
+      (function
+       | "None" -> Ok anycnc
+       | "Some" -> Ok anycsc
+       | _ -> Error "Unexpected tag in union")
+  ;;
 end
