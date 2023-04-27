@@ -32,46 +32,46 @@ module Query = struct
 end
 
 module Reader = struct
-  let readk s encoding =
-    let (Descr.E encoding) = Encoding.introspect encoding in
-    Reader.readk s encoding
+  let readk encoding =
+    let (Descr.E descr) = Encoding.introspect encoding in
+    Reader.readk descr
   ;;
 
-  let read ~src ~offset ~length encoding =
-    let (Descr.E encoding) = Encoding.introspect encoding in
-    Reader.read ~src ~offset ~length encoding
+  let read encoding =
+    let (Descr.E descr) = Encoding.introspect encoding in
+    Reader.read descr
   ;;
 
-  let read_strings s encoding =
-    let (Descr.E encoding) = Encoding.introspect encoding in
-    Reader.read_strings s encoding
+  let read_strings encoding =
+    let (Descr.E descr) = Encoding.introspect encoding in
+    Reader.read_strings descr
   ;;
 
-  let read_string s encoding =
-    let (Descr.E encoding) = Encoding.introspect encoding in
-    Reader.read_string s encoding
+  let read_string encoding =
+    let (Descr.E descr) = Encoding.introspect encoding in
+    Reader.read_string descr
   ;;
 end
 
 module Writer = struct
-  let writek : type a. Buffy.W.state -> a Encoding.t -> a -> Buffy.W.written =
-   fun state encoding v ->
-    let (Descr.E encoding) = Encoding.introspect encoding in
-    Writer.writek state encoding v
+  let writek : type a. a Encoding.t -> Buffy.W.state -> a -> Buffy.W.written =
+   fun encoding ->
+    let (Descr.E descr) = Encoding.introspect encoding in
+    Writer.writek descr
  ;;
 
   let write
     : type a.
-      dst:bytes
+      a Encoding.t
+      -> dst:bytes
       -> offset:int
       -> length:int
-      -> a Encoding.t
       -> a
       -> (int, int * string) result
     =
-   fun ~dst ~offset ~length encoding v ->
-    let (Descr.E encoding) = Encoding.introspect encoding in
-    Writer.write ~dst ~offset ~length encoding v
+   fun encoding ->
+    let (Descr.E descr) = Encoding.introspect encoding in
+    Writer.write descr
  ;;
 
   let string_of : type a. ?buffer_size:int -> a Encoding.t -> a -> (string, string) result

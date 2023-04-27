@@ -26,7 +26,7 @@ let%expect_test _ =
       let state =
         Buffy.R.mk_state (Buffy.Src.of_string blob ~offset:0 ~length:initread)
       in
-      (match Reader.readk state e with
+      (match Reader.readk e state with
        | Failed { error; state } ->
          Format.printf
            "Error: %S, Readed: %d, Limits: %a\n"

@@ -1,6 +1,6 @@
-let serialise encoding data dst =
+let serialise writek data dst =
   let state = Buffy.W.mk_state dst in
-  Binary_data_encoding.Writer.writek state encoding data
+  writek state data
 ;;
 
 let run encoding make_data =
@@ -8,7 +8,8 @@ let run encoding make_data =
   List.iter
     (fun size ->
       let data = make_data size in
-      let _ = Benchlib.ww (serialise encoding data) buffer in
+      let writek = Binary_data_encoding.Writer.writek encoding in
+      let _ = Benchlib.ww (serialise writek data) buffer in
       ())
     Benchlib.sizes
 ;;

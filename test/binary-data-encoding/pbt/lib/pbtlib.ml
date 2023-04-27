@@ -70,7 +70,16 @@ let rec generator_of_descr
   | Option { optioner = _; descr } ->
     let g = generator_of_descr descr in
     QCheck2.Gen.option g
-  | Headered { mkheader; headerdescr; descr_of_header; equal = _; maximum_size = _ } ->
+  | Headered
+      { mkheader
+      ; headerdescr
+      ; writers = _
+      ; readers = _
+      ; sizers = _
+      ; descr_of_header
+      ; equal = _
+      ; maximum_size = _
+      } ->
     let headert =
       match headerdescr with
       | Numeral { numeral; endianness = _ } ->
@@ -109,7 +118,9 @@ let rec generator_of_descr
     ignore descr;
     failwith "TODO_"
   | Union { tag = _; serialisation = _; deserialisation = _; cases } ->
-    QCheck2.Gen.bind (QCheck2.Gen.oneofl cases) (fun (AnyC { tag = _; descr; inject }) ->
+    QCheck2.Gen.bind
+      (QCheck2.Gen.oneofl cases)
+      (fun (AnyC { tag = _; descr; write = _; read = _; size = _; inject }) ->
       QCheck2.Gen.map inject (generator_of_descr descr))
   | TupNil -> QCheck2.Gen.pure Commons.Hlist.[]
   | TupCons { tupler = _; head; tail } ->
@@ -151,7 +162,7 @@ let to_test
     let queried_size = Optint.Int63.to_int queried_size in
     if String.length s <> queried_size
     then failwith "Computed size inconsistent with written size";
-    let* vv = Binary_data_encoding.Reader.read_string s encoding in
+    let* vv = Binary_data_encoding.Reader.read_string encoding s in
     if not (equal v vv)
     then
       Format.kasprintf

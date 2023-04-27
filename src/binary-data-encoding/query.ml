@@ -56,127 +56,270 @@ let int_of_numeral : type n. n Descr.numeral -> n -> int =
 ;;
 
 let ( let* ) = Result.bind
+let sizability_of_unit = Sizability.Intrinsic (Static Commons.Sizedints.Uint62.zero)
+let sizability_of_bool = Sizability.Intrinsic (Static Width.As_uint62.bool)
+let sizability_of_uint8 = Sizability.Intrinsic (Static Width.As_uint62.uint8)
+let sizability_of_uint16 = Sizability.Intrinsic (Static Width.As_uint62.uint16)
+let sizability_of_uint30 = Sizability.Intrinsic (Static Width.As_uint62.uint30)
+let sizability_of_uint62 = Sizability.Intrinsic (Static Width.As_uint62.uint62)
+let sizability_of_int32 = Sizability.Intrinsic (Static Width.As_uint62.int32)
+let sizability_of_int64 = Sizability.Intrinsic (Static Width.As_uint62.int64)
 
-let rec size_of : type s t. (s, t) Descr.t -> t -> (Optint.Int63.t, string) result =
- fun descr v ->
-  match descr with
-  | Unit -> Ok Optint.Int63.zero
-  | Bool -> Ok Optint.Int63.one
-  | Numeral { numeral; endianness = _ } -> Ok (size_of_numeral numeral :> Optint.Int63.t)
-  | String n -> Ok (n :> Optint.Int63.t)
-  | Bytes n -> Ok (n :> Optint.Int63.t)
-  | LSeq { length; descr } ->
-    let length =
-      (* TODO: catch overflow. *)
-      Optint.Int63.to_int (length :> Optint.Int63.t)
-    in
-    (* TODO: classify the sizability of the descr: if fixed just do a
-       multiplication (and still check for size??) *)
-    let rec fold len size s =
-      match s () with
-      | Seq.Nil ->
-        if len < length
-        then
-          raise
-            (Invalid_argument
-               "data-encoding.binary.query.size_of: inconsistent Seq length");
-        Ok size
-      | Seq.Cons (elt, s) ->
-        if len > length
-        then
-          raise
-            (Invalid_argument
-               "data-encoding.binary.query.size_of: inconsistent Seq length");
-        let* elt_size = size_of descr elt in
-        fold (len + 1) (Optint.Int63.add size elt_size) s
-    in
-    fold 0 Optint.Int63.zero v.seq
-  | USeq { descr } ->
-    let rec fold size s =
-      match s () with
-      | Seq.Nil -> Ok size
-      | Seq.Cons (elt, s) ->
-        let* elt_size = size_of descr elt in
-        fold (Optint.Int63.add size elt_size) s
-    in
-    fold Optint.Int63.zero v
+let sizability_of_numeral : type n. n Descr.numeral -> Sizability.static = function
+  | Uint8 -> sizability_of_uint8
+  | Uint16 -> sizability_of_uint16
+  | Uint30 -> sizability_of_uint30
+  | Uint62 -> sizability_of_uint62
+  | Int32 -> sizability_of_int32
+  | Int64 -> sizability_of_int64
+;;
+
+let rec sizability : type s a. (s, a) Descr.t -> s = function
+  | Unit -> sizability_of_unit
+  | Bool -> sizability_of_bool
+  | Numeral { numeral; endianness = _ } -> sizability_of_numeral numeral
+  | String n -> Intrinsic (Static n)
+  | Bytes n -> Intrinsic (Static n)
   | Array { length; descr } ->
-    if Option.get @@ Commons.Sizedints.Uint62.of_int64 (Int64.of_int (Array.length v))
-       <> length
-    then
-      raise
-        (Invalid_argument "data-encoding.binary.query.size_of: inconsistent Array length");
-    let length =
-      (* TODO: catch overflow. Can overflow happen? Wouldn't that prevent the Array to even exist in the first place? *)
-      Optint.Int63.to_int (length :> Optint.Int63.t)
-    in
-    (* TODO: classify the sizability of the descr: if fixed just do a
+    (match sizability descr with
+     | Intrinsic (Static n) ->
+       (* TODO: catch overflow *)
+       let s = Commons.Sizedints.Uint62.mul length n in
+       Sizability.Intrinsic (Static s)
+     | Intrinsic Dynamic -> Intrinsic Dynamic)
+  | Option { optioner; descr = _ } ->
+    (match optioner with
+     | OIntrinsic -> Intrinsic Dynamic
+     | OExtrinsic -> Extrinsic)
+  | LSeq { length; descr } ->
+    (match sizability descr with
+     | Intrinsic (Static n) ->
+       (* TODO: catch overflow *)
+       let s = Commons.Sizedints.Uint62.mul length n in
+       Sizability.Intrinsic (Static s)
+     | Intrinsic Dynamic -> Intrinsic Dynamic)
+  | USeq { descr } ->
+    (match sizability descr with
+     | Intrinsic (Static n) ->
+       if n = Commons.Sizedints.Uint62.zero
+       then raise (Failure "Non-lengthed sequences cannot have zero-size elements")
+       else Extrinsic
+     | Intrinsic Dynamic -> Extrinsic)
+  | Headered
+      { mkheader = _
+      ; headerdescr
+      ; writers = _
+      ; readers = _
+      ; sizers = _
+      ; descr_of_header = _
+      ; equal = _
+      ; maximum_size = _
+      } ->
+    (* TODO? should we support zero-sized headers? I don't think we should *)
+    (match sizability headerdescr with
+     | Intrinsic (Static n) ->
+       if n = Commons.Sizedints.Uint62.zero
+       then raise (Failure "Zero-size headers not supported")
+       else Intrinsic Dynamic
+     | Intrinsic Dynamic -> Intrinsic Dynamic)
+  | Fold
+      { chunkdescr; chunkify = _; readinit = _; reducer = _; equal = _; maximum_size = _ }
+    ->
+    (match sizability chunkdescr with
+     | Intrinsic (Static n) ->
+       if n = Commons.Sizedints.Uint62.zero
+       then raise (Failure "Zero-size chunks not supported")
+       else Intrinsic Dynamic
+     | Intrinsic Dynamic -> Intrinsic Dynamic)
+  | Conv { serialisation = _; deserialisation = _; descr } -> sizability descr
+  | Size_headered { size = _; descr = _ } ->
+    (* TODO: a pedantic mode which checks that the descr is Extrinsic (used
+         to sanity check that an descr is not wasteful) *)
+    Intrinsic Dynamic
+  | Size_limit { at_most = _; descr } -> sizability descr
+  | Union { tag = _; serialisation = _; deserialisation = _; cases = _ } ->
+    (* TODO? be more thourough and check if all the cases have the same size *)
+    Intrinsic Dynamic
+  | TupNil -> Intrinsic (Static Commons.Sizedints.Uint62.zero)
+  | TupCons { tupler = TExtrinsicStatic; head = _; tail = _ } -> Extrinsic
+  | TupCons { tupler = TIntrinsicStatic; head; tail } ->
+    (match sizability head with
+     | Intrinsic (Static h) ->
+       let (Intrinsic (Static t)) = sizability tail in
+       (* TODO: catch overflow *)
+       Intrinsic (Static (Commons.Sizedints.Uint62.add h t))
+     | Intrinsic Dynamic -> Intrinsic Dynamic)
+  | TupCons { tupler = TIntrinsicExtrinsic; head = _; tail = _ } -> Extrinsic
+  | TupCons { tupler = TIntrinsicDynamic; head = _; tail = _ } -> Intrinsic Dynamic
+;;
+
+let rec size_of : type s t. (s, t) Descr.t -> t -> (Optint.Int63.t, string) result
+  = function
+  | Unit -> fun () -> Ok Optint.Int63.zero
+  | Bool -> fun (_ : bool) -> Ok Optint.Int63.one
+  | Numeral { numeral; endianness = _ } ->
+    fun _ -> Ok (size_of_numeral numeral :> Optint.Int63.t)
+  | String n -> fun (_ : string) -> Ok (n :> Optint.Int63.t)
+  | Bytes n -> fun (_ : bytes) -> Ok (n :> Optint.Int63.t)
+  | LSeq { length; descr } ->
+    let size_of_elt = size_of descr in
+    fun v ->
+      let length =
+        (* TODO: catch overflow. *)
+        Optint.Int63.to_int (length :> Optint.Int63.t)
+      in
+      (* TODO: classify the sizability of the descr: if fixed just do a
+       multiplication (and still check for size??) *)
+      let rec fold len size s =
+        match s () with
+        | Seq.Nil ->
+          if len < length
+          then
+            raise
+              (Invalid_argument
+                 "data-encoding.binary.query.size_of: inconsistent Seq length");
+          Ok size
+        | Seq.Cons (elt, s) ->
+          if len > length
+          then
+            raise
+              (Invalid_argument
+                 "data-encoding.binary.query.size_of: inconsistent Seq length");
+          let* elt_size = size_of_elt elt in
+          fold (len + 1) (Optint.Int63.add size elt_size) s
+      in
+      fold 0 Optint.Int63.zero v.seq
+  | USeq { descr } ->
+    let size_of_elt = size_of descr in
+    fun v ->
+      let rec fold size s =
+        match s () with
+        | Seq.Nil -> Ok size
+        | Seq.Cons (elt, s) ->
+          let* elt_size = size_of_elt elt in
+          fold (Optint.Int63.add size elt_size) s
+      in
+      fold Optint.Int63.zero v
+  | Array { length; descr } ->
+    let size_of_elt = size_of descr in
+    fun v ->
+      if Option.get @@ Commons.Sizedints.Uint62.of_int64 (Int64.of_int (Array.length v))
+         <> length
+      then
+        raise
+          (Invalid_argument
+             "data-encoding.binary.query.size_of: inconsistent Array length");
+      let length =
+        (* TODO: catch overflow. Can overflow happen? Wouldn't that prevent the Array to even exist in the first place? *)
+        Optint.Int63.to_int (length :> Optint.Int63.t)
+      in
+      (* TODO: classify the sizability of the descr: if fixed just do a
        multiplication *)
-    let rec fold acc index =
-      if index >= length
-      then Ok acc
-      else
-        let* size = size_of descr (Array.get v index) in
-        let acc = Optint.Int63.add acc size in
-        fold acc (index + 1)
-    in
-    fold Optint.Int63.zero 0
+      let rec fold acc index =
+        if index >= length
+        then Ok acc
+        else
+          let* size = size_of_elt (Array.get v index) in
+          let acc = Optint.Int63.add acc size in
+          fold acc (index + 1)
+      in
+      fold Optint.Int63.zero 0
   | Option { optioner = _; descr } ->
-    (match v with
-     | None -> Ok Optint.Int63.one
-     | Some v ->
-       let* size = size_of descr v in
-       Ok (Optint.Int63.add Optint.Int63.one size))
-  | Headered { mkheader; headerdescr; descr_of_header; equal = _; maximum_size = _ } ->
-    let* header = mkheader v in
-    let* headersize = size_of headerdescr header in
-    let* descr = descr_of_header header in
-    let* payloadsize =
-      match descr with
-      | EDynamic descr -> size_of descr v
-      | EStatic descr ->
-        (* TODO? don't use v and use the sizability instead? *)
-        size_of descr v
-    in
-    Ok (Optint.Int63.add headersize payloadsize)
+    let size_of_t = size_of descr in
+    fun v ->
+      (match v with
+       | None -> Ok Optint.Int63.one
+       | Some v ->
+         let* size = size_of_t v in
+         Ok (Optint.Int63.add Optint.Int63.one size))
+  | Headered
+      { mkheader
+      ; headerdescr
+      ; writers = _
+      ; readers = _
+      ; sizers
+      ; descr_of_header
+      ; equal = _
+      ; maximum_size = _
+      } ->
+    let size_of_header = size_of headerdescr in
+    fun v ->
+      let* header = mkheader v in
+      let* headersize = size_of_header header in
+      let* sizet =
+        match Commons.BoundedCache.find sizers header with
+        | Some sizet -> Ok sizet
+        | None ->
+          let* descr = descr_of_header header in
+          let sizet =
+            match descr with
+            | EDynamic descr -> size_of descr
+            | EStatic descr ->
+              (* TODO? don't use v and use the sizability instead? *)
+              size_of descr
+          in
+          Commons.BoundedCache.put sizers header sizet;
+          Ok sizet
+      in
+      let* payloadsize = sizet v in
+      Ok (Optint.Int63.add headersize payloadsize)
   | Fold { chunkdescr; chunkify; readinit = _; reducer = _; equal = _; maximum_size = _ }
     ->
-    let chunks = chunkify v in
-    let rec fold acc s =
-      match s () with
-      | Seq.Nil -> Ok acc
-      | Seq.Cons (chunk, s) ->
-        (match size_of chunkdescr chunk with
-         | Ok chunksize ->
-           let acc = Optint.Int63.add acc chunksize in
-           fold acc s
-         | Error e -> Error e)
-    in
-    fold Optint.Int63.zero chunks
-  | Conv { serialisation; deserialisation = _; descr } -> size_of descr (serialisation v)
+    let size_of_chunk = size_of chunkdescr in
+    fun v ->
+      let chunks = chunkify v in
+      let rec fold acc s =
+        match s () with
+        | Seq.Nil -> Ok acc
+        | Seq.Cons (chunk, s) ->
+          (match size_of_chunk chunk with
+           | Ok chunksize ->
+             let acc = Optint.Int63.add acc chunksize in
+             fold acc s
+           | Error e -> Error e)
+      in
+      fold Optint.Int63.zero chunks
+  | Conv { serialisation; deserialisation = _; descr } ->
+    let size_of_t = size_of descr in
+    fun v -> size_of_t (serialisation v)
   | Size_headered { size; descr } ->
-    let sizesize = size_of_numeral size in
-    let* payloadsize = size_of descr v in
-    if Optint.Int63.compare payloadsize (max_int_of size :> Optint.Int63.t) > 0
-    then Error "Oversized payload for size header"
-    else Ok (Optint.Int63.add (sizesize :> Optint.Int63.t) payloadsize)
+    let size_of_header = size_of_numeral size in
+    let size_of_t = size_of descr in
+    fun v ->
+      let* payloadsize = size_of_t v in
+      if Optint.Int63.compare payloadsize (max_int_of size :> Optint.Int63.t) > 0
+      then Error "Oversized payload for size header"
+      else Ok (Optint.Int63.add (size_of_header :> Optint.Int63.t) payloadsize)
   | Size_limit { at_most; descr } ->
-    let* size = size_of descr v in
-    (* TODO: earlier failing ? *)
-    if size > (at_most :> Optint.Int63.t) then Error "size exceeds limit" else Ok size
-  | Union { tag = tag_encoding; serialisation; deserialisation = _; cases = _ } ->
-    let (AnyP ({ Descr.tag; descr; _ }, payload)) = serialisation v in
-    let* tag_size = size_of tag_encoding tag in
-    let* payload_size = size_of descr payload in
-    (* TODO: overflow *)
-    Ok (Optint.Int63.add tag_size payload_size)
-  | TupNil -> Ok Optint.Int63.zero
+    let size_of_t = size_of descr in
+    fun v ->
+      let* size = size_of_t v in
+      (* TODO: earlier failing ? *)
+      if size > (at_most :> Optint.Int63.t) then Error "size exceeds limit" else Ok size
+  | Union { tag; serialisation; deserialisation = _; cases = _ } ->
+    let (Sizability.Intrinsic (Static tag_size)) = sizability tag in
+    let tag_size = (tag_size :> Optint.Int63.t) in
+    fun v ->
+      let (AnyP (({ Descr.descr; size; _ } as case), payload)) = serialisation v in
+      let size_of_payload =
+        match size with
+        | Some size_of_payload -> size_of_payload
+        | None ->
+          let size_of_payload = size_of descr in
+          case.size <- Some size_of_payload;
+          size_of_payload
+      in
+      let* payload_size = size_of_payload payload in
+      (* TODO: overflow *)
+      Ok (Optint.Int63.add tag_size payload_size)
+  | TupNil -> fun [] -> Ok Optint.Int63.zero
   | TupCons { tupler = _; head; tail } ->
-    (match v with
-     | vhead :: vtail ->
-       let* shead = size_of head vhead in
-       let* stail = size_of tail vtail in
-       Ok (Optint.Int63.add shead stail))
+    let size_of_head = size_of head in
+    let size_of_tail = size_of tail in
+    fun (vhead :: vtail) ->
+      let* shead = size_of_head vhead in
+      let* stail = size_of_tail vtail in
+      Ok (Optint.Int63.add shead stail)
 ;;
 
 let%expect_test _ =
@@ -191,9 +334,9 @@ let%expect_test _ =
   w
     Descr.(
       TupCons
-        { tupler = TAnyStatic
+        { tupler = TIntrinsicStatic
         ; head = Unit
-        ; tail = TupCons { tupler = TAnyStatic; head = Unit; tail = TupNil }
+        ; tail = TupCons { tupler = TIntrinsicStatic; head = Unit; tail = TupNil }
         })
     [ (); () ];
   [%expect {| 0 |}];
@@ -236,8 +379,16 @@ let rec maximum_size_of : type s t. (s, t) Descr.t -> Optint.Int63.t = function
     Optint.Int63.mul (length :> Optint.Int63.t) (maximum_size_of descr)
   | Option { optioner = _; descr } ->
     Optint.Int63.add Optint.Int63.one (maximum_size_of descr)
-  | Headered { mkheader = _; headerdescr; descr_of_header = _; equal = _; maximum_size }
-    -> Optint.Int63.add (maximum_size_of headerdescr) maximum_size
+  | Headered
+      { mkheader = _
+      ; headerdescr
+      ; writers = _
+      ; readers = _
+      ; sizers = _
+      ; descr_of_header = _
+      ; equal = _
+      ; maximum_size
+      } -> Optint.Int63.add (maximum_size_of headerdescr) maximum_size
   | Fold
       { chunkdescr = _; chunkify = _; readinit = _; reducer = _; equal = _; maximum_size }
     -> maximum_size
@@ -260,9 +411,10 @@ let rec maximum_size_of : type s t. (s, t) Descr.t -> Optint.Int63.t = function
     let payload_size =
       match cases with
       | [] -> assert false
-      | AnyC { tag = _; descr; inject = _ } :: cases ->
+      | AnyC { tag = _; descr; write = _; read = _; size = _; inject = _ } :: cases ->
         List.fold_left
-          (fun sz (Descr.AnyC { tag = _; descr; inject = _ }) ->
+          (fun sz
+               (Descr.AnyC { tag = _; descr; write = _; read = _; size = _; inject = _ }) ->
             let nsz = maximum_size_of descr in
             if Optint.Int63.compare sz nsz > 0 then nsz else sz)
           (maximum_size_of descr)
@@ -283,9 +435,9 @@ let%expect_test _ =
   w
     Descr.(
       TupCons
-        { tupler = TAnyStatic
+        { tupler = TIntrinsicStatic
         ; head = Unit
-        ; tail = TupCons { tupler = TAnyStatic; head = Unit; tail = TupNil }
+        ; tail = TupCons { tupler = TIntrinsicStatic; head = Unit; tail = TupNil }
         });
   [%expect {| 0 |}];
   w Descr.(Numeral { numeral = Int64; endianness = Big_endian });
@@ -341,8 +493,15 @@ let rec equal_of : type s t. (s, t) Descr.t -> t -> t -> bool = function
   | LSeq { descr; length = _ } -> fun s1 s2 -> Seq.equal (equal_of descr) s1.seq s2.seq
   | USeq { descr } -> fun s1 s2 -> Seq.equal (equal_of descr) s1 s2
   | Headered
-      { mkheader = _; headerdescr = _; descr_of_header = _; equal; maximum_size = _ } ->
-    equal
+      { mkheader = _
+      ; headerdescr = _
+      ; writers = _
+      ; readers = _
+      ; sizers = _
+      ; descr_of_header = _
+      ; equal
+      ; maximum_size = _
+      } -> equal
   | Fold
       { chunkdescr = _; chunkify = _; readinit = _; reducer = _; equal; maximum_size = _ }
     -> equal
@@ -410,8 +569,16 @@ let rec pp_of : type s t. (s, t) Descr.t -> Format.formatter -> t -> unit =
       "seq(%a)"
       Format.(pp_print_seq ~pp_sep:(fun fmt () -> pp_print_char fmt ',') (pp_of descr))
       v
-  | Headered { mkheader; headerdescr = _; descr_of_header; equal = _; maximum_size = _ }
-    ->
+  | Headered
+      { mkheader
+      ; headerdescr = _
+      ; writers = _
+      ; readers = _
+      ; sizers = _
+      ; descr_of_header
+      ; equal = _
+      ; maximum_size = _
+      } ->
     let ( let* ) = Result.bind in
     (match
        let* header = mkheader v in
@@ -440,7 +607,9 @@ let rec pp_of : type s t. (s, t) Descr.t -> Format.formatter -> t -> unit =
   | Size_headered { size = _; descr } -> pp_of descr fmt v
   | Size_limit { at_most = _; descr } -> pp_of descr fmt v
   | Union { tag = tag_encoding; serialisation; deserialisation = _; cases = _ } ->
-    let (AnyP ({ Descr.tag; descr; inject = _ }, payload)) = serialisation v in
+    let (AnyP ({ Descr.tag; descr; write = _; read = _; size = _; inject = _ }, payload)) =
+      serialisation v
+    in
     Format.fprintf fmt "case(%a:%a)" (pp_of tag_encoding) tag (pp_of descr) payload
   | TupNil -> ()
   | TupCons { tupler = _; head; tail = TupNil } ->
@@ -452,75 +621,4 @@ let rec pp_of : type s t. (s, t) Descr.t -> Format.formatter -> t -> unit =
     let pph = pp_of head in
     let ppt = pp_of tail in
     Format.fprintf fmt "%a;%a" pph v ppt vs
-;;
-
-let rec sizability : type s a. (s, a) Descr.t -> s = function
-  | Unit -> Intrinsic (Static Commons.Sizedints.Uint62.zero)
-  | Bool -> Intrinsic (Static Width.As_uint62.bool)
-  | Numeral { numeral; endianness = _ } -> Intrinsic (Static (size_of_numeral numeral))
-  | String n -> Intrinsic (Static n)
-  | Bytes n -> Intrinsic (Static n)
-  | Array { length; descr } ->
-    (match sizability descr with
-     | Intrinsic (Static n) ->
-       (* TODO: catch overflow *)
-       let s = Commons.Sizedints.Uint62.mul length n in
-       Sizability.Intrinsic (Static s)
-     | Intrinsic Dynamic -> Intrinsic Dynamic)
-  | Option { optioner; descr = _ } ->
-    (match optioner with
-     | OIntrinsic -> Intrinsic Dynamic
-     | OExtrinsic -> Extrinsic)
-  | LSeq { length; descr } ->
-    (match sizability descr with
-     | Intrinsic (Static n) ->
-       (* TODO: catch overflow *)
-       let s = Commons.Sizedints.Uint62.mul length n in
-       Sizability.Intrinsic (Static s)
-     | Intrinsic Dynamic -> Intrinsic Dynamic)
-  | USeq { descr } ->
-    (match sizability descr with
-     | Intrinsic (Static n) ->
-       if n = Commons.Sizedints.Uint62.zero
-       then raise (Failure "Non-lengthed sequences cannot have zero-size elements")
-       else Extrinsic
-     | Intrinsic Dynamic -> Extrinsic)
-  | Headered
-      { mkheader = _; headerdescr; descr_of_header = _; equal = _; maximum_size = _ } ->
-    (* TODO? should we support zero-sized headers? I don't think we should *)
-    (match sizability headerdescr with
-     | Intrinsic (Static n) ->
-       if n = Commons.Sizedints.Uint62.zero
-       then raise (Failure "Zero-size headers not supported")
-       else Intrinsic Dynamic
-     | Intrinsic Dynamic -> Intrinsic Dynamic)
-  | Fold
-      { chunkdescr; chunkify = _; readinit = _; reducer = _; equal = _; maximum_size = _ }
-    ->
-    (match sizability chunkdescr with
-     | Intrinsic (Static n) ->
-       if n = Commons.Sizedints.Uint62.zero
-       then raise (Failure "Zero-size chunks not supported")
-       else Intrinsic Dynamic
-     | Intrinsic Dynamic -> Intrinsic Dynamic)
-  | Conv { serialisation = _; deserialisation = _; descr } -> sizability descr
-  | Size_headered { size = _; descr = _ } ->
-    (* TODO: a pedantic mode which checks that the descr is Extrinsic (used
-         to sanity check that an descr is not wasteful) *)
-    Intrinsic Dynamic
-  | Size_limit { at_most = _; descr } -> sizability descr
-  | Union { tag = _; serialisation = _; deserialisation = _; cases = _ } ->
-    (* TODO? be more thourough and check if all the cases have the same size *)
-    Intrinsic Dynamic
-  | TupNil -> Intrinsic (Static Commons.Sizedints.Uint62.zero)
-  | TupCons { tupler = TAnyStatic; head; tail } ->
-    (match sizability head with
-     | Intrinsic (Static h) ->
-       let (Intrinsic (Static t)) = sizability tail in
-       (* TODO: catch overflow *)
-       Intrinsic (Static (Commons.Sizedints.Uint62.add h t))
-     | Intrinsic Dynamic -> Intrinsic Dynamic
-     | Extrinsic -> Extrinsic)
-  | TupCons { tupler = TIntrinsicExtrinsic; head = _; tail = _ } -> Extrinsic
-  | TupCons { tupler = TIntrinsicDynamic; head = _; tail = _ } -> Intrinsic Dynamic
 ;;

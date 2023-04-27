@@ -59,7 +59,8 @@ type s = S : _ t -> s
     deserialisation process wouldn't know where the former ends and the latter
     starts. *)
 type ('l, 'r, 's) tupler =
-  | TAnyStatic : ('any t, static, 'any t) tupler
+  | TExtrinsicStatic : (extrinsic, static, extrinsic) tupler
+  | TIntrinsicStatic : ('i intrinsic, static, 'i intrinsic) tupler
   | TIntrinsicExtrinsic : (_ intrinsic, extrinsic, extrinsic) tupler
   | TIntrinsicDynamic : (_ intrinsic, dynamic, dynamic) tupler
 

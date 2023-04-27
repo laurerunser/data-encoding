@@ -51,31 +51,31 @@ module Reader : sig
     When you call the [cont]inuation, the [maximum_length] carries over so that
     the maximum number of bytes read by the call to [readk] and all the
     subsequent calls to [cont]s never exceeds this limit. *)
-  val readk : Buffy.R.state -> 'a Encoding.t -> 'a Buffy.R.readed
+  val readk : 'a Encoding.t -> Buffy.R.state -> 'a Buffy.R.readed
 
   (** {2 High-level readers} *)
 
   val read
-    :  src:string
+    :  'a Encoding.t
+    -> src:string
     -> offset:int
     -> length:int
-    -> 'a Encoding.t
     -> ('a, string) result
 
-  val read_string : string -> 'a Encoding.t -> ('a, string) result
-  val read_strings : (string * int * int) Seq.t -> 'a Encoding.t -> ('a, string) result
+  val read_string : 'a Encoding.t -> string -> ('a, string) result
+  val read_strings : 'a Encoding.t -> (string * int * int) Seq.t -> ('a, string) result
 end
 
 module Writer : sig
   (** low-level *)
-  val writek : Buffy.W.state -> 'a Encoding.t -> 'a -> Buffy.W.written
+  val writek : 'a Encoding.t -> Buffy.W.state -> 'a -> Buffy.W.written
 
   (** high-level *)
   val write
-    :  dst:bytes
+    :  'a Encoding.t
+    -> dst:bytes
     -> offset:int
     -> length:int
-    -> 'a Encoding.t
     -> 'a
     -> (int, int * string) result
 

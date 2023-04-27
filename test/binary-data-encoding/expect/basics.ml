@@ -16,7 +16,7 @@ let%expect_test _ =
            ~pp_sep:(fun _ () -> ())
            (fun fmt c -> Format.fprintf fmt "%02x" c))
         (String.to_seq blob |> Seq.map Char.code);
-      (match Reader.read_string blob e with
+      (match Reader.read_string e blob with
        | Error error -> Format.printf "Error: %s\n%!" error
        | Ok vv ->
          Format.printf "Ok: %a\n%!" (Query.pp_of e) vv;
