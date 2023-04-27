@@ -1,3 +1,5 @@
+[@@@landmark "auto"]
+
 let ( let* ) = Result.bind
 
 let rec map_e f seq =

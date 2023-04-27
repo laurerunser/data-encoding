@@ -1,0 +1,10 @@
+(executables
+ (names binary_reading binary_writing json_writing)
+ (libraries
+  buffy
+  binary-data-encoding
+  json-data-encoding
+  mtime
+  mtime.clock.os
+  benchlib
+  landmarks))

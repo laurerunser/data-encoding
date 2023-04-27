@@ -1,3 +1,5 @@
+[@@@landmark "auto"]
+
 (* TODO: expect tests *)
 (* TODO? consolidate maximum-size, size-limits, and stop-hints into a single
    list (or list-like structure?) to simplify overflow-checks and

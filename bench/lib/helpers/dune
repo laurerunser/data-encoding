@@ -1,0 +1,3 @@
+(executable
+ (name make_binary_reading_payload)
+ (libraries binary_data_encoding benchlib))

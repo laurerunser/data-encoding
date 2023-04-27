@@ -1,3 +1,5 @@
+[@@@landmark "auto"]
+
 (* TODO: expect tests *)
 (* TODO: make size_limits mutable? *)
 

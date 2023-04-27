@@ -1,0 +1,9 @@
+(library
+ (name benchlib)
+ (libraries
+  data-encoding
+  binary-data-encoding
+  json-data-encoding
+  buffy
+  mtime
+  mtime.clock.os))
