@@ -518,3 +518,134 @@ let%expect_test _ =
     [ 65L; true ];
   [%expect "conv([65, true])"]
 ;;
+
+let rec value_to_buffer : type a. Buffer.t -> a t -> a -> unit =
+ fun buffer encoding value ->
+  match encoding, value with
+  | Unit, () -> Buffer.add_string buffer "unit"
+  | Null, () -> Buffer.add_string buffer "null"
+  | Bool, b -> Buffer.add_string buffer (Format.sprintf "%b" b)
+  | Int64, i -> Buffer.add_string buffer (Format.sprintf "%Ld" i)
+  | String, s -> Buffer.add_string buffer s
+  | Seq t, l ->
+    Buffer.add_char buffer '[';
+    value_to_buffer_seq buffer t l;
+    Buffer.add_char buffer ']'
+  | Tuple t, l ->
+    Buffer.add_char buffer '[';
+    value_to_buffer_tuple buffer t l;
+    Buffer.add_char buffer ']'
+  | Object t, o ->
+    Buffer.add_char buffer '{';
+    value_to_buffer_obj buffer t o;
+    Buffer.add_char buffer '}'
+  | Conv { serialisation = _; deserialisation = _; encoding }, _ ->
+    (* for conv, only print the type; not the functions *)
+    Buffer.add_string buffer "conv[";
+    encoding_to_buffer buffer encoding;
+    Buffer.add_char buffer ']'
+  | Union { cases; serialisation = _; deserialisation = _ }, _ ->
+    (* for union, also print the type only
+  to print the value too, i would need to find which of
+  the cases is the right encoding, and idk how to *)
+    Buffer.add_string buffer "union(";
+    encoding_to_buffer_union buffer cases;
+    Buffer.add_char buffer ')'
+
+and value_to_buffer_seq : type a. Buffer.t -> a t -> a Seq.t -> unit =
+ fun buffer encoding list ->
+  let a = Seq.uncons list in
+  match a with
+  | None -> ()
+  | Some (x, xs) ->
+    value_to_buffer buffer encoding x;
+    (match Seq.uncons xs with
+     | None -> ()
+     | Some _ ->
+       Buffer.add_string buffer "; ";
+       value_to_buffer_seq buffer encoding xs)
+
+and value_to_buffer_tuple : type a. Buffer.t -> a tuple -> a -> unit =
+ fun buffer encoding list ->
+  match encoding, list with
+  | [], [] -> ()
+  | [ x ], [ y ] -> value_to_buffer buffer x y
+  | x :: xs, y :: ys ->
+    value_to_buffer buffer x y;
+    Buffer.add_string buffer "; ";
+    value_to_buffer_tuple buffer xs ys
+
+and value_to_buffer_obj : type a. Buffer.t -> a obj -> a -> unit =
+ fun buffer encoding obj ->
+  match encoding, obj with
+  | [], _ -> ()
+  | [ Req { encoding; name } ], [ x ] ->
+    Buffer.add_string buffer name;
+    Buffer.add_string buffer " = ";
+    value_to_buffer buffer encoding x
+  | [ Opt { encoding; name } ], [ x ] ->
+    (match x with
+     | None ->
+       Buffer.add_string buffer name;
+       Buffer.add_string buffer " ?= None"
+     | Some x ->
+       Buffer.add_string buffer name;
+       Buffer.add_string buffer " ?= ";
+       value_to_buffer buffer encoding x)
+  | Req { encoding; name } :: tail, x :: xs ->
+    Buffer.add_string buffer name;
+    Buffer.add_string buffer " = ";
+    value_to_buffer buffer encoding x;
+    Buffer.add_string buffer "; ";
+    value_to_buffer_obj buffer tail xs
+  | Opt { encoding; name } :: tail, x :: xs ->
+    Buffer.add_string buffer name;
+    Buffer.add_string buffer " ?= ";
+    (match x with
+     | None -> Buffer.add_string buffer "None"
+     | Some x -> value_to_buffer buffer encoding x);
+    Buffer.add_string buffer "; ";
+    value_to_buffer_obj buffer tail xs
+;;
+
+let value_to_string encoding value =
+  let b = Buffer.create 512 in
+  value_to_buffer b encoding value;
+  Buffer.contents b
+;;
+
+let%expect_test _ =
+  let w encoding value = print_string (value_to_string encoding value) in
+  w Unit ();
+  [%expect "unit"];
+  w Null ();
+  [%expect "null"];
+  w Bool true;
+  [%expect "true"];
+  w Bool false;
+  [%expect "false"];
+  w Int64 1232L;
+  [%expect "1232"];
+  w String "test";
+  [%expect "test"];
+  w (seq String) Seq.(cons "test1" empty);
+  [%expect "[test1]"];
+  w (seq Int64) Seq.(cons 12L (cons 32L empty));
+  [%expect "[12; 32]"];
+  w (tuple [ Int64; Null ]) [ 65L; () ];
+  [%expect "[65; null]"];
+  w (tuple [ Int64; Bool; String; Null; Unit; Bool ]) [ 12L; true; "test"; (); (); false ];
+  [%expect "[12; true; test; null; unit; false]"];
+  w
+    (tuple [ seq String; seq Bool ])
+    Seq.[ cons "test" (cons "test2" empty); cons true (cons false (cons true empty)) ];
+  [%expect "[[test; test2]; [true; false; true]]"];
+  w (obj [ req "name" String ]) [ "test_req" ];
+  [%expect "{name = test_req}"];
+  w (obj [ opt "name" String ]) [ Some "test_opt" ];
+  [%expect "{name ?= test_opt}"];
+  w
+    (obj [ req "name" String; opt "name2" Bool; req "name3" Null ])
+    [ "test1"; Some true; () ];
+  [%expect "{name = test1; name2 ?= true; name3 = null}"]
+;;

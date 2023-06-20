@@ -6,7 +6,7 @@ let rec generator_of_encoding : type t. t Json_data_encoding.Encoding.t -> t QCh
   | Null -> QCheck2.Gen.unit
   | Bool -> QCheck2.Gen.bool
   | Int64 -> QCheck2.Gen.int64
-  | String -> QCheck2.Gen.(string_size (0 -- 10))
+  | String -> QCheck2.Gen.(string_size ?gen:(Some printable) (0 -- 10))
   | Seq t -> QCheck2.Gen.map List.to_seq (QCheck2.Gen.list (generator_of_encoding t))
   | Tuple t -> generator_of_encoding_tuple t
   | Object t -> generator_of_encoding_object t
@@ -111,8 +111,58 @@ let to_test : type t. string -> t Json_data_encoding.Encoding.t -> QCheck2.Test.
   let equal = equal_of_encoding encoding in
   QCheck2.Test.make ~name generator (fun v ->
     let* j = Json_data_encoding.Construct.construct encoding v in
-    let lxms = Json_data_encoding.JSON.lexemify j in
-    let* jj = Json_data_encoding.JSON.parse lxms in
-    let* vv = Json_data_encoding.Destruct.destruct encoding jj in
-    equal v vv)
+    let str = Json_data_encoding.JSON.to_string j in
+    let buffy = Buffy.Src.of_string (str ^ " ") in
+    let vv =
+      Json_data_encoding.Destruct_incremental.destruct_incremental encoding buffy
+    in
+    match vv with
+    | Await _ -> failwith "await"
+    | Error e ->
+      print_string (Json_data_encoding.Encoding.to_string encoding);
+      print_newline ();
+      print_string (Json_data_encoding.Encoding.value_to_string encoding v);
+      print_newline ();
+      failwith (str ^ " " ^ e)
+    | Ok vv -> equal v vv)
+;;
+
+let to_test2 : type t. string -> t Json_data_encoding.Encoding.t -> QCheck2.Test.t =
+ fun name encoding ->
+  let generator = generator_of_encoding encoding in
+  let equal = equal_of_encoding encoding in
+  QCheck2.Test.make ~name generator (fun v ->
+    let* j = Json_data_encoding.Construct.construct encoding v in
+    let str = Json_data_encoding.JSON.to_string j in
+    let str_length = String.length str in
+    let split_point =
+      try Random.int (str_length - 2) with
+      | _ -> 1
+    in
+    let str1 = String.sub str 0 split_point in
+    let str2 = String.sub str split_point (str_length - split_point) in
+    let buffy = Buffy.Src.of_string str1 in
+    let v1 =
+      Json_data_encoding.Destruct_incremental.destruct_incremental encoding buffy
+    in
+    match v1 with
+    | Await f ->
+      let buffy = Buffy.Src.of_string (str2 ^ " ") in
+      let v2 = f buffy in
+      (match v2 with
+       | Await _ -> failwith "await"
+       | Error e ->
+         print_string (Json_data_encoding.Encoding.to_string encoding);
+         print_newline ();
+         print_string (Json_data_encoding.Encoding.value_to_string encoding v);
+         print_newline ();
+         failwith (str ^ " " ^ e)
+       | Ok vv -> equal v vv)
+    | Error e ->
+      print_string (Json_data_encoding.Encoding.to_string encoding);
+      print_newline ();
+      print_string (Json_data_encoding.Encoding.value_to_string encoding v);
+      print_newline ();
+      failwith ("Incomplete input, should fail. Error was: " ^ str ^ " " ^ e)
+    | Ok _ -> failwith "Incomplete input, should fail but returned ok")
 ;;

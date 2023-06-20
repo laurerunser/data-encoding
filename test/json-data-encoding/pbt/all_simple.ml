@@ -20,11 +20,16 @@ let run tests =
   let exitcode =
     QCheck_runner.run_tests
       ~rand
-      (List.of_seq
+      (List.of_seq (* tests with 1 full input *)
          (Seq.map
             (fun (Json_data_encoding_test_pbt.Testable.AnyE (name, t)) ->
               Json_data_encoding_test_pbt.Pbtlib.to_test name t)
-            tests))
+            tests)
+      @ List.of_seq (* test with input cut in 2 parts *)
+          (Seq.map
+             (fun (Json_data_encoding_test_pbt.Testable.AnyE (name, t)) ->
+               Json_data_encoding_test_pbt.Pbtlib.to_test2 name t)
+             tests))
   in
   if exitcode <> 0 then exit exitcode
 ;;
