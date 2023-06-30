@@ -56,6 +56,8 @@ and 'a anycase = AnyC : (_, 'a) case_descr -> 'a anycase
 
 [@@@warning "+30"]
 
+val to_string : 'a t -> string
+
 val unit : unit t
 val null : unit t
 val bool : bool t

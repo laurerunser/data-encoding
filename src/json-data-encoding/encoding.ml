@@ -201,3 +201,152 @@ module Union = struct
        | _ -> Error "Unexpected tag in union")
   ;;
 end
+
+let rec encoding_to_buffer : type a. Buffer.t -> a t -> unit =
+ fun buffer encoding ->
+  match encoding with
+  | Unit -> Buffer.add_string buffer "unit"
+  | Null -> Buffer.add_string buffer "null"
+  | Bool -> Buffer.add_string buffer "bool"
+  | Int64 -> Buffer.add_string buffer "int64"
+  | String -> Buffer.add_string buffer "string"
+  | Seq t ->
+    Buffer.add_char buffer '[';
+    encoding_to_buffer buffer t;
+    Buffer.add_string buffer " seq] "
+  | Tuple t ->
+    Buffer.add_char buffer '[';
+    encoding_to_buffer_tuple buffer t;
+    Buffer.add_char buffer ']'
+  | Object t ->
+    Buffer.add_char buffer '{';
+    encoding_to_buffer_obj buffer t;
+    Buffer.add_char buffer '}'
+  | Conv { serialisation = _; deserialisation = _; encoding } ->
+    Buffer.add_string buffer "conv[";
+    encoding_to_buffer buffer encoding;
+    Buffer.add_char buffer ']'
+  | Union { cases; serialisation = _; deserialisation = _ } ->
+    Buffer.add_string buffer "union(";
+    encoding_to_buffer_union buffer cases;
+    Buffer.add_char buffer ')'
+
+and encoding_to_buffer_tuple : type a. Buffer.t -> a tuple -> unit =
+ fun buffer tuple ->
+  match tuple with
+  | [] -> ()
+  | [ head ] -> encoding_to_buffer buffer head
+  | head :: tail ->
+    encoding_to_buffer buffer head;
+    Buffer.add_string buffer " ; ";
+    encoding_to_buffer_tuple buffer tail
+
+and encoding_to_buffer_obj : type a. Buffer.t -> a obj -> unit =
+ fun buffer obj ->
+  match obj with
+  | [] -> ()
+  | [ Req { encoding; name } ] ->
+    Buffer.add_string buffer name;
+    Buffer.add_char buffer '=';
+    encoding_to_buffer buffer encoding
+  | [ Opt { encoding; name } ] ->
+    Buffer.add_string buffer name;
+    Buffer.add_string buffer "?=";
+    encoding_to_buffer buffer encoding
+  | Req { encoding; name } :: tail ->
+    Buffer.add_string buffer name;
+    Buffer.add_char buffer '=';
+    encoding_to_buffer buffer encoding;
+    Buffer.add_string buffer " ; ";
+    encoding_to_buffer_obj buffer tail
+  | Opt { encoding; name } :: tail ->
+    Buffer.add_string buffer name;
+    Buffer.add_string buffer "?=";
+    encoding_to_buffer buffer encoding;
+    Buffer.add_string buffer " ; ";
+    encoding_to_buffer_obj buffer tail
+
+and encoding_to_buffer_union : type a. Buffer.t -> a anycase list -> unit =
+ fun buffer cases ->
+  match cases with
+  | [] -> ()
+  | [ AnyC { tag = _; encoding; inject = _ } ] -> encoding_to_buffer buffer encoding
+  | AnyC { tag = _; encoding; inject = _ } :: ts ->
+    encoding_to_buffer buffer encoding;
+    Buffer.add_string buffer " , ";
+    encoding_to_buffer_union buffer ts
+;;
+
+let to_string t =
+  let b = Buffer.create 512 in
+  encoding_to_buffer b t;
+  Buffer.contents b
+;;
+
+let%expect_test _ =
+  let dummy _ = failwith "don't need real serialisation/deserialisation functions" in
+  let module M = struct
+    type abc =
+      | A of bool
+      | B of int64
+      | C of unit
+
+    type de =
+      | D of string
+      | E of int64 Seq.t
+  end
+  in
+  let open M in
+  let w encoding = print_string (to_string encoding) in
+  w Unit;
+  [%expect "unit"];
+  w Null;
+  [%expect "null"];
+  w Bool;
+  [%expect "bool"];
+  w Int64;
+  [%expect "int64"];
+  w String;
+  [%expect "string"];
+  w (Seq Int64);
+  [%expect "[int64 seq]"];
+  w (Seq Unit);
+  [%expect "[unit seq]"];
+  w (Tuple [ Int64; Bool; String; Null; Unit ]);
+  [%expect "[int64 ; bool ; string ; null ; unit]"];
+  w (Tuple [ Null; Null ]);
+  [%expect "[null ; null]"];
+  w (Tuple [ tuple [ String ]; tuple [ Int64; Bool ]; Unit ]);
+  [%expect "[[string] ; [int64 ; bool] ; unit]"];
+  w (obj []);
+  [%expect "{}"];
+  w (obj [ req "foo" Unit; opt "bar" Int64 ]);
+  [%expect "{foo=unit ; bar?=int64}"];
+  w (obj [ opt "one" String; req "two" Bool; req "three" (seq Bool) ]);
+  [%expect "{one?=string ; two=bool ; three=[bool seq] }"];
+  w (obj [ req "nested_obj" (obj [ req "foo" Bool; req "bar" Null ]) ]);
+  [%expect "{nested_obj={foo=bool ; bar=null}}"];
+  w (conv ~serialisation:dummy ~deserialisation:dummy Unit);
+  [%expect "conv[unit]"];
+  w (conv ~serialisation:dummy ~deserialisation:dummy (tuple [ Int64; Bool ]));
+  [%expect "conv[[int64 ; bool]]"];
+  w
+    Union.(
+      union
+        [ AnyC (case "0" Bool (fun a -> A a))
+        ; AnyC (case "1" Int64 (fun b -> B b))
+        ; AnyC (case "2" Unit (fun _ -> C ()))
+        ]
+        dummy
+        dummy);
+  [%expect "union(bool , int64 , unit)"];
+  w
+    Union.(
+      union
+        [ AnyC (case "0" String (fun d -> D d))
+        ; AnyC (case "1" (Seq Int64) (fun e -> E e))
+        ]
+        dummy
+        dummy);
+  [%expect "union(string , [int64 seq] )"]
+;;
