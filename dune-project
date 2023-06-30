@@ -22,61 +22,78 @@
  (synopsis "Backend-independent codec declaration")
  (description "")
  (depends
-   (ocaml (>= 4.14))
-   dune
-   (json-data-encoding (= :version))
-   (binary-data-encoding (= :version))
-   optint
-   (ppx_expect :with-test)
-   (ocamlformat (and :with-test (= 0.24.1)))
- )
-)
+  (ocaml
+   (>= 4.14))
+  dune
+  (json-data-encoding
+   (= :version))
+  (binary-data-encoding
+   (= :version))
+  optint
+  (ppx_expect :with-test)
+  (ocamlformat
+   (and
+    :with-test
+    (= 0.24.1)))))
 
 (package
  (name json-data-encoding)
  (synopsis "JSON specific codecs and de/serialisation")
  (description "")
  (depends
-   (ocaml (>= 4.14))
-   dune
-   optint
-   buffy
-   (qcheck (and :with-test (>= 0.19)))
-   (qcheck-core :with-test)
-   (ppx_expect :with-test)
-   (ocamlformat (and :with-test (= 0.24.1)))
-   (landmarks :dev)
-   (landmarks-ppx :dev)
- )
-)
+  (ocaml
+   (>= 4.14))
+  dune
+  optint
+  buffy
+  (qcheck
+   (and
+    :with-test
+    (>= 0.19)))
+  (qcheck-core :with-test)
+  (ppx_expect :with-test)
+  (ocamlformat
+   (and
+    :with-test
+    (= 0.24.1)))
+  (landmarks :dev)
+  (landmarks-ppx :dev)
+  ezjsonm))
 
 (package
  (name binary-data-encoding)
  (synopsis "Binary codecs and de/serialisation")
  (description "")
  (depends
-   (ocaml (>= 4.14))
-   dune
-   optint
-   buffy
-   (qcheck (and :with-test (>= 0.19)))
-   (qcheck-core :with-test)
-   (ppx_expect :with-test)
-   (ocamlformat (and :with-test (= 0.24.1)))
-   (landmarks :dev)
-   (landmarks-ppx :dev)
- )
-)
+  (ocaml
+   (>= 4.14))
+  dune
+  optint
+  buffy
+  (qcheck
+   (and
+    :with-test
+    (>= 0.19)))
+  (qcheck-core :with-test)
+  (ppx_expect :with-test)
+  (ocamlformat
+   (and
+    :with-test
+    (= 0.24.1)))
+  (landmarks :dev)
+  (landmarks-ppx :dev)))
 
 (package
  (name buffy)
  (synopsis "Buffers with user-controled allocation")
  (description "")
  (depends
-   (ocaml (>= 4.14))
-   dune
-   (ocamlformat (and :with-test (= 0.24.1)))
-   (landmarks :dev)
-   (landmarks-ppx :dev)
- )
-)
+  (ocaml
+   (>= 4.14))
+  dune
+  (ocamlformat
+   (and
+    :with-test
+    (= 0.24.1)))
+  (landmarks :dev)
+  (landmarks-ppx :dev)))
