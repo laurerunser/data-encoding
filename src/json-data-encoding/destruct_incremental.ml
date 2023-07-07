@@ -8,6 +8,7 @@ type 'a result =
 type buffy_state =
   { decoder : Jsonm.decoder
   ; buffy : Buffy.Src.t
+  ; transfer_buffer : Bytes.t
   }
 
 type state =
@@ -20,27 +21,26 @@ let is_available src =
 ;;
 
 let use_tokens tokens = UseTokens (ref tokens)
-let use_buffy decoder buffy = UseBuffy { decoder; buffy }
+let change_buffy_src old_state src = { old_state with buffy = src }
 let is_empty tokens = !tokens = []
-let buffer_size = 4000
-let buffer_bytes = Bytes.make buffer_size ' '
-(* allocate a 4k buffer that will be reused to transfert data from Buffy to Jsonm decoder *)
+let buffer_size = 4000 (* size of the Buffer to transfer bytes from Buffy to Jsonm *)
 
-let read_from_buffy src decoder =
+let read_from_buffy state =
+  let { decoder; buffy; transfer_buffer } = state in
   (* let state = Buffy.R.mk_state src in *)
-  let available = min (Buffy.Src.available src) buffer_size in
+  let available = min (Buffy.Src.available buffy) buffer_size in
   if available <> 0
   then (
     (* read available bytes and feed them to Jsonm
        Reuse the same buffer to avoid allocations.
        Use `get_blits_onto_bytes` to avoid copying the bytes. *)
-    Buffy.Src.get_blit_onto_bytes src buffer_bytes 0 available;
-    Jsonm.Manual.src decoder buffer_bytes 0 available)
+    Buffy.Src.get_blit_onto_bytes buffy transfer_buffer 0 available;
+    Jsonm.Manual.src decoder transfer_buffer 0 available)
 ;;
 
 let rec read_lexeme state =
   match state with
-  | UseBuffy { decoder; buffy } ->
+  | UseBuffy ({ decoder; buffy; transfer_buffer = _ } as s) ->
     (match Jsonm.decode decoder with
      | `Lexeme v -> Ok v
      | `End -> assert false (* see Jsonm.Manual docs *)
@@ -48,13 +48,13 @@ let rec read_lexeme state =
      | `Await ->
        if is_available buffy
        then (
-         read_from_buffy buffy decoder;
-         read_lexeme (UseBuffy { decoder; buffy }))
+         read_from_buffy s;
+         read_lexeme (UseBuffy s))
        else
          Await
            (fun src ->
-             read_from_buffy src decoder;
-             read_lexeme (UseBuffy { decoder; buffy = src })))
+             read_from_buffy (change_buffy_src s src);
+             read_lexeme (UseBuffy (change_buffy_src s src))))
   | UseTokens tokens ->
     if is_empty tokens
     then Error "Reading from memorized tokens: Unexpected end of input"
@@ -407,7 +407,8 @@ let destruct_incremental : type a. a Encoding.t -> Buffy.Src.t -> a result =
      (it uses the first 3 chars to determine its encoding, so 
      if there are less than 3 chars, the decoder returns Await) *)
   Jsonm.Manual.src decoder (Bytes.of_string "  ") 0 2;
-  let state = use_buffy decoder buffy in
+  let transfer_buffer = Bytes.make buffer_size ' ' in
+  let state = UseBuffy { decoder; buffy; transfer_buffer } in
   let res = destruct_value encoding state in
   match res, state with
   | Ok _, UseTokens tokens -> if is_empty tokens then res else Error "Too many lexemes"
