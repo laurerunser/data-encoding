@@ -1,5 +1,10 @@
 (executables
- (names binary_reading binary_writing json_writing)
+ (names
+  binary_reading
+  binary_writing
+  json_writing
+  json_reading
+  old_json_reading)
  (libraries
   buffy
   binary-data-encoding
@@ -7,4 +12,5 @@
   mtime
   mtime.clock.os
   benchlib
-  landmarks))
+  landmarks
+  ezjsonm))

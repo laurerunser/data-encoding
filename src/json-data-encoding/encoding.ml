@@ -103,6 +103,27 @@ let array t =
     (seq t)
 ;;
 
+let uint8 =
+  conv
+    ~serialisation:(fun a ->
+      Int64.of_int (Commons.Sizedints.Uint62.to_int (Commons.Sizedints.Uint8.to_uint62 a)))
+    ~deserialisation:(fun a ->
+      let b = Commons.Sizedints.Uint8.of_int (Int64.to_int a) in
+      Option.to_result ~none:"error" b)
+    Int64
+;;
+
+let uint30 =
+  conv
+    ~serialisation:(fun a ->
+      Int64.of_int
+        (Commons.Sizedints.Uint62.to_int (Commons.Sizedints.Uint30.to_uint62 a)))
+    ~deserialisation:(fun a ->
+      let b = Commons.Sizedints.Uint30.of_int (Int64.to_int a) in
+      Option.to_result ~none:"error" b)
+    Int64
+;;
+
 module Record = struct
   type ('a, 'r) field =
     { name : string

@@ -15,11 +15,6 @@ type state =
   | UseBuffy of buffy_state
   | UseTokens of Jsonm.lexeme list ref
 
-let is_available src =
-  let available = Buffy.Src.available src in
-  available > 0
-;;
-
 let use_tokens tokens = UseTokens (ref tokens)
 let change_buffy_src old_state src = { old_state with buffy = src }
 let is_empty tokens = !tokens = []
@@ -46,7 +41,7 @@ let rec read_lexeme state =
      | `End -> assert false (* see Jsonm.Manual docs *)
      | `Error e -> Error (Format.asprintf "Jsonm: %a" Jsonm.pp_error e)
      | `Await ->
-       if is_available buffy
+       if Buffy.Src.available buffy > 0
        then (
          read_from_buffy s;
          read_lexeme (UseBuffy s))
