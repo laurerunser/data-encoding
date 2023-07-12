@@ -13,6 +13,7 @@ module Uint62 = struct
     Optint.Int63.add
   ;;
 
+  let to_int = Optint.Int63.to_int
   let min_int = Optint.Int63.zero
   let zero = Optint.Int63.zero
   let max_int = Optint.Int63.max_int

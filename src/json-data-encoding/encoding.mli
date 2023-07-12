@@ -77,6 +77,9 @@ val conv
   -> 'b t
   -> 'a t
 
+val uint8 : Commons.Sizedints.Uint8.t t
+val uint30 : Commons.Sizedints.Uint30.t t
+
 module Record : sig
   type ('a, 'r) field
 

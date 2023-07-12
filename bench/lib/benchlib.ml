@@ -10,7 +10,21 @@ let buffer_size =
   | Some s -> int_of_string s
 ;;
 
+let json_buffer_size =
+  match Sys.getenv_opt "BENCHBUFFSIZE" with
+  | None -> 1_000_000
+  | Some s -> int_of_string s
+;;
+
 let sizes =
+  match Sys.getenv_opt "BENCHDATASIZES" with
+  | None -> [ 1_000; 5_000; 25_000; 125_000; 625_000; 3_125_000 ]
+  | Some s ->
+    let ss = String.split_on_char ',' s in
+    List.map int_of_string ss
+;;
+
+let json_sizes =
   match Sys.getenv_opt "BENCHDATASIZES" with
   | None -> [ 1_000; 5_000; 25_000; 125_000; 625_000; 3_125_000 ]
   | Some s ->
@@ -28,6 +42,8 @@ let quiet =
 let payload_file_name name size =
   Format.asprintf "payload-%08x-%d" (Stdlib.Hashtbl.hash name) size
 ;;
+
+let payload_file_name_json name size = payload_file_name name size ^ "_json"
 
 let blits_seq_of_file fname buffer : (bytes * int * int) Seq.t =
   let ic = open_in fname in
@@ -118,6 +134,26 @@ let rr (f : Buffy.Src.t -> _ Buffy.R.readed) (ss : Buffy.Src.t Seq.t) =
   run f ss
 ;;
 
+let rr_json
+  (f : Buffy.Src.t -> 'a Json_data_encoding.Destruct_incremental.result)
+  (ss : Buffy.Src.t Seq.t)
+  =
+  let rec run f ss =
+    match ss () with
+    | Seq.Nil ->
+      (* Jsonm requires an empty string to signal the end of the input *)
+      f (Buffy.Src.of_string "")
+    | Seq.Cons (src, ss) ->
+      (match (f src : 'a Json_data_encoding.Destruct_incremental.result) with
+       | Ok value -> Ok value
+       | Error error ->
+         Format.printf "\tError: %s\n" error;
+         Error error
+       | Await f -> run f ss)
+  in
+  run f ss
+;;
+
 let timer (f : Buffy.Src.t -> _ Buffy.R.readed) (ss : string Seq.t) =
   let t0 = Mtime_clock.now () in
   let rec run tacc f ss =
@@ -155,6 +191,104 @@ let measurer repeats f ss =
   done;
   measures
 ;;
+
+(******************)
+
+let timer2
+  (f : Buffy.Src.t -> _ Json_data_encoding.Destruct_incremental.result)
+  (ss : string Seq.t)
+  =
+  let t0 = Mtime_clock.now () in
+  let rec run tacc f ss =
+    match ss () with
+    | Seq.Nil -> tacc
+    | Seq.Cons (s, ss) ->
+      let src = Buffy.Src.of_string s in
+      (match (f src : _ Json_data_encoding.Destruct_incremental.result) with
+       | Ok _ -> tacc
+       | Error e ->
+         print_string e;
+         print_newline ();
+         tacc
+       | Await f ->
+         let t = Mtime_clock.now () in
+         run (t :: tacc) f ss)
+  in
+  let ts = run [ t0 ] f ss in
+  match ts with
+  | [] -> assert false
+  | [ t0 ] ->
+    let totals = [ Mtime.span (Mtime_clock.now ()) t0 ] in
+    let chunks = totals in
+    { chunks; totals }
+  | tend :: ts ->
+    let chunks, _ =
+      (* we ignore the last chunk because it is for a smaller part of the buffer *)
+      List.fold_left (fun (dacc, tprev) t -> Mtime.span t tprev :: dacc, t) ([], tend) ts
+    in
+    let totals = [ Mtime.span tend t0 ] in
+    { chunks; totals }
+;;
+
+let measurer2 repeats f ss =
+  let measures = Array.make repeats null in
+  Gc.full_major ();
+  for i = 0 to pred repeats do
+    Array.set measures i (timer2 f ss)
+  done;
+  measures
+;;
+
+(************************)
+
+(******************)
+
+let timer3
+  (f : Json_data_encoding.JSON.flex -> ('a, string) Stdlib.result)
+  (ss : string Seq.t)
+  =
+  let t0 = Mtime_clock.now () in
+  let rec run tacc ss =
+    match ss () with
+    | Seq.Nil -> tacc
+    | Seq.Cons (s, ss) ->
+      let src = Ezjsonm.from_string s in
+      (match f (src : Json_data_encoding.JSON.compat :> Json_data_encoding.JSON.flex) with
+       | Ok _ ->
+         let t = Mtime_clock.now () in
+         run (t :: tacc) ss
+       | Error e ->
+         print_string e;
+         print_newline ();
+         let t = Mtime_clock.now () in
+         run (t :: tacc) ss)
+  in
+  let ts = run [ t0 ] ss in
+  match ts with
+  | [] -> assert false
+  | [ t0 ] ->
+    let totals = [ Mtime.span (Mtime_clock.now ()) t0 ] in
+    let chunks = totals in
+    { chunks; totals }
+  | tend :: ts ->
+    let chunks, _ =
+      (* we ignore the last chunk because it is for a smaller part of the buffer *)
+      List.fold_left (fun (dacc, tprev) t -> Mtime.span t tprev :: dacc, t) ([], tend) ts
+    in
+    let totals = [ Mtime.span tend t0 ] in
+    { chunks; totals }
+;;
+
+let measurer3 repeats f ss =
+  let measures = Array.make repeats null in
+  Gc.full_major ();
+  for i = 0 to pred repeats do
+    Array.set measures i (timer3 f ss)
+  done;
+  measures
+;;
+
+(************************)
 
 let flatten arr =
   Array.fold_left

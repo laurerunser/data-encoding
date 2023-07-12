@@ -30,18 +30,19 @@ let change_buffy_src old_tokens_state token_peeked new_buffy_src =
 ;;
 
 let is_empty tokens = !tokens = []
-let buffer_size = 4000 (* size of the Buffer to transfer bytes from Buffy to Jsonm *)
+let buffer_size = 1_000_000 (* size of the Buffer to transfer bytes from Buffy to Jsonm *)
 
 let read_from_buffy state =
   let { decoder; buffy; transfer_buffer; _ } = state in
   let available = min (Buffy.Src.available buffy) buffer_size in
   if available <> 0
   then (
-    (* read available bytes and feed them to Jsonm
+    (* read available bytes and  them to Jsonm
        Reuse the same buffer to avoid allocations.
        Use `get_blits_onto_bytes` to avoid copying the bytes. *)
     Buffy.Src.get_blit_onto_bytes buffy transfer_buffer 0 available;
     Jsonm.Manual.src decoder transfer_buffer 0 available)
+  else Jsonm.Manual.src decoder transfer_buffer 0 0
 ;;
 
 let rec read_lexeme { tokens; token_peeked } =
@@ -58,7 +59,17 @@ let rec read_lexeme { tokens; token_peeked } =
       (match Jsonm.decode decoder with
        | `Lexeme v -> Ok v
        | `End -> assert false (* see Jsonm.Manual docs *)
-       | `Error e -> Error (Format.asprintf "Jsonm: %a" Jsonm.pp_error e)
+       | `Error e ->
+         let (a, b), (c, d) = Jsonm.decoded_range decoder in
+         Error
+           (Format.asprintf
+              "Jsonm: (line:%d, col:%d) (line:%d, col:%d) %a"
+              a
+              b
+              c
+              d
+              Jsonm.pp_error
+              e)
        | `Await ->
          if Buffy.Src.available buffy > 0
          then (
@@ -372,7 +383,7 @@ and destruct_obj_fields
      | None ->
        let* tokens, map = parse_fields_until_name_match name state fields in
        (match tokens with
-        | None -> Error "Missing field"
+        | None -> Error (Format.sprintf "Missing field %s" name)
         | Some tokens ->
           let* a = destruct_value e (use_tokens tokens) in
           let* rest_of_values = destruct_obj_fields ts state map in
@@ -482,15 +493,18 @@ let%expect_test _ =
   w Unit "";
   [%expect {| Waiting |}];
   w Unit "} ";
-  [%expect {| Error Jsonm: expected JSON text (JSON value) |}];
+  [%expect
+    {| Error Jsonm: (line:1, col:3) (line:1, col:3) expected JSON text (JSON value) |}];
   w Unit "}{ ";
-  [%expect {| Error Jsonm: expected JSON text (JSON value) |}];
+  [%expect
+    {| Error Jsonm: (line:1, col:3) (line:1, col:4) expected JSON text (JSON value) |}];
   w Unit "{";
   [%expect {| Waiting |}];
   w Unit "[]";
   [%expect {| Error Unexpected lexeme in sequence: received `As, expected `Os |}];
   w Unit "][ ";
-  [%expect {| Error Jsonm: expected JSON text (JSON value) |}];
+  [%expect
+    {| Error Jsonm: (line:1, col:3) (line:1, col:4) expected JSON text (JSON value) |}];
   w Unit "null ";
   [%expect {| Error Unexpected lexeme in sequence: received `Null, expected `Os |}];
   w Unit {| {"foo": null} |};
@@ -523,7 +537,10 @@ let%expect_test _ =
   w String {| "\u0068\u0123" |};
   [%expect {| Ok hģ |}];
   w String {| "\128" |};
-  [%expect {| Error Jsonm: illegal escape, '1' (U+0031) not an escaped character |}];
+  [%expect
+    {|
+    Error Jsonm: (line:1, col:4) (line:1, col:6) illegal escape, '1' (U+0031) not an
+                                           escaped character |}];
   w String {| "\ntest\u03BB"|};
   [%expect {|
     Ok
@@ -682,18 +699,38 @@ let%expect_test _ =
        | Await _ -> Format.printf "Await")
     | _ -> failwith "incomplete input; should have failed"
   in
+  (* let w3 e str1 str2 =
+    let buffy = Buffy.Src.of_string str1 in
+    let buffy2 = Buffy.Src.of_string (str2 ^ " ") in
+    let buffy3 = Buffy.Src.of_string "" in
+    match destruct_incremental e buffy with
+    | Await f ->
+      (match f buffy2 with
+       | Ok v -> Format.printf "Ok %s\n" (value_to_string e v)
+       | Error s -> Format.printf "Error %s\n" s
+       | Await _ ->
+         (match f buffy3 with
+          | Ok v -> Format.printf "Ok %s\n" (value_to_string e v)
+          | Error s -> Format.printf "Error %s\n" s
+          | Await _ -> Format.printf "Await"))
+    | _ -> failwith "incomplete input; should have failed"
+  in *)
   w Unit "{" "}";
   [%expect {| Ok unit |}];
   w Unit "}" " ";
-  [%expect {| Error Jsonm: expected JSON text (JSON value) |}];
+  [%expect
+    {| Error Jsonm: (line:1, col:3) (line:1, col:3) expected JSON text (JSON value) |}];
   w Unit "}{" " ";
-  [%expect {| Error Jsonm: expected JSON text (JSON value) |}];
+  [%expect
+    {| Error Jsonm: (line:1, col:3) (line:1, col:4) expected JSON text (JSON value) |}];
   w Unit "nu" "ll ";
   [%expect {| Error Unexpected lexeme in sequence: received `Null, expected `Os |}];
   w Bool "f" "alse ";
   [%expect {| Ok false |}];
   w Int64 "\"12345" "67890\"";
   [%expect {| Ok 1234567890 |}];
+  w Int64 {|"1|} {|"|};
+  [%expect {| Ok 1 |}];
   w (Seq Int64) "[\"0\"" ", \"1\"]";
   [%expect {| Ok [0; 1] |}];
   w (Seq Int64) "[nu" "ll ]";
@@ -703,9 +740,38 @@ let%expect_test _ =
   w (Tuple []) "[" "]";
   [%expect {| Ok [] |}];
   w String {| "\ntest\u03BB |} {| test" |};
-  [%expect "\n    Ok\n    test\206\187  test"]
+  [%expect "\n    Ok\n    test\206\187  test"];
+  w
+    (list
+       (array
+          Record.(
+            record
+              (fun x y -> { x; y })
+              [ field "x" (fun { x; _ } -> x) int64; field "y" (fun { y; _ } -> y) int64 ])))
+    {|[[{"x":"0","y":"1|}
+    {|"}]]|};
+  [%expect {| Ok conv[[conv([conv({x=int64, y=int64}) seq] ) seq] ] |}];
+  w
+    (list
+       (array
+          Record.(
+            record
+              (fun x y -> { x; y })
+              [ field "x" (fun { x; _ } -> x) int64; field "y" (fun { y; _ } -> y) int64 ])))
+    {|[[{"x":"0","y"|}
+    {|:"1"}]]|};
+  [%expect {| Ok conv[[conv([conv({x=int64, y=int64}) seq] ) seq] ] |}];
+  w
+    (list
+       (array
+          Record.(
+            record
+              (fun x y -> { x; y })
+              [ field "x" (fun { x; _ } -> x) int64; field "y" (fun { y; _ } -> y) int64 ])))
+    {|[[{"x":"0","y":|}
+    {|"1"}]]|};
+  [%expect {| Ok conv[[conv([conv({x=int64, y=int64}) seq] ) seq] ] |}]
 ;;
-
 (* doesn't like to be cut in the middle of a unicode sequence *)
 (* w String {| "\ntest\u03 |} {| BBtest" |};
   [%expect "\n      Ok\n      test\206\187  test"] *)

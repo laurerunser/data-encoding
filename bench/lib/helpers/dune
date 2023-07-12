@@ -1,3 +1,3 @@
-(executable
- (name make_binary_reading_payload)
- (libraries binary_data_encoding benchlib))
+(executables
+ (names make_binary_reading_payload make_json_reading_payload)
+ (libraries binary_data_encoding json_data_encoding benchlib))

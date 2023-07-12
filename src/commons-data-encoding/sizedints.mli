@@ -12,6 +12,7 @@ module Uint62 : sig
   val get_le : string -> int -> t
   val mul : t -> t -> t
   val add : t -> t -> t
+  val to_int : t -> int
 end
 
 module Uint30 : sig

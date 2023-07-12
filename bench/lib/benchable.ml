@@ -1,8 +1,12 @@
+(* to generate the payloads: `dune exec bench/lib/helpers/make_json_reading_payload.exe` 
+   it takes a few seconds *)
+
 module type S = sig
   type data
 
   val encoding : data Data_encoding.Encoding.t
   val make_data : int -> data
+  val make_json_string : int -> string
   val name : string
 end
 
@@ -58,6 +62,24 @@ module Benchable0 : S = struct
     mk sz []
   ;;
 
+  let make_json_string size =
+    let one_record = {| {"x" : "0" , "y" : "1"} |} in
+    (* let rec list n acc = if n = 0 then acc else list (n - 1) (one_record :: acc) in *)
+    (* let one_array n = "[" ^ String.concat "," (list n []) ^ "]" in *)
+    let one_array _ = "[ " ^ one_record ^ " ]" in
+    let rec make count acc =
+      if count <= 0
+      then acc
+      else if count = 1
+      then one_array 10 :: acc
+      else (
+        assert (count >= 2);
+        let delta = count mod 5 in
+        make (count - 2) (one_array (10 - delta) :: one_array (10 + delta) :: acc))
+    in
+    "[" ^ String.concat " , " (make size []) ^ "]"
+  ;;
+
   let name = "list[ui30](array[ui8](record(i64,i64)))"
 end
 
@@ -95,10 +117,23 @@ module Benchable1 : S = struct
     in
     let json =
       let open Json_data_encoding.Encoding in
-      conv
-        ~serialisation:(fun _ -> assert false)
-        ~deserialisation:(fun _ -> assert false)
-        unit
+      array
+        (Union.either
+           (conv
+              ~serialisation:(fun { x; y } -> Commons.Hlist.[ x; y ])
+              ~deserialisation:(fun Commons.Hlist.[ x; y ] -> Ok { x; y })
+              (tuple [ int64; int64 ]))
+           (Union.option
+              (conv
+                 ~serialisation:(fun (x, xs) ->
+                   let xs =
+                     List.map (fun x -> Option.get (Commons.Sizedints.Uint8.of_int x)) xs
+                   in
+                   Commons.Hlist.[ x; xs ])
+                 ~deserialisation:(fun Commons.Hlist.[ x; xs ] ->
+                   let xs = (xs :> int list) in
+                   Ok (x, xs))
+                 (tuple [ uint30; list uint8 ]))))
     in
     { Data_encoding.Encoding.binary; json }
   ;;
@@ -110,6 +145,31 @@ module Benchable1 : S = struct
       else if i mod 5 = 0
       then Either.Right None
       else Either.Right (Some (Option.get (Commons.Sizedints.Uint30.of_int i), [])))
+  ;;
+
+  let make_json_string size =
+    let first_choice = {|{ "Left" : [ "0" , "1" ] }|} in
+    (* let second_choice _ =
+      Format.sprintf
+        {|{"Right":{"Some":["%d",["%d","%d"]]}}|}
+        i
+        i
+        i (* TODO: make those uint8!!*)
+    in *)
+    let second_choice _ =
+      Format.sprintf {|{ "Right" : { "Some" : [ "1" , [ "1" , "1" ] ] } }|}
+    in
+    let second_none = {|{ "Right" : "None" }|} in
+    let rec make_str count acc =
+      if count = 0
+      then acc
+      else if count mod 3 = 0
+      then make_str (count - 1) (first_choice :: acc)
+      else if count mod 5 = 0
+      then make_str (count - 1) (second_choice count :: acc)
+      else make_str (count - 1) (second_none :: acc)
+    in
+    "[" ^ String.concat " , " (make_str size []) ^ "]"
   ;;
 
   let name = "array[ui30](either(conv(i64,i64),option(conv(ui30,list(i8)))))"
@@ -198,6 +258,68 @@ module Benchable2 : S = struct
         C p
       | 3 -> D
       | _ -> assert false)
+  ;;
+
+  let make_json_string size =
+    (* randomness generators *)
+    let prng = Random.State.make [| size |] in
+    let random prng = Random.State.int prng 4 = 0 in
+    let random_int64 () = Random.State.int64 prng 1024L in
+    (* strings for each element *)
+    let make_str_a () =
+      let choice_a1 = {| { "A" : [ "None" , "None" ] } |} in
+      let choice_a2 () =
+        Format.sprintf {| { "A" : [ { "Some" : "2" } , "None" ] } |}
+        (* Format.sprintf {| { "A" : [ { "Some" : "%Ld" } , "None" ] } |} (random_int64 ()) *)
+      in
+      let choice_a3 () =
+        Format.sprintf {| { "A" : [ "None" , {"Some" : "4" } ] } |}
+        (* Format.sprintf {| { "A" : [ "None" , {"Some" : "%Ld" } ] } |} (random_int64 ()) *)
+      in
+      let choice_a4 () =
+        Format.sprintf {| { "A" : [ { "Some" : "5" } , { "Some" : "6" } ] } |}
+        (* Format.sprintf
+          {| { "A" : [ { "Some" : "%Ld" } , { "Some" : "%Ld" } ] } |}
+          (random_int64 ())
+          (random_int64 ()) *)
+      in
+      match Random.State.int prng 4 with
+      | 0 -> choice_a1
+      | 1 -> choice_a2 ()
+      | 2 -> choice_a3 ()
+      | 3 -> choice_a4 ()
+      | _ -> assert false
+    in
+    let make_str_b () =
+      Format.sprintf {| { "B" : [ "%Ld" , "%Ld" ] } |} (random_int64 ()) (random_int64 ())
+    in
+    let make_str_c k =
+      if random prng
+      then {| { "C" : "None" } |}
+      else (
+        let l =
+          String.concat
+            " , "
+            (List.init (Random.State.int prng 5) (fun i ->
+               " \"" ^ String.make (i + (k mod 256)) '0' ^ "\""))
+        in
+        Format.sprintf {| { "C" : { "Some" : [ %s ] } } |} l)
+    in
+    let make_str_d = {| "D" |} in
+    (* making the payload *)
+    let rec make size acc =
+      if size = 0
+      then acc
+      else (
+        match Random.State.int prng 4 with
+        | 0 -> make (size - 1) (make_str_a () :: acc)
+        | 1 -> make (size - 1) (make_str_b () :: acc)
+        | 2 -> make (size - 1) (make_str_c size :: acc)
+        | 3 -> make (size - 1) (make_str_d :: acc)
+        | _ -> assert false)
+    in
+    let l = make size [] in
+    " [ " ^ String.concat " , " l ^ " ] "
   ;;
 
   let name = "list(union(…))"
