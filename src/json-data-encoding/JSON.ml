@@ -121,3 +121,8 @@ let rec compatify : t -> compat = function
 ;;
 
 let flexify t = (t : compat :> flex)
+
+let to_string lexemes =
+  let compatible = compatify lexemes in
+  Ezjsonm.value_to_string compatible
+;;

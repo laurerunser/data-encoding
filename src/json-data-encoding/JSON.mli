@@ -65,3 +65,5 @@ val compatify : t -> compat
 (** Note that [t] is a more general representation than [compat] and so this
     conversion is free. *)
 val flexify : compat -> t
+
+val to_string : t -> string
