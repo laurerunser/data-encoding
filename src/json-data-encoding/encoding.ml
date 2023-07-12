@@ -213,7 +213,7 @@ let rec encoding_to_buffer : type a. Buffer.t -> a t -> unit =
   | Seq t ->
     Buffer.add_char buffer '[';
     encoding_to_buffer buffer t;
-    Buffer.add_string buffer " seq] "
+    Buffer.add_string buffer " seq]"
   | Tuple t ->
     Buffer.add_char buffer '[';
     encoding_to_buffer_tuple buffer t;
@@ -247,21 +247,21 @@ and encoding_to_buffer_obj : type a. Buffer.t -> a obj -> unit =
   | [] -> ()
   | [ Req { encoding; name } ] ->
     Buffer.add_string buffer name;
-    Buffer.add_char buffer '=';
+    Buffer.add_string buffer " = ";
     encoding_to_buffer buffer encoding
   | [ Opt { encoding; name } ] ->
     Buffer.add_string buffer name;
-    Buffer.add_string buffer "?=";
+    Buffer.add_string buffer " ?= ";
     encoding_to_buffer buffer encoding
   | Req { encoding; name } :: tail ->
     Buffer.add_string buffer name;
-    Buffer.add_char buffer '=';
+    Buffer.add_string buffer " = ";
     encoding_to_buffer buffer encoding;
     Buffer.add_string buffer ", ";
     encoding_to_buffer_obj buffer tail
   | Opt { encoding; name } :: tail ->
     Buffer.add_string buffer name;
-    Buffer.add_string buffer "?=";
+    Buffer.add_string buffer " ?= ";
     encoding_to_buffer buffer encoding;
     Buffer.add_string buffer ", ";
     encoding_to_buffer_obj buffer tail
@@ -270,8 +270,15 @@ and encoding_to_buffer_union : type a. Buffer.t -> a anycase list -> unit =
  fun buffer cases ->
   match cases with
   | [] -> ()
-  | [ AnyC { tag = _; encoding; inject = _ } ] -> encoding_to_buffer buffer encoding
-  | AnyC { tag = _; encoding; inject = _ } :: ts ->
+  | [ AnyC { tag; encoding; inject = _ } ] ->
+    Buffer.add_string buffer "tag ";
+    Buffer.add_string buffer tag;
+    Buffer.add_string buffer ": ";
+    encoding_to_buffer buffer encoding
+  | AnyC { tag; encoding; inject = _ } :: ts ->
+    Buffer.add_string buffer "tag ";
+    Buffer.add_string buffer tag;
+    Buffer.add_string buffer ": ";
     encoding_to_buffer buffer encoding;
     Buffer.add_string buffer " | ";
     encoding_to_buffer_union buffer ts
@@ -321,11 +328,11 @@ let%expect_test _ =
   w (obj []);
   [%expect "{}"];
   w (obj [ req "foo" Unit; opt "bar" Int64 ]);
-  [%expect "{foo=unit, bar?=int64}"];
+  [%expect "{foo = unit, bar ?= int64}"];
   w (obj [ opt "one" String; req "two" Bool; req "three" (seq Bool) ]);
-  [%expect "{one?=string, two=bool, three=[bool seq] }"];
+  [%expect "{one ?= string, two = bool, three = [bool seq]}"];
   w (obj [ req "nested_obj" (obj [ req "foo" Bool; req "bar" Null ]) ]);
-  [%expect "{nested_obj={foo=bool, bar=null}}"];
+  [%expect "{nested_obj = {foo = bool, bar = null}}"];
   w (conv ~serialisation:dummy ~deserialisation:dummy Unit);
   [%expect "conv(unit)"];
   w (conv ~serialisation:dummy ~deserialisation:dummy (tuple [ Int64; Bool ]));
@@ -339,16 +346,16 @@ let%expect_test _ =
         ]
         dummy
         dummy);
-  [%expect "union(bool | int64 | unit)"];
+  [%expect "union(tag 0: bool | tag 1: int64 | tag 2: unit)"];
   w
     Union.(
       union
-        [ AnyC (case "0" String (fun d -> D d))
+        [ AnyC (case "left" String (fun d -> D d))
         ; AnyC (case "1" (Seq Int64) (fun e -> E e))
         ]
         dummy
         dummy);
-  [%expect "union(string | [int64 seq] )"]
+  [%expect "union(tag left: string | tag 1: [int64 seq])"]
 ;;
 
 let rec value_to_buffer : type a. Buffer.t -> a t -> a -> unit =
