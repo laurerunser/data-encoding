@@ -1,3 +1,6 @@
+(* to generate the payloads: `dune exec bench/lib/helpers/make_json_reading_payload.exe` 
+   it takes a few seconds *)
+
 module type S = sig
   type data
 
@@ -59,10 +62,7 @@ module Benchable0 : S = struct
     mk sz []
   ;;
 
-  let make_json_string _ = {| [[ {"x":"0", "y":"1"} ]] |}
-
-  (* let make_json_string _ =
-    let size = 150 in
+  let make_json_string size =
     let one_record = {| {"x":"0","y":"1"} |} in
     let rec list n acc = if n = 0 then acc else list (n - 1) (one_record :: acc) in
     let one_array n = "[" ^ String.concat "," (list n []) ^ "]" in
@@ -70,37 +70,14 @@ module Benchable0 : S = struct
       if count <= 0
       then acc
       else if count = 1
-      then one_array 10 ^ "," ^ acc
+      then one_array 10 :: acc
       else (
         assert (count >= 2);
         let delta = count mod 5 in
-        make
-          (count - 2)
-          (one_array (10 - delta) ^ "," ^ one_array (10 + delta) ^ "," ^ acc))
+        make (count - 2) (one_array (10 - delta) :: one_array (10 + delta) :: acc))
     in
-    "[" ^ make size ("[" ^ one_record ^ "]") ^ "]"
-  ;; *)
-
-  (* let write_json size oc =
-    (* let size = 150 in *)
-    let one_record = {| {"x":"0","y":"1"} |} in
-    let rec list n acc = if n = 0 then acc else list (n - 1) (one_record :: acc) in
-    let one_array n = "[" ^ String.concat "," (list n []) ^ "," ^ one_record ^ "]" in
-    let rec write_arrays count =
-      if count >= 0
-      then (
-        let delta = count mod 5 in
-        output_string oc ",";
-        output_string oc (one_array (10 - delta));
-        output_string oc ",";
-        output_string oc (one_array (10 + delta));
-        write_arrays (count - 2))
-    in
-    output_string oc "[";
-    output_string oc (one_array 1);
-    write_arrays size;
-    output_string oc "]"
-  ;; *)
+    "[[" ^ String.concat "," (make size []) ^ "]]"
+  ;;
 
   let name = "list[ui30](array[ui8](record(i64,i64)))"
 end
@@ -139,10 +116,6 @@ module Benchable1 : S = struct
     in
     let json =
       let open Json_data_encoding.Encoding in
-      (* conv
-        ~serialisation:(fun _ -> assert false)
-        ~deserialisation:(fun _ -> assert false)
-        unit *)
       array
         (Union.either
            (conv
@@ -173,12 +146,8 @@ module Benchable1 : S = struct
       else Either.Right (Some (Option.get (Commons.Sizedints.Uint30.of_int i), [])))
   ;;
 
-  let make_json_string _ =
-    {| [{"Left":["0","1"]}, {"Right":{"Some":["12",["14","16"]]}}, {"Right":"None"} ] |}
-  ;;
-
-  (* let make_json_string size =
-    let first_choice = {||} in
+  let make_json_string size =
+    let first_choice = {|{"Left":["0","1"]}|} in
     let second_choice i =
       Format.sprintf {|{"Right":{"Some":["%d",["%d","%d"]]}}|} i i i
     in
@@ -193,7 +162,7 @@ module Benchable1 : S = struct
       else make_str (count - 1) (second_none :: acc)
     in
     "[" ^ String.concat "," (make_str size []) ^ "]"
-  ;; *)
+  ;;
 
   let name = "array[ui30](either(conv(i64,i64),option(conv(ui30,list(i8)))))"
 end
@@ -283,54 +252,66 @@ module Benchable2 : S = struct
       | _ -> assert false)
   ;;
 
-  let make_json_string _ =
-    {| [ {"A": [{"Some": "12"}, {"Some": "12"}]}, {"A": ["None", "None"]}, {"B": ["12", "12"]}, {"C": "None"},  "D",
-    {"C": {"Some": ["test", "test"]}} ] |}
-  ;;
-
-  (* let make_json_string size =
+  let make_json_string size =
+    (* randomness generators *)
     let prng = Random.State.make [| size |] in
     let random prng = Random.State.int prng 4 = 0 in
-    let random_int64 () = Format.sprintf {|"%Ld"|} (Random.State.int64 prng 1024L) in
+    let random_int64 () = Random.State.int64 prng 1024L in
+    (* strings for each element *)
+    let make_str_a () =
+      let choice_a1 = {|{"A":["None","None"]}|} in
+      let choice_a2 () =
+        Format.sprintf {|{"A":[{"Some":"%Ld"},"None"]}|} (random_int64 ())
+      in
+      let choice_a3 () =
+        Format.sprintf {|{"A":["None",{"Some":"%Ld"}]}|} (random_int64 ())
+      in
+      let choice_a4 () =
+        Format.sprintf
+          {|{"A":[{"Some":"%Ld"},{"Some":"%Ld"}]}|}
+          (random_int64 ())
+          (random_int64 ())
+      in
+      match Random.State.int prng 4 with
+      | 0 -> choice_a1
+      | 1 -> choice_a2 ()
+      | 2 -> choice_a3 ()
+      | 3 -> choice_a4 ()
+      | _ -> assert false
+    in
+    let make_str_b () =
+      Format.sprintf {|{"B":["%Ld","%Ld"]}|} (random_int64 ()) (random_int64 ())
+    in
+    let make_str_c k =
+      if random prng
+      then {| {"C":"None"} |}
+      else (
+        let start = {|{"C":{"Some":|} in
+        let last = {|}}|} in
+        let l =
+          String.concat
+            ","
+            (List.init (Random.State.int prng 5) (fun i ->
+               String.make (i + (k mod 256)) '0'))
+        in
+        start ^ l ^ last)
+    in
+    let make_str_d = {|"D"|} in
+    (* making the payload *)
     let rec make size acc =
       if size = 0
       then acc
-      else if random prng
-      then (
+      else (
         match Random.State.int prng 4 with
-        | 0 ->
-          let new_acc =
-            if random prng
-            then (
-              let a = {|"x":|} ^ random_int64 () in
-              let b = {|"y":|} ^ random_int64 () in
-              ({|{"A":|} ^ "[" ^ String.concat "," [ a; b ] ^ "]}") :: acc)
-            else acc
-          in
-          make (size - 1) new_acc
-        | 1 ->
-          let a =  random_int64 () in
-          let b = random_int64 () in
-          make (size - 1) (({|{"B":|} ^ "[" ^ String.concat "," [ a; b ] ^ "]}") :: acc)
-        | 2 -> make (size - 1) acc
-        (* | 2 ->
-          let new_acc =
-            if random prng
-            then (
-              let l =
-                List.init (Random.State.int prng 5) (fun i ->
-                  String.make (i + (size mod 256)) '0')
-              in
-              String.concat "," l :: acc)
-            else acc
-          in
-          make (size - 1) new_acc *)
-        | 3 -> make (size - 1) ({| "D" |} :: acc)
+        | 0 -> make (size - 1) (make_str_a () :: acc)
+        | 1 -> make (size - 1) (make_str_b () :: acc)
+        | 2 -> make (size - 1) (make_str_c size :: acc)
+        | 3 -> make (size - 1) (make_str_d :: acc)
         | _ -> assert false)
-      else make (size - 1) acc
     in
-    "[" ^ String.concat "," (make size []) ^ "]"
-  ;; *)
+    let l = make size [] in
+    "[" ^ String.concat "," l ^ "]"
+  ;;
 
   let name = "list(union(…))"
 end

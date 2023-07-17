@@ -16,5 +16,5 @@ let run name encoding =
 let run (module M : Benchlib.S) = run M.name M.encoding.json
 
 (* let () = run (module Benchlib.Benchable0) *)
-let () = run (module Benchlib.Benchable1)
+(* let () = run (module Benchlib.Benchable1) *)
 let () = run (module Benchlib.Benchable2)
