@@ -188,6 +188,7 @@ let timer2
        | Ok _ -> tacc
        | Error e ->
          print_string e;
+         print_newline ();
          tacc
        | Await f ->
          let t = Mtime_clock.now () in
@@ -233,7 +234,12 @@ let timer3
     | Seq.Cons (s, ss) ->
       let src = Ezjsonm.from_string s in
       (match f (src : Json_data_encoding.JSON.compat :> Json_data_encoding.JSON.flex) with
-       | Ok _ | Error _ ->
+       | Ok _ ->
+         let t = Mtime_clock.now () in
+         run (t :: tacc) ss
+       | Error e ->
+         print_string e;
+         print_newline ();
          let t = Mtime_clock.now () in
          run (t :: tacc) ss)
   in

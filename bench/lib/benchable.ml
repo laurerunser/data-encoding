@@ -4,7 +4,6 @@ module type S = sig
   val encoding : data Data_encoding.Encoding.t
   val make_data : int -> data
   val make_json_string : int -> string
-  val write_json : int -> out_channel -> unit
   val name : string
 end
 
@@ -60,7 +59,9 @@ module Benchable0 : S = struct
     mk sz []
   ;;
 
-  let make_json_string _ =
+  let make_json_string _ = {| [[ {"x":"0", "y":"1"} ]] |}
+
+  (* let make_json_string _ =
     let size = 150 in
     let one_record = {| {"x":"0","y":"1"} |} in
     let rec list n acc = if n = 0 then acc else list (n - 1) (one_record :: acc) in
@@ -78,9 +79,9 @@ module Benchable0 : S = struct
           (one_array (10 - delta) ^ "," ^ one_array (10 + delta) ^ "," ^ acc))
     in
     "[" ^ make size ("[" ^ one_record ^ "]") ^ "]"
-  ;;
+  ;; *)
 
-  let write_json size oc =
+  (* let write_json size oc =
     (* let size = 150 in *)
     let one_record = {| {"x":"0","y":"1"} |} in
     let rec list n acc = if n = 0 then acc else list (n - 1) (one_record :: acc) in
@@ -99,7 +100,7 @@ module Benchable0 : S = struct
     output_string oc (one_array 1);
     write_arrays size;
     output_string oc "]"
-  ;;
+  ;; *)
 
   let name = "list[ui30](array[ui8](record(i64,i64)))"
 end
@@ -190,7 +191,6 @@ module Benchable1 : S = struct
     "[" ^ String.concat "," (make_str size []) ^ "]"
   ;;
 
-  let write_json _ _ = ()
   let name = "array[ui30](either(conv(i64,i64),option(conv(ui30,list(i8)))))"
 end
 
@@ -323,6 +323,5 @@ module Benchable2 : S = struct
     "[" ^ String.concat "," (make size []) ^ "]"
   ;;
 
-  let write_json _ _ = ()
   let name = "list(union(…))"
 end

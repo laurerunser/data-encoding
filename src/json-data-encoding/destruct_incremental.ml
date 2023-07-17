@@ -26,7 +26,7 @@ let read_from_buffy state =
   let available = min (Buffy.Src.available buffy) buffer_size in
   if available <> 0
   then (
-    (* read available bytes and feed them to Jsonm
+    (* read available bytes and  them to Jsonm
        Reuse the same buffer to avoid allocations.
        Use `get_blits_onto_bytes` to avoid copying the bytes. *)
     Buffy.Src.get_blit_onto_bytes buffy transfer_buffer 0 available;
@@ -209,36 +209,44 @@ let rec destruct_value : type a. a Encoding.t -> state -> a result =
 and destruct_seq : type a. a Encoding.t -> state -> a list -> a Seq.t result =
  (* Seq is a sequence of elements which all have the same type *)
  fun encoding state contents_so_far ->
-  let* v = read_lexeme state in
-  match v, encoding with
-  | `Ae, _ -> Ok (List.to_seq (List.rev contents_so_far))
-  | `Oe, _ -> Error "Unexpected lexeme in Seq: `Oe"
-  | `Name n, _ ->
-    Error (Format.asprintf "Unexpected lexeme in Seq: %a" Jsonm.pp_lexeme (`Name n))
-  | `Os, Unit ->
-    let* () = check_lexeme_is state CloseO in
-    destruct_seq encoding state (() :: contents_so_far)
-  | `Null, Null -> destruct_seq encoding state (() :: contents_so_far)
-  | `Bool b, Bool -> destruct_seq encoding state (b :: contents_so_far)
-  | `String s, String -> destruct_seq encoding state (s :: contents_so_far)
-  | `String s, Int64 ->
-    (match Int64.of_string_opt s with
-     | Some i -> destruct_seq encoding state (i :: contents_so_far)
-     | None -> failwith "Expected int64 in Seq")
-  | `As, Seq new_e ->
-    let* v = destruct_seq new_e state [] in
-    destruct_seq encoding state (v :: contents_so_far)
-  | `As, Tuple e ->
-    let* tuple = destruct_tuple e state in
-    destruct_seq encoding state (tuple :: contents_so_far)
-  | `Os, Object o ->
-    let* obj = destruct_obj o state in
-    destruct_seq encoding state (obj :: contents_so_far)
-  | _, Conv _ -> failwith "Can't have Conv inside a Seq"
-  | t, Union u ->
-    let* v = destruct_union (Union u) state t in
-    destruct_seq encoding state (v :: contents_so_far)
-  | l, _ -> Error (Format.asprintf "Unexpected lexeme in Seq: %a" Jsonm.pp_lexeme l)
+  match encoding with
+  | Conv _ ->
+    (* if the encoding is a conv, I can't consume a lexeme 
+       (because I don't know what it should be at all), 
+        hence why I need this outer match first *)
+    let* c = destruct_value encoding state in
+    destruct_seq encoding state (c :: contents_so_far)
+  | _ ->
+    let* v = read_lexeme state in
+    (match v, encoding with
+     | `Ae, _ -> Ok (List.to_seq (List.rev contents_so_far))
+     | `Oe, _ -> Error "Unexpected lexeme in Seq: `Oe"
+     | `Name n, _ ->
+       Error (Format.asprintf "Unexpected lexeme in Seq: %a" Jsonm.pp_lexeme (`Name n))
+     | `Os, Unit ->
+       let* () = check_lexeme_is state CloseO in
+       destruct_seq encoding state (() :: contents_so_far)
+     | `Null, Null -> destruct_seq encoding state (() :: contents_so_far)
+     | `Bool b, Bool -> destruct_seq encoding state (b :: contents_so_far)
+     | `String s, String -> destruct_seq encoding state (s :: contents_so_far)
+     | `String s, Int64 ->
+       (match Int64.of_string_opt s with
+        | Some i -> destruct_seq encoding state (i :: contents_so_far)
+        | None -> Error "Expected int64 in Seq")
+     | `As, Seq new_e ->
+       let* v = destruct_seq new_e state [] in
+       destruct_seq encoding state (v :: contents_so_far)
+     | `As, Tuple e ->
+       let* tuple = destruct_tuple e state in
+       destruct_seq encoding state (tuple :: contents_so_far)
+     | `Os, Object o ->
+       let* obj = destruct_obj o state in
+       destruct_seq encoding state (obj :: contents_so_far)
+     | t, Union u ->
+       let* v = destruct_union (Union u) state t in
+       destruct_seq encoding state (v :: contents_so_far)
+     | _, Conv _ -> assert false (* handled in the outer match above *)
+     | l, _ -> Error (Format.asprintf "Unexpected lexeme in Seq: %a" Jsonm.pp_lexeme l))
 
 and destruct_tuple : type a. a Encoding.tuple -> state -> a result =
  fun encoding state ->
