@@ -173,8 +173,12 @@ module Benchable1 : S = struct
       else Either.Right (Some (Option.get (Commons.Sizedints.Uint30.of_int i), [])))
   ;;
 
-  let make_json_string size =
-    let first_choice = {|{"Left":["0","1"]}|} in
+  let make_json_string _ =
+    {| [{"Left":["0","1"]}, {"Right":{"Some":["12",["14","16"]]}}, {"Right":"None"} ] |}
+  ;;
+
+  (* let make_json_string size =
+    let first_choice = {||} in
     let second_choice i =
       Format.sprintf {|{"Right":{"Some":["%d",["%d","%d"]]}}|} i i i
     in
@@ -189,7 +193,7 @@ module Benchable1 : S = struct
       else make_str (count - 1) (second_none :: acc)
     in
     "[" ^ String.concat "," (make_str size []) ^ "]"
-  ;;
+  ;; *)
 
   let name = "array[ui30](either(conv(i64,i64),option(conv(ui30,list(i8)))))"
 end
@@ -279,7 +283,12 @@ module Benchable2 : S = struct
       | _ -> assert false)
   ;;
 
-  let make_json_string size =
+  let make_json_string _ =
+    {| [ {"A": [{"Some": "12"}, {"Some": "12"}]}, {"A": ["None", "None"]}, {"B": ["12", "12"]}, {"C": "None"},  "D",
+    {"C": {"Some": ["test", "test"]}} ] |}
+  ;;
+
+  (* let make_json_string size =
     let prng = Random.State.make [| size |] in
     let random prng = Random.State.int prng 4 = 0 in
     let random_int64 () = Format.sprintf {|"%Ld"|} (Random.State.int64 prng 1024L) in
@@ -295,14 +304,14 @@ module Benchable2 : S = struct
             then (
               let a = {|"x":|} ^ random_int64 () in
               let b = {|"y":|} ^ random_int64 () in
-              ({|{"A":|} ^ "{" ^ String.concat "," [ a; b ] ^ "}}") :: acc)
+              ({|{"A":|} ^ "[" ^ String.concat "," [ a; b ] ^ "]}") :: acc)
             else acc
           in
           make (size - 1) new_acc
         | 1 ->
-          let a = {|"x":|} ^ random_int64 () in
-          let b = {|"y":|} ^ random_int64 () in
-          make (size - 1) (({|{"B":|} ^ "{" ^ String.concat "," [ a; b ] ^ "}}") :: acc)
+          let a =  random_int64 () in
+          let b = random_int64 () in
+          make (size - 1) (({|{"B":|} ^ "[" ^ String.concat "," [ a; b ] ^ "]}") :: acc)
         | 2 -> make (size - 1) acc
         (* | 2 ->
           let new_acc =
@@ -321,7 +330,7 @@ module Benchable2 : S = struct
       else make (size - 1) acc
     in
     "[" ^ String.concat "," (make size []) ^ "]"
-  ;;
+  ;; *)
 
   let name = "list(union(…))"
 end
