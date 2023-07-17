@@ -11,23 +11,29 @@ type buffy_state =
   ; transfer_buffer : Bytes.t
   }
 
-type state =
+type tokens_state =
   | UseBuffy of buffy_state
   | UseTokens of Jsonm.lexeme list ref
 
-let is_available src =
-  let available = Buffy.Src.available src in
-  available > 0
+type state =
+  { tokens : tokens_state
+  ; token_peeked : Jsonm.lexeme option ref
+  }
+
+let use_tokens tokens = { tokens = UseTokens (ref tokens); token_peeked = ref None }
+let use_buffy tokens_state token_peeked = { tokens = UseBuffy tokens_state; token_peeked }
+let switch_buffy_src old_state new_buffy = { old_state with buffy = new_buffy }
+
+let change_buffy_src old_tokens_state token_peeked new_buffy_src =
+  let new_tokens_state = switch_buffy_src old_tokens_state new_buffy_src in
+  use_buffy new_tokens_state token_peeked
 ;;
 
-let use_tokens tokens = UseTokens (ref tokens)
-let change_buffy_src old_state src = { old_state with buffy = src }
 let is_empty tokens = !tokens = []
 let buffer_size = 4000 (* size of the Buffer to transfer bytes from Buffy to Jsonm *)
 
 let read_from_buffy state =
-  let { decoder; buffy; transfer_buffer } = state in
-  (* let state = Buffy.R.mk_state src in *)
+  let { decoder; buffy; transfer_buffer; _ } = state in
   let available = min (Buffy.Src.available buffy) buffer_size in
   if available <> 0
   then (
@@ -38,30 +44,38 @@ let read_from_buffy state =
     Jsonm.Manual.src decoder transfer_buffer 0 available)
 ;;
 
-let rec read_lexeme state =
-  match state with
-  | UseBuffy ({ decoder; buffy; transfer_buffer = _ } as s) ->
-    (match Jsonm.decode decoder with
-     | `Lexeme v -> Ok v
-     | `End -> assert false (* see Jsonm.Manual docs *)
-     | `Error e -> Error (Format.asprintf "Jsonm: %a" Jsonm.pp_error e)
-     | `Await ->
-       if is_available buffy
-       then (
-         read_from_buffy s;
-         read_lexeme (UseBuffy s))
-       else
-         Await
-           (fun src ->
-             read_from_buffy (change_buffy_src s src);
-             read_lexeme (UseBuffy (change_buffy_src s src))))
-  | UseTokens tokens ->
-    if is_empty tokens
-    then Error "Reading from memorized tokens: Unexpected end of input"
-    else (
-      let t = List.hd !tokens in
-      tokens := List.tl !tokens;
-      Ok t)
+let rec read_lexeme { tokens; token_peeked } =
+  (* if the token has been peeked, remove it and return it*)
+  if Option.is_some !token_peeked
+  then (
+    let tmp = Option.get !token_peeked in
+    token_peeked := None;
+    Ok tmp)
+  else (
+    (* else, read from the appropriate source of tokens *)
+    match tokens with
+    | UseBuffy ({ decoder; buffy; transfer_buffer = _ } as s) ->
+      (match Jsonm.decode decoder with
+       | `Lexeme v -> Ok v
+       | `End -> assert false (* see Jsonm.Manual docs *)
+       | `Error e -> Error (Format.asprintf "Jsonm: %a" Jsonm.pp_error e)
+       | `Await ->
+         if Buffy.Src.available buffy > 0
+         then (
+           read_from_buffy s;
+           read_lexeme (use_buffy s token_peeked))
+         else
+           Await
+             (fun src ->
+               read_from_buffy (switch_buffy_src s src);
+               read_lexeme (change_buffy_src s token_peeked src)))
+    | UseTokens tokens ->
+      if is_empty tokens
+      then Error "Reading from memorized tokens: Unexpected end of input"
+      else (
+        let t = List.hd !tokens in
+        tokens := List.tl !tokens;
+        Ok t))
 ;;
 
 let rec ( let* ) res (cont : 'a -> 'b result) : 'b result =
@@ -73,6 +87,16 @@ let rec ( let* ) res (cont : 'a -> 'b result) : 'b result =
       (fun v ->
         let* a = cont1 v in
         cont a)
+;;
+
+let peek state =
+  let { tokens = _; token_peeked } = state in
+  if Option.is_some !token_peeked
+  then Ok (Option.get !token_peeked)
+  else
+    let* t = read_lexeme state in
+    state.token_peeked := Some t;
+    Ok t
 ;;
 
 type expected_token =
@@ -207,42 +231,58 @@ let rec destruct_value : type a. a Encoding.t -> state -> a result =
     (match deserialisation v with
      | Ok res -> Ok res
      | Error e -> Error e)
-  | Union u ->
-    let* t = read_lexeme state in
-    destruct_union (Union u) state t
+  | Union u -> destruct_union (Union u) state
 
 and destruct_seq : type a. a Encoding.t -> state -> a list -> a Seq.t result =
  (* Seq is a sequence of elements which all have the same type *)
  fun encoding state contents_so_far ->
-  let* v = read_lexeme state in
+  let* v = peek state in
   match v, encoding with
-  | `Ae, _ -> Ok (List.to_seq (List.rev contents_so_far))
+  | `Ae, _ ->
+    let* _ = read_lexeme state in
+    Ok (List.to_seq (List.rev contents_so_far))
   | `Oe, _ -> Error "Unexpected lexeme in Seq: `Oe"
   | `Name n, _ ->
     Error (Format.asprintf "Unexpected lexeme in Seq: %a" Jsonm.pp_lexeme (`Name n))
   | `Os, Unit ->
+    let* _ = read_lexeme state in
     let* () = check_lexeme_is state CloseO in
     destruct_seq encoding state (() :: contents_so_far)
-  | `Null, Null -> destruct_seq encoding state (() :: contents_so_far)
-  | `Bool b, Bool -> destruct_seq encoding state (b :: contents_so_far)
-  | `String s, String -> destruct_seq encoding state (s :: contents_so_far)
+  | `Null, Null ->
+    let* _ = read_lexeme state in
+    destruct_seq encoding state (() :: contents_so_far)
+  | `Bool b, Bool ->
+    let* _ = read_lexeme state in
+    destruct_seq encoding state (b :: contents_so_far)
+  | `String s, String ->
+    let* _ = read_lexeme state in
+    destruct_seq encoding state (s :: contents_so_far)
   | `String s, Int64 ->
+    let* _ = read_lexeme state in
     (match Int64.of_string_opt s with
      | Some i -> destruct_seq encoding state (i :: contents_so_far)
-     | None -> failwith "Expected int64 in Seq")
+     | None -> Error "Expected int64 in Seq")
   | `As, Seq new_e ->
+    let* _ = read_lexeme state in
     let* v = destruct_seq new_e state [] in
     destruct_seq encoding state (v :: contents_so_far)
   | `As, Tuple e ->
+    let* _ = read_lexeme state in
     let* tuple = destruct_tuple e state in
     destruct_seq encoding state (tuple :: contents_so_far)
   | `Os, Object o ->
+    let* _ = read_lexeme state in
     let* obj = destruct_obj o state in
     destruct_seq encoding state (obj :: contents_so_far)
-  | _, Conv _ -> failwith "Can't have Conv inside a Seq"
-  | t, Union u ->
-    let* v = destruct_union (Union u) state t in
+  | _, Union u ->
+    let* v = destruct_union (Union u) state in
     destruct_seq encoding state (v :: contents_so_far)
+  | _, Conv _ ->
+    (* if the encoding is a conv, I can't consume a lexeme 
+           (because I don't know what it should be at all), 
+            hence why I need this outer match first *)
+    let* c = destruct_value encoding state in
+    destruct_seq encoding state (c :: contents_so_far)
   | l, _ -> Error (Format.asprintf "Unexpected lexeme in Seq: %a" Jsonm.pp_lexeme l)
 
 and destruct_tuple : type a. a Encoding.tuple -> state -> a result =
@@ -276,10 +316,11 @@ and destruct_obj_reached_the_end
        let state = use_tokens tokens in
        let* v = destruct_value e state in
        let* vs = destruct_obj_reached_the_end ts state fields in
-       (match state with
+       let { tokens; token_peeked } = state in
+       (match tokens with
         | UseBuffy _ -> Ok (Commons.Hlist.( :: ) (v, vs))
         | UseTokens tokens ->
-          if is_empty tokens
+          if is_empty tokens && Option.is_none !token_peeked
           then Ok (Commons.Hlist.( :: ) (v, vs))
           else Error "Too many lexemes in sequence"))
   | Opt { encoding = e; name = field_name } :: ts ->
@@ -295,10 +336,11 @@ and destruct_obj_reached_the_end
        let state = use_tokens tokens in
        let* v = destruct_value e state in
        let* vs = destruct_obj_reached_the_end ts state fields in
-       (match state with
+       let { tokens; token_peeked } = state in
+       (match tokens with
         | UseBuffy _ -> Ok (Commons.Hlist.( :: ) (Some v, vs))
         | UseTokens tokens ->
-          if is_empty tokens
+          if is_empty tokens && Option.is_none !token_peeked
           then Ok (Commons.Hlist.( :: ) (Some v, vs))
           else Error "Too many lexemes in sequence"))
 
@@ -320,10 +362,11 @@ and destruct_obj_fields
        let new_state = use_tokens tokens in
        let* v = destruct_value e new_state in
        let* vs = destruct_obj_fields ts state fields in
-       (match state with
+       let { tokens; token_peeked } = state in
+       (match tokens with
         | UseBuffy _ -> Ok (Commons.Hlist.( :: ) (v, vs))
         | UseTokens tokens ->
-          if is_empty tokens
+          if is_empty tokens && Option.is_none !token_peeked
           then Ok (Commons.Hlist.( :: ) (v, vs))
           else Error "Too many lexemes in sequence")
      | None ->
@@ -344,10 +387,11 @@ and destruct_obj_fields
        let new_state = use_tokens tokens in
        let* v = destruct_value e new_state in
        let* vs = destruct_obj_fields ts state fields in
-       (match state with
+       let { tokens; token_peeked } = state in
+       (match tokens with
         | UseBuffy _ -> Ok (Commons.Hlist.( :: ) (Some v, vs))
         | UseTokens tokens ->
-          if is_empty tokens
+          if is_empty tokens && Option.is_none !token_peeked
           then Ok (Commons.Hlist.( :: ) (Some v, vs))
           else Error "Too many lexemes in sequence")
      | None ->
@@ -365,11 +409,11 @@ and destruct_obj_fields
 and destruct_obj : type a. a Encoding.obj -> state -> a result =
  fun encoding state -> destruct_obj_fields encoding state StringMap.empty
 
-and destruct_union : type a. a Encoding.t -> state -> Jsonm.lexeme -> a result =
- fun union state first_token ->
+and destruct_union : type a. a Encoding.t -> state -> a result =
+ fun union state ->
   match union with
   | Union { cases = _; serialisation = _; deserialisation } ->
-    let* n = consume_name state first_token in
+    let* n = consume_name state in
     (match n with
      | None -> Error "Unexpected lexeme in union"
      | Some (Either.Left tag) ->
@@ -389,7 +433,8 @@ and destruct_union : type a. a Encoding.t -> state -> Jsonm.lexeme -> a result =
            | _ -> Error "Found payload-less case with a payload-full case encoding")))
   | _ -> assert false
 
-and consume_name state token =
+and consume_name state =
+  let* token = read_lexeme state in
   match token with
   | `Os ->
     let* t = read_lexeme state in
@@ -408,11 +453,18 @@ let destruct_incremental : type a. a Encoding.t -> Buffy.Src.t -> a result =
      if there are less than 3 chars, the decoder returns Await) *)
   Jsonm.Manual.src decoder (Bytes.of_string "  ") 0 2;
   let transfer_buffer = Bytes.make buffer_size ' ' in
-  let state = UseBuffy { decoder; buffy; transfer_buffer } in
+  let tokens_state = UseBuffy { decoder; buffy; transfer_buffer } in
+  let state = { tokens = tokens_state; token_peeked = ref None } in
   let res = destruct_value encoding state in
-  match res, state with
-  | Ok _, UseTokens tokens -> if is_empty tokens then res else Error "Too many lexemes"
-  | Ok _, UseBuffy _ -> res (* TODO: check if the end of Jsonm *)
+  match res, state.tokens with
+  | Ok _, UseTokens tokens ->
+    if is_empty tokens && Option.is_none !(state.token_peeked)
+    then res
+    else Error "Too many lexemes"
+  | Ok _, UseBuffy _ ->
+    if Option.is_some !(state.token_peeked)
+    then Error "Too many lexemes"
+    else res (* TODO: check if the end of Jsonm *)
   | res, _ -> res
 ;;
 
@@ -541,6 +593,11 @@ type abc =
   | B of int64
   | C of unit
 
+type data =
+  { x : int64
+  ; y : int64
+  }
+
 let%expect_test _ =
   let open Encoding in
   let w e str =
@@ -577,7 +634,26 @@ let%expect_test _ =
   w union_encoding {| {"2" : false} |};
   [%expect {| Error Unexpected lexeme in sequence: received `Bool false, expected `Os |}];
   w (Tuple [ Int64; Unit; String ]) {| ["0",{},"128"]|};
-  [%expect {| Ok [0; unit; 128] |}]
+  [%expect {| Ok [0; unit; 128] |}];
+  let r =
+    Record.(
+      record
+        (fun x y -> { x; y })
+        [ field "x" (fun { x; _ } -> x) int64; field "y" (fun { y; _ } -> y) int64 ])
+  in
+  let str = {|  {"x":"0", "y":"1"} |} in
+  w r str;
+  [%expect "Ok conv[{x=int64, y=int64}]"];
+  w (list int64) {| [] |};
+  [%expect "Ok conv[[int64 seq] ]"];
+  w (array int64) {| [ "43" ] |};
+  [%expect "Ok conv[[int64 seq] ]"];
+  w (list (array int64)) {|[[], [] ]|};
+  [%expect "Ok conv[[conv([int64 seq] ) seq] ]"];
+  w (list (array int64)) {|[[ "43" ]]|};
+  [%expect "Ok conv[[conv([int64 seq] ) seq] ]"];
+  w (list (array r)) {|[[ {"x":"0", "y":"1"} ]]|};
+  [%expect "Ok conv[[conv([conv({x=int64, y=int64}) seq] ) seq] ]"]
 ;;
 
 (* should fail: 2 can't have a payload*)
