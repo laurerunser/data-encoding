@@ -126,7 +126,7 @@ let rec value_to_buffer buffer (lexemes : t) =
   match lexemes with
   | `Bool true -> Buffer.add_string buffer "true"
   | `Bool false -> Buffer.add_string buffer "false"
-  | `Float f -> Buffer.add_string buffer (Format.sprintf "\"%f\"" f)
+  | `Float f -> Buffer.add_string buffer (Format.sprintf "%f" f)
   | `String s -> Buffer.add_string buffer (Format.sprintf "\"%s\"" s)
   | `Null -> Buffer.add_string buffer "null"
   | `O l ->
@@ -211,7 +211,7 @@ let%expect_test _ =
   w `Null;
   [%expect "null"];
   w (`Float 0.234);
-  [%expect "\"0.234000\""];
+  [%expect "0.234000"];
   w (`Bool true);
   [%expect "true"];
   w (`String "test");
@@ -234,7 +234,7 @@ let%expect_test _ =
   Array.set array 1 (`String "test");
   Array.set array 2 (`Float 3.21);
   w (`Aarray array);
-  [%expect "[null,\"test\",\"3.210000\"]"];
+  [%expect "[null,\"test\",3.210000]"];
   w (`Aseq Seq.(cons `Null (cons (`Bool true) empty)));
   [%expect "[null,true]"];
   w (`String {|"test" \u0068 \n \\|});
