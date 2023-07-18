@@ -236,5 +236,9 @@ let%expect_test _ =
   w (`Aarray array);
   [%expect "[null,\"test\",\"3.210000\"]"];
   w (`Aseq Seq.(cons `Null (cons (`Bool true) empty)));
-  [%expect "[null,true]"]
+  [%expect "[null,true]"];
+  w (`String {|"test" \u0068 \n \\|});
+  [%expect {| ""test" \u0068 \n \\" |}];
+  w (`String {| test \n test|});
+  [%expect {| " test \n test" |}]
 ;;
