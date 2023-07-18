@@ -372,7 +372,7 @@ and destruct_obj_fields
      | None ->
        let* tokens, map = parse_fields_until_name_match name state fields in
        (match tokens with
-        | None -> Error "Missing field"
+        | None -> Error (Format.sprintf "Missing field %s" name)
         | Some tokens ->
           let* a = destruct_value e (use_tokens tokens) in
           let* rest_of_values = destruct_obj_fields ts state map in

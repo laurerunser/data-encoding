@@ -64,8 +64,9 @@ module Benchable0 : S = struct
 
   let make_json_string size =
     let one_record = {| {"x":"0","y":"1"} |} in
-    let rec list n acc = if n = 0 then acc else list (n - 1) (one_record :: acc) in
-    let one_array n = "[" ^ String.concat "," (list n []) ^ "]" in
+    (* let rec list n acc = if n = 0 then acc else list (n - 1) (one_record :: acc) in *)
+    (* let one_array n = "[" ^ String.concat "," (list n []) ^ "]" in *)
+    let one_array _ = "[" ^ one_record ^ "]" in
     let rec make count acc =
       if count <= 0
       then acc
@@ -76,7 +77,7 @@ module Benchable0 : S = struct
         let delta = count mod 5 in
         make (count - 2) (one_array (10 - delta) :: one_array (10 + delta) :: acc))
     in
-    "[[" ^ String.concat "," (make size []) ^ "]]"
+    "[" ^ String.concat "," (make size []) ^ "]  "
   ;;
 
   let name = "list[ui30](array[ui8](record(i64,i64)))"

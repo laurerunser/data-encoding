@@ -10,21 +10,7 @@ let buffer_size =
   | Some s -> int_of_string s
 ;;
 
-let json_buffer_size =
-  match Sys.getenv_opt "BENCHBUFFSIZEJSON" with
-  | None -> 1_000_000_000
-  | Some s -> int_of_string s
-;;
-
 let sizes =
-  match Sys.getenv_opt "BENCHDATASIZES" with
-  | None -> [ 1_000; 5_000; 25_000; 125_000; 625_000; 3_125_000 ]
-  | Some s ->
-    let ss = String.split_on_char ',' s in
-    List.map int_of_string ss
-;;
-
-let json_sizes =
   match Sys.getenv_opt "BENCHDATASIZES" with
   | None -> [ 1_000; 5_000; 25_000; 125_000; 625_000; 3_125_000 ]
   | Some s ->
@@ -131,6 +117,29 @@ let rr (f : Buffy.Src.t -> _ Buffy.R.readed) (ss : Buffy.Src.t Seq.t) =
        | Buffy.R.Failed { error; _ } -> Error error
        | Buffy.R.Suspended { cont; _ } -> run cont ss)
   in
+  run f ss
+;;
+
+let rr_json
+  (f : Buffy.Src.t -> 'a Json_data_encoding.Destruct_incremental.result)
+  (ss : Buffy.Src.t Seq.t)
+  =
+  let rec run f ss =
+    print_string "HEY!";
+    match ss () with
+    | Seq.Nil -> assert false
+    | Seq.Cons (src, ss) ->
+      (match (f src : 'a Json_data_encoding.Destruct_incremental.result) with
+       | Ok value -> Ok value
+       | Error error ->
+         print_string error;
+         print_newline ();
+         Error error
+       | Await f -> run f ss)
+  in
+  print_string "inside run - length : ";
+  print_int (Seq.length ss);
+  print_newline ();
   run f ss
 ;;
 

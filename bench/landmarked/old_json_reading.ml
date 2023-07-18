@@ -15,7 +15,7 @@
 
 let run name encoding =
   Format.kasprintf Benchlib.log "%s.of_string (%d samples)\n" name Benchlib.repeats;
-  let buffer = Bytes.make Benchlib.json_buffer_size '\x00' in
+  let buffer = Bytes.make Benchlib.buffer_size '\x00' in
   List.iter
     (fun size ->
       let sources =
@@ -25,7 +25,7 @@ let run name encoding =
       let deserialisations = Benchlib.measurer3 Benchlib.repeats read sources in
       let deserialisations = Benchlib.flatten deserialisations in
       Benchlib.print_summary size Benchlib.buffer_size deserialisations)
-    Benchlib.json_sizes
+    Benchlib.sizes
 ;;
 
 (* let deserialise read src =

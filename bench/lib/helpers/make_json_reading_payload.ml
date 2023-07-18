@@ -13,10 +13,7 @@ let run name make_json_string size =
   ()
 ;;
 
-let run (module M : Benchlib.S) =
-  List.iter (run M.name M.make_json_string) Benchlib.json_sizes
-;;
-
+let run (module M : Benchlib.S) = List.iter (run M.name M.make_json_string) Benchlib.sizes
 let () = run (module Benchlib.Benchable0)
 let () = run (module Benchlib.Benchable1)
 let () = run (module Benchlib.Benchable2)
