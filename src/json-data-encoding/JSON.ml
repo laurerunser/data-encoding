@@ -152,7 +152,7 @@ and one_field_to_buffer buffer name value =
   Buffer.add_char buffer '"';
   Buffer.add_string buffer name;
   Buffer.add_char buffer '"';
-  Buffer.add_string buffer " : ";
+  Buffer.add_char buffer ':';
   value_to_buffer buffer value
 
 and obj_as_list_to_buffer buffer fields =
@@ -163,7 +163,7 @@ and obj_as_list_to_buffer buffer fields =
     Buffer.add_char buffer '}'
   | (name, value) :: xs ->
     one_field_to_buffer buffer name value;
-    Buffer.add_string buffer ", ";
+    Buffer.add_char buffer ',';
     obj_as_list_to_buffer buffer xs
 
 and obj_as_seq_to_buffer buffer fields =
@@ -174,7 +174,7 @@ and obj_as_seq_to_buffer buffer fields =
     if Seq.is_empty xs
     then Buffer.add_char buffer '}'
     else (
-      Buffer.add_string buffer ", ";
+      Buffer.add_char buffer ',';
       obj_as_seq_to_buffer buffer xs)
 
 and array_as_list_to_buffer buffer values =
@@ -185,7 +185,7 @@ and array_as_list_to_buffer buffer values =
     Buffer.add_char buffer ']'
   | x :: xs ->
     value_to_buffer buffer x;
-    Buffer.add_string buffer ", ";
+    Buffer.add_char buffer ',';
     array_as_list_to_buffer buffer xs
 
 and array_as_seq_to_buffer buffer values =
@@ -196,7 +196,7 @@ and array_as_seq_to_buffer buffer values =
     if Seq.is_empty xs
     then Buffer.add_char buffer ']'
     else (
-      Buffer.add_string buffer ", ";
+      Buffer.add_char buffer ',';
       array_as_seq_to_buffer buffer xs)
 ;;
 
@@ -217,24 +217,24 @@ let%expect_test _ =
   w (`String "test");
   [%expect "\"test\""];
   w (`O [ "name1", `Null; "name2", `Bool false ]);
-  [%expect "{\"name1\" : null, \"name2\" : false}"];
+  [%expect "{\"name1\":null,\"name2\":false}"];
   w (`Oseq Seq.(cons ("name1", `Null) (cons ("name2", `String "test") empty)));
-  [%expect "{\"name1\" : null, \"name2\" : \"test\"}"];
+  [%expect "{\"name1\":null,\"name2\":\"test\"}"];
   let map = FieldMap.(add "name2" (`String "test") (add "name1" `Null empty)) in
   w (`Omap map);
-  [%expect "{\"name1\" : null, \"name2\" : \"test\"}"];
+  [%expect "{\"name1\":null,\"name2\":\"test\"}"];
   w
     (`A
       [ `Null; `String "test"; `Bool false; `O [ "name1", `Null; "name2", `Bool false ] ]);
-  [%expect "[null, \"test\", false, {\"name1\" : null, \"name2\" : false}]"];
+  [%expect "[null,\"test\",false,{\"name1\":null,\"name2\":false}]"];
   let array = Array.make 2 (`Bool true) in
   w (`Aarray array);
-  [%expect "[true, true]"];
+  [%expect "[true,true]"];
   let array = Array.make 3 `Null in
   Array.set array 1 (`String "test");
   Array.set array 2 (`Float 3.21);
   w (`Aarray array);
-  [%expect "[null, \"test\", \"3.210000\"]"];
+  [%expect "[null,\"test\",\"3.210000\"]"];
   w (`Aseq Seq.(cons `Null (cons (`Bool true) empty)));
-  [%expect "[null, true]"]
+  [%expect "[null,true]"]
 ;;
