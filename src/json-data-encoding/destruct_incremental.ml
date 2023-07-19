@@ -682,6 +682,22 @@ let%expect_test _ =
        | Await _ -> Format.printf "Await")
     | _ -> failwith "incomplete input; should have failed"
   in
+  (* let w3 e str1 str2 =
+    let buffy = Buffy.Src.of_string str1 in
+    let buffy2 = Buffy.Src.of_string (str2 ^ " ") in
+    let buffy3 = Buffy.Src.of_string "" in
+    match destruct_incremental e buffy with
+    | Await f ->
+      (match f buffy2 with
+       | Ok v -> Format.printf "Ok %s\n" (value_to_string e v)
+       | Error s -> Format.printf "Error %s\n" s
+       | Await _ ->
+         (match f buffy3 with
+          | Ok v -> Format.printf "Ok %s\n" (value_to_string e v)
+          | Error s -> Format.printf "Error %s\n" s
+          | Await _ -> Format.printf "Await"))
+    | _ -> failwith "incomplete input; should have failed"
+  in *)
   w Unit "{" "}";
   [%expect {| Ok unit |}];
   w Unit "}" " ";
@@ -694,6 +710,8 @@ let%expect_test _ =
   [%expect {| Ok false |}];
   w Int64 "\"12345" "67890\"";
   [%expect {| Ok 1234567890 |}];
+  w Int64 {|"1|} {|"|};
+  [%expect {| Ok 1 |}];
   w (Seq Int64) "[\"0\"" ", \"1\"]";
   [%expect {| Ok [0; 1] |}];
   w (Seq Int64) "[nu" "ll ]";
@@ -703,9 +721,38 @@ let%expect_test _ =
   w (Tuple []) "[" "]";
   [%expect {| Ok [] |}];
   w String {| "\ntest\u03BB |} {| test" |};
-  [%expect "\n    Ok\n    test\206\187  test"]
+  [%expect "\n    Ok\n    test\206\187  test"];
+  w
+    (list
+       (array
+          Record.(
+            record
+              (fun x y -> { x; y })
+              [ field "x" (fun { x; _ } -> x) int64; field "y" (fun { y; _ } -> y) int64 ])))
+    {|[[{"x":"0","y":"1|}
+    {|"}]]|};
+  [%expect {| Ok conv[[conv([conv({x=int64, y=int64}) seq] ) seq] ] |}];
+  w
+    (list
+       (array
+          Record.(
+            record
+              (fun x y -> { x; y })
+              [ field "x" (fun { x; _ } -> x) int64; field "y" (fun { y; _ } -> y) int64 ])))
+    {|[[{"x":"0","y"|}
+    {|:"1"}]]|};
+  [%expect {| Ok conv[[conv([conv({x=int64, y=int64}) seq] ) seq] ] |}];
+  w
+    (list
+       (array
+          Record.(
+            record
+              (fun x y -> { x; y })
+              [ field "x" (fun { x; _ } -> x) int64; field "y" (fun { y; _ } -> y) int64 ])))
+    {|[[{"x":"0","y":|}
+    {|"1"}]]|};
+  [%expect {| Ok conv[[conv([conv({x=int64, y=int64}) seq] ) seq] ] |}]
 ;;
-
 (* doesn't like to be cut in the middle of a unicode sequence *)
 (* w String {| "\ntest\u03 |} {| BBtest" |};
   [%expect "\n      Ok\n      test\206\187  test"] *)

@@ -109,7 +109,7 @@ let uint8 =
       Int64.of_int (Commons.Sizedints.Uint62.to_int (Commons.Sizedints.Uint8.to_uint62 a)))
     ~deserialisation:(fun a ->
       let b = Commons.Sizedints.Uint8.of_int (Int64.to_int a) in
-      Option.to_result ~none:"error" b)
+      Option.to_result ~none:(Format.sprintf "error: not unit8 %Ld" a) b)
     Int64
 ;;
 
@@ -120,7 +120,7 @@ let uint30 =
         (Commons.Sizedints.Uint62.to_int (Commons.Sizedints.Uint30.to_uint62 a)))
     ~deserialisation:(fun a ->
       let b = Commons.Sizedints.Uint30.of_int (Int64.to_int a) in
-      Option.to_result ~none:"error" b)
+      Option.to_result ~none:(Format.sprintf "error: not unit30 %Ld" a) b)
     Int64
 ;;
 
@@ -203,7 +203,11 @@ module Union = struct
       (function
        | "Left" -> Ok anyclc
        | "Right" -> Ok anycrc
-       | _ -> Error "Unexpected tag in union")
+       | _ as v ->
+         Error
+           (Format.sprintf
+              "Unexpected tag in union: expected Left or Right, received %s\n"
+              v))
   ;;
 
   let option t =
@@ -219,7 +223,11 @@ module Union = struct
       (function
        | "None" -> Ok anycnc
        | "Some" -> Ok anycsc
-       | _ -> Error "Unexpected tag in union")
+       | _ as v ->
+         Error
+           (Format.sprintf
+              "Unexpected tag in union: expected Some or None, received %s\n"
+              v))
   ;;
 end
 

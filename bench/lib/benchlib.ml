@@ -10,7 +10,21 @@ let buffer_size =
   | Some s -> int_of_string s
 ;;
 
+let json_buffer_size =
+  match Sys.getenv_opt "BENCHBUFFSIZE" with
+  | None -> 1_000_000
+  | Some s -> int_of_string s
+;;
+
 let sizes =
+  match Sys.getenv_opt "BENCHDATASIZES" with
+  | None -> [ 1_000; 5_000; 25_000; 125_000; 625_000; 3_125_000 ]
+  | Some s ->
+    let ss = String.split_on_char ',' s in
+    List.map int_of_string ss
+;;
+
+let json_sizes =
   match Sys.getenv_opt "BENCHDATASIZES" with
   | None -> [ 1_000; 5_000; 25_000; 125_000; 625_000; 3_125_000 ]
   | Some s ->
@@ -124,22 +138,36 @@ let rr_json
   (f : Buffy.Src.t -> 'a Json_data_encoding.Destruct_incremental.result)
   (ss : Buffy.Src.t Seq.t)
   =
+  let counter = ref 0 in
+  (* let out = Out_channel.open_text "test_big_file.txt" in *)
   let rec run f ss =
-    print_string "HEY!";
     match ss () with
-    | Seq.Nil -> assert false
+    | Seq.Nil ->
+      (* Jsonm requires an empty string to signal the end of the input *)
+      (* print_string "the end\n"; *)
+      f (Buffy.Src.of_string "")
     | Seq.Cons (src, ss) ->
+      (* output_string out (Buffy.Src.to_string src); *)
+      incr counter;
+      (* print_string (Format.sprintf "counter: %d\n" !counter); *)
+      (* let str = Buffy.Src.to_string src in
+      print_string "start: ";
+      print_string (String.sub str 0 10);
+      print_newline ();
+      print_newline ();
+      print_string "end  : ";
+      print_string (String.sub str (String.length str - 10) 10);
+      print_newline (); *)
       (match (f src : 'a Json_data_encoding.Destruct_incremental.result) with
        | Ok value -> Ok value
        | Error error ->
-         print_string error;
-         print_newline ();
+         Format.printf "\tError: %s\n" error;
          Error error
-       | Await f -> run f ss)
+       | Await f ->
+         (* print_string "await"; *)
+         run f ss)
   in
-  print_string "inside run - length : ";
-  print_int (Seq.length ss);
-  print_newline ();
+  (* Out_channel.flush out; *)
   run f ss
 ;;
 

@@ -63,10 +63,10 @@ module Benchable0 : S = struct
   ;;
 
   let make_json_string size =
-    let one_record = {| {"x":"0","y":"1"} |} in
+    let one_record = {| {"x" : "0" , "y" : "1"} |} in
     (* let rec list n acc = if n = 0 then acc else list (n - 1) (one_record :: acc) in *)
     (* let one_array n = "[" ^ String.concat "," (list n []) ^ "]" in *)
-    let one_array _ = "[" ^ one_record ^ "]" in
+    let one_array _ = "[ " ^ one_record ^ " ]" in
     let rec make count acc =
       if count <= 0
       then acc
@@ -77,7 +77,7 @@ module Benchable0 : S = struct
         let delta = count mod 5 in
         make (count - 2) (one_array (10 - delta) :: one_array (10 + delta) :: acc))
     in
-    "[" ^ String.concat "," (make size []) ^ "]  "
+    "[" ^ String.concat " , " (make size []) ^ "]"
   ;;
 
   let name = "list[ui30](array[ui8](record(i64,i64)))"
@@ -148,11 +148,12 @@ module Benchable1 : S = struct
   ;;
 
   let make_json_string size =
-    let first_choice = {|{"Left":["0","1"]}|} in
-    let second_choice i =
-      Format.sprintf {|{"Right":{"Some":["%d",["%d","%d"]]}}|} i i i
+    let first_choice = {|{ "Left" : [ "0" , "1" ] }|} in
+    (* let second_choice _ = Format.sprintf {|{"Right":{"Some":["%d",["%d","%d"]]}}|} i i i (* TODO: make those uint8!! *) in *)
+    let second_choice _ =
+      Format.sprintf {|{ "Right" : { "Some" : [ "1" , [ "1" , "1" ] ] } }|}
     in
-    let second_none = {|{"Right":"None"}|} in
+    let second_none = {|{ "Right" : "None" }|} in
     let rec make_str count acc =
       if count = 0
       then acc
@@ -162,7 +163,7 @@ module Benchable1 : S = struct
       then make_str (count - 1) (second_choice count :: acc)
       else make_str (count - 1) (second_none :: acc)
     in
-    "[" ^ String.concat "," (make_str size []) ^ "]"
+    "[" ^ String.concat " , " (make_str size []) ^ "]"
   ;;
 
   let name = "array[ui30](either(conv(i64,i64),option(conv(ui30,list(i8)))))"
@@ -260,18 +261,21 @@ module Benchable2 : S = struct
     let random_int64 () = Random.State.int64 prng 1024L in
     (* strings for each element *)
     let make_str_a () =
-      let choice_a1 = {|{"A":["None","None"]}|} in
+      let choice_a1 = {| { "A" : [ "None" , "None" ] } |} in
       let choice_a2 () =
-        Format.sprintf {|{"A":[{"Some":"%Ld"},"None"]}|} (random_int64 ())
+        Format.sprintf {| { "A" : [ { "Some" : "2" } , "None" ] } |}
+        (* Format.sprintf {| { "A" : [ { "Some" : "%Ld" } , "None" ] } |} (random_int64 ()) *)
       in
       let choice_a3 () =
-        Format.sprintf {|{"A":["None",{"Some":"%Ld"}]}|} (random_int64 ())
+        Format.sprintf {| { "A" : [ "None" , {"Some" : "4" } ] } |}
+        (* Format.sprintf {| { "A" : [ "None" , {"Some" : "%Ld" } ] } |} (random_int64 ()) *)
       in
       let choice_a4 () =
-        Format.sprintf
-          {|{"A":[{"Some":"%Ld"},{"Some":"%Ld"}]}|}
+        Format.sprintf {| { "A" : [ { "Some" : "5" } , { "Some" : "6" } ] } |}
+        (* Format.sprintf
+          {| { "A" : [ { "Some" : "%Ld" } , { "Some" : "%Ld" } ] } |}
           (random_int64 ())
-          (random_int64 ())
+          (random_int64 ()) *)
       in
       match Random.State.int prng 4 with
       | 0 -> choice_a1
@@ -281,23 +285,21 @@ module Benchable2 : S = struct
       | _ -> assert false
     in
     let make_str_b () =
-      Format.sprintf {|{"B":["%Ld","%Ld"]}|} (random_int64 ()) (random_int64 ())
+      Format.sprintf {| { "B" : [ "%Ld" , "%Ld" ] } |} (random_int64 ()) (random_int64 ())
     in
     let make_str_c k =
       if random prng
-      then {| {"C":"None"} |}
+      then {| { "C" : "None" } |}
       else (
-        let start = {|{"C":{"Some":|} in
-        let last = {|}}|} in
         let l =
           String.concat
-            ","
+            " , "
             (List.init (Random.State.int prng 5) (fun i ->
-               String.make (i + (k mod 256)) '0'))
+               " \"" ^ String.make (i + (k mod 256)) '0' ^ "\""))
         in
-        start ^ l ^ last)
+        Format.sprintf {| { "C" : { "Some" : [ %s ] } } |} l)
     in
-    let make_str_d = {|"D"|} in
+    let make_str_d = {| "D" |} in
     (* making the payload *)
     let rec make size acc =
       if size = 0
@@ -311,7 +313,7 @@ module Benchable2 : S = struct
         | _ -> assert false)
     in
     let l = make size [] in
-    "[" ^ String.concat "," l ^ "]"
+    " [ " ^ String.concat " , " l ^ " ] "
   ;;
 
   let name = "list(union(…))"
