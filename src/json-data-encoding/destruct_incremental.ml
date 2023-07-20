@@ -42,6 +42,7 @@ let read_from_buffy state =
        Use `get_blits_onto_bytes` to avoid copying the bytes. *)
     Buffy.Src.get_blit_onto_bytes buffy transfer_buffer 0 available;
     Jsonm.Manual.src decoder transfer_buffer 0 available)
+  else Jsonm.Manual.src decoder transfer_buffer 0 0
 ;;
 
 let rec read_lexeme { tokens; token_peeked } =
@@ -58,7 +59,17 @@ let rec read_lexeme { tokens; token_peeked } =
       (match Jsonm.decode decoder with
        | `Lexeme v -> Ok v
        | `End -> assert false (* see Jsonm.Manual docs *)
-       | `Error e -> Error (Format.asprintf "Jsonm: %a" Jsonm.pp_error e)
+       | `Error e ->
+         let (a, b), (c, d) = Jsonm.decoded_range decoder in
+         Error
+           (Format.asprintf
+              "Jsonm: (line:%d, col:%d) (line:%d, col:%d) %a"
+              a
+              b
+              c
+              d
+              Jsonm.pp_error
+              e)
        | `Await ->
          if Buffy.Src.available buffy > 0
          then (

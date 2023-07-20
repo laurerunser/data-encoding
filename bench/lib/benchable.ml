@@ -149,7 +149,13 @@ module Benchable1 : S = struct
 
   let make_json_string size =
     let first_choice = {|{ "Left" : [ "0" , "1" ] }|} in
-    (* let second_choice _ = Format.sprintf {|{"Right":{"Some":["%d",["%d","%d"]]}}|} i i i (* TODO: make those uint8!! *) in *)
+    (* let second_choice _ =
+      Format.sprintf
+        {|{"Right":{"Some":["%d",["%d","%d"]]}}|}
+        i
+        i
+        i (* TODO: make those uint8!!*)
+    in *)
     let second_choice _ =
       Format.sprintf {|{ "Right" : { "Some" : [ "1" , [ "1" , "1" ] ] } }|}
     in

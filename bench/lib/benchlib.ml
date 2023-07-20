@@ -12,7 +12,7 @@ let buffer_size =
 
 let json_buffer_size =
   match Sys.getenv_opt "BENCHBUFFSIZE" with
-  | None -> 1_000_000
+  | None -> 1_000
   | Some s -> int_of_string s
 ;;
 
@@ -151,7 +151,8 @@ let rr_json
       incr counter;
       (* print_string (Format.sprintf "counter: %d\n" !counter); *)
       (* let str = Buffy.Src.to_string src in
-      print_string "start: ";
+      print_string (Format.sprintf "length : %d\n" (String.length str)); *)
+      (*print_string "start: ";
       print_string (String.sub str 0 10);
       print_newline ();
       print_newline ();
