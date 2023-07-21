@@ -234,9 +234,9 @@ let rec destruct_value : type a. a Encoding.t -> state -> a result =
   | Tuple e ->
     let* () = check_lexeme_is state OpenA in
     destruct_tuple e state
-  | Object o ->
+  | Object { field_hlist; fieldname_key_map = _; field_hmap = _ } ->
     let* () = check_lexeme_is state OpenO in
-    destruct_obj o state
+    destruct_obj field_hlist state
   | Conv { serialisation = _; deserialisation; encoding } ->
     let* v = destruct_value encoding state in
     (match deserialisation v with
@@ -281,9 +281,9 @@ and destruct_seq : type a. a Encoding.t -> state -> a list -> a Seq.t result =
     let* _ = read_lexeme state in
     let* tuple = destruct_tuple e state in
     destruct_seq encoding state (tuple :: contents_so_far)
-  | `Os, Object o ->
+  | `Os, Object { field_hlist; fieldname_key_map = _; field_hmap = _ } ->
     let* _ = read_lexeme state in
-    let* obj = destruct_obj o state in
+    let* obj = destruct_obj field_hlist state in
     destruct_seq encoding state (obj :: contents_so_far)
   | _, Union u ->
     let* v = destruct_union (Union u) state in
@@ -317,7 +317,7 @@ and destruct_obj_reached_the_end
     if StringMap.is_empty fields_and_tokens_map
     then Ok Commons.Hlist.[]
     else Error "Extraneous fields in object"
-  | Req { encoding = e; name = field_name } :: ts ->
+  | Req { encoding = e; name = field_name; key = _ } :: ts ->
     (match StringMap.find_opt field_name fields_and_tokens_map with
      | None -> Error (Format.sprintf "Can't find field name %s" field_name)
      | Some tokens ->
@@ -334,7 +334,7 @@ and destruct_obj_reached_the_end
           if is_empty tokens && Option.is_none !token_peeked
           then Ok (Commons.Hlist.( :: ) (v, vs))
           else Error "Too many lexemes in sequence"))
-  | Opt { encoding = e; name = field_name } :: ts ->
+  | Opt { encoding = e; name = field_name; key = _ } :: ts ->
     (match StringMap.find_opt field_name fields_and_tokens_map with
      | None ->
        (* optional field: don't fail, just parse the rest of the fields *)
@@ -363,7 +363,7 @@ and destruct_obj_fields
   | [] ->
     let* () = check_lexeme_is state CloseO in
     Ok Commons.Hlist.[]
-  | Req { encoding = e; name } :: ts ->
+  | Req { encoding = e; name; key = _ } :: ts ->
     (match StringMap.find_opt name fields with
      | Some tokens ->
        (* field is already parsed in the fields map *)
@@ -388,7 +388,7 @@ and destruct_obj_fields
           let* a = destruct_value e (use_tokens tokens) in
           let* rest_of_values = destruct_obj_fields ts state map in
           Ok (Commons.Hlist.( :: ) (a, rest_of_values))))
-  | Opt { encoding = e; name } :: ts ->
+  | Opt { encoding = e; name; key = _ } :: ts ->
     (match StringMap.find_opt name fields with
      | Some tokens ->
        (* field is already parsed in the fields map *)
@@ -493,15 +493,15 @@ let%expect_test _ =
   w Unit "";
   [%expect {| Waiting |}];
   w Unit "} ";
-  [%expect {| Error Jsonm: expected JSON text (JSON value) |}];
+  [%expect {| Error Jsonm: (line:1, col:3) (line:1, col:3) expected JSON text (JSON value) |}];
   w Unit "}{ ";
-  [%expect {| Error Jsonm: expected JSON text (JSON value) |}];
+  [%expect {| Error Jsonm: (line:1, col:3) (line:1, col:4) expected JSON text (JSON value) |}];
   w Unit "{";
   [%expect {| Waiting |}];
   w Unit "[]";
   [%expect {| Error Unexpected lexeme in sequence: received `As, expected `Os |}];
   w Unit "][ ";
-  [%expect {| Error Jsonm: expected JSON text (JSON value) |}];
+  [%expect {| Error Jsonm: (line:1, col:3) (line:1, col:4) expected JSON text (JSON value) |}];
   w Unit "null ";
   [%expect {| Error Unexpected lexeme in sequence: received `Null, expected `Os |}];
   w Unit {| {"foo": null} |};
@@ -534,7 +534,9 @@ let%expect_test _ =
   w String {| "\u0068\u0123" |};
   [%expect {| Ok hģ |}];
   w String {| "\128" |};
-  [%expect {| Error Jsonm: illegal escape, '1' (U+0031) not an escaped character |}];
+  [%expect {|
+    Error Jsonm: (line:1, col:4) (line:1, col:6) illegal escape, '1' (U+0031) not an
+                                           escaped character |}];
   w String {| "\ntest\u03BB"|};
   [%expect {|
     Ok
@@ -555,17 +557,12 @@ let%expect_test _ =
   [%expect {| Ok [0; true] |}];
   w (Tuple [ Int64; Int64; Int64 ]) {| [ "0", "3", "1" ]|};
   [%expect {| Ok [0; 3; 1] |}];
-  w (* missing "" around the int64 *)
-    (Object [ Req { encoding = Int64; name = "foo" } ])
-    {| {"foo" : 32} |};
+  w (* missing "" around the int64 *) (obj [ req "foo" Int64 ]) {| {"foo" : 32} |};
   [%expect
     {| Error Unexpected lexeme in sequence: received `Float 32., expected `String (convertable to int64) |}];
-  w (Object [ Req { encoding = Int64; name = "foo" } ]) {| {"foo" : "32"} |};
+  w (obj [ req "foo" Int64 ]) {| {"foo" : "32"} |};
   [%expect {| Ok {foo = 32} |}];
-  w
-    (Object
-       [ Req { encoding = Int64; name = "foo" }; Req { encoding = Int64; name = "bar" } ])
-    {| {"foo":"32", "bar":"43"} |};
+  w (obj [ req "foo" int64; req "bar" Int64 ]) {| {"foo":"32", "bar":"43"} |};
   [%expect {| Ok {foo = 32; bar = 43} |}];
   let e = obj [ req "this" Unit ] in
   w e {| {"this" : {} } |};
@@ -577,25 +574,13 @@ let%expect_test _ =
   let e = obj [ opt "foo" Int64; req "bar" Int64 ] in
   w e {| {"foo":"32", "bar":"43"} |};
   [%expect {| Ok {foo ?= 32; bar = 43} |}];
-  w
-    (Object
-       [ Opt { encoding = Int64; name = "foo" }; Req { encoding = Int64; name = "bar" } ])
-    {| {"bar":"43"} |};
+  w (obj [ opt "foo" Int64; req "bar" Int64 ]) {| {"bar":"43"} |};
   [%expect {| Ok {foo ?= None; bar = 43} |}];
-  w
-    (Object
-       [ Opt { encoding = Int64; name = "foo" }; Opt { encoding = Int64; name = "bar" } ])
-    {| {} |};
+  w (obj [ opt "foo" Int64; opt "bar" Int64 ]) {| {} |};
   [%expect {| Ok {foo ?= None; bar ?= None}  |}];
-  w
-    (Object
-       [ Opt { encoding = Int64; name = "foo" }; Opt { encoding = Int64; name = "bar" } ])
-    {| {"foo":"43311"} |};
+  w (obj [ opt "foo" Int64; opt "bar" Int64 ]) {| {"foo":"43311"} |};
   [%expect {| Ok {foo ?= 43311; bar ?= None} |}];
-  w
-    (Object
-       [ Req { encoding = Int64; name = "foo" }; Req { encoding = Int64; name = "bar" } ])
-    {| {"bar":"43311", "foo":"43311"} |};
+  w (obj [ req "foo" Int64; req "bar" Int64 ]) {| {"bar":"43311", "foo":"43311"} |};
   [%expect {| Ok {foo = 43311; bar = 43311} |}]
 ;;
 
@@ -712,9 +697,9 @@ let%expect_test _ =
   w Unit "{" "}";
   [%expect {| Ok unit |}];
   w Unit "}" " ";
-  [%expect {| Error Jsonm: expected JSON text (JSON value) |}];
+  [%expect {| Error Jsonm: (line:1, col:3) (line:1, col:3) expected JSON text (JSON value) |}];
   w Unit "}{" " ";
-  [%expect {| Error Jsonm: expected JSON text (JSON value) |}];
+  [%expect {| Error Jsonm: (line:1, col:3) (line:1, col:4) expected JSON text (JSON value) |}];
   w Unit "nu" "ll ";
   [%expect {| Error Unexpected lexeme in sequence: received `Null, expected `Os |}];
   w Bool "f" "alse ";

@@ -23,7 +23,8 @@ let rec construct : type a. a Encoding.t -> a -> (JSON.t, string) result =
     let* seq = map_e (construct t) v in
     Ok (`Aseq seq)
   | Tuple t -> construct_tuple t v
-  | Object o -> construct_obj o v
+  | Object { field_hlist; fieldname_key_map = _; field_hmap = _ } ->
+    construct_obj field_hlist v
   | Conv { serialisation; deserialisation = _; encoding } ->
     (* TODO exception handling?? *)
     construct encoding (serialisation v)
@@ -56,7 +57,7 @@ and construct_obj : type a. a Encoding.obj -> a -> (JSON.t, string) result =
  fun encoding v ->
   match encoding with
   | [] -> Ok (`O [])
-  | Req { encoding = t; name } :: ts ->
+  | Req { encoding = t; name; key = _ } :: ts ->
     let (v :: vs) = v in
     (match construct t v with
      | Error _ as err -> err
@@ -66,7 +67,7 @@ and construct_obj : type a. a Encoding.obj -> a -> (JSON.t, string) result =
         | Ok (`Oseq jsons) -> Ok (`Oseq (Seq.cons (name, json) jsons))
         | Ok (`O []) -> Ok (`Oseq (Seq.return (name, json)))
         | Ok _ -> assert false))
-  | Opt { encoding = t; name } :: ts ->
+  | Opt { encoding = t; name; key = _ } :: ts ->
     let (v :: vs) = v in
     (match v with
      | None -> construct_obj ts vs
@@ -143,7 +144,8 @@ let rec construct_lexemes : type a. a Encoding.t -> a -> JSON.lexeme Seq.t =
   | String -> Seq.Cons (`String v (* TODO check utf8 *), Seq.empty)
   | Seq t -> Commons.Sequtils.bracket `As (Seq.flat_map (construct_lexemes t) v) `Ae ()
   | Tuple t -> Commons.Sequtils.bracket `As (construct_tuple_lexemes t v) `Ae ()
-  | Object o -> Commons.Sequtils.bracket `Os (construct_obj_lexemes o v) `Oe ()
+  | Object { field_hlist; fieldname_key_map = _; field_hmap = _ } ->
+    Commons.Sequtils.bracket `Os (construct_obj_lexemes field_hlist v) `Oe ()
   | Conv { serialisation; deserialisation = _; encoding } ->
     (* TODO exception handling?? *)
     construct_lexemes encoding (serialisation v) ()
@@ -172,13 +174,13 @@ and construct_obj_lexemes : type a. a Encoding.obj -> a -> JSON.lexeme Seq.t =
  fun encoding v () ->
   match encoding with
   | [] -> Seq.Nil
-  | Req { encoding = t; name } :: ts ->
+  | Req { encoding = t; name; key = _ } :: ts ->
     let (v :: vs) = v in
     Seq.append
       (Seq.cons (`Name name) (construct_lexemes t v))
       (construct_obj_lexemes ts vs)
       ()
-  | Opt { encoding = t; name } :: ts ->
+  | Opt { encoding = t; name; key = _ } :: ts ->
     let (v :: vs) = v in
     (match v with
      | None -> construct_obj_lexemes ts vs ()
@@ -425,13 +427,13 @@ let rec write
     in
     let* state = write_tuple (depth + 1) true state t v in
     Buffy.W.write_char state ']'
-  | Object o ->
+  | Object { field_hlist; fieldname_key_map = _; field_hmap = _ } ->
     let* state =
       if depth > 0 && not first
       then Buffy.W.write_string state ",{"
       else Buffy.W.write_char state '{'
     in
-    let* state = write_object (depth + 1) true state o v in
+    let* state = write_object (depth + 1) true state field_hlist v in
     Buffy.W.write_char state '}'
   | Conv { serialisation; deserialisation = _; encoding } ->
     (* TODO: exn management in serialisation function *)
@@ -476,7 +478,7 @@ and write_object
  fun depth first state encoding v ->
   match encoding with
   | [] -> Buffy.W.Written { state }
-  | Req { encoding; name } :: ts ->
+  | Req { encoding; name; key = _ } :: ts ->
     let (v :: vs) = v in
     let* state =
       if depth > 0 && not first
@@ -487,7 +489,7 @@ and write_object
     let* state = Buffy.W.write_string state "\":" in
     let* state = write depth true state encoding v in
     write_object depth false state ts vs
-  | Opt { encoding; name } :: ts ->
+  | Opt { encoding; name; key = _ } :: ts ->
     (match v with
      | None :: vs -> write_object depth first state ts vs
      | Some v :: vs ->

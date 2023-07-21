@@ -114,11 +114,11 @@ let rec to_json_obj : type a. a obj -> a Json_data_encoding.Encoding.obj = funct
   | Req { encoding = t; name } :: ts ->
     let t = to_json t in
     let ts = to_json_obj ts in
-    Json_data_encoding.Encoding.( :: ) (Req { encoding = t; name }, ts)
+    Json_data_encoding.Encoding.(req name t :: ts)
   | Opt { encoding = t; name } :: ts ->
     let t = to_json t in
     let ts = to_json_obj ts in
-    Json_data_encoding.Encoding.( :: ) (Opt { encoding = t; name }, ts)
+    Json_data_encoding.Encoding.(opt name t :: ts)
 ;;
 
 let rec to_binary_obj : type a. a obj -> a Binary_data_encoding.Encoding.tuple = function

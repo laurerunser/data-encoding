@@ -1,4 +1,9 @@
 module Hlist = Commons.Hlist
+module Hmap = Commons.Hmap
+module FieldSet = Stdlib.Set.Make (String)
+module FieldKeyMap = Stdlib.Map.Make (String)
+
+type anykey = Anykey : _ Hmap.k -> anykey
 
 [@@@warning "-30"]
 
@@ -10,7 +15,12 @@ type _ t =
   | String : string t
   | Seq : 'a t -> 'a Seq.t t
   | Tuple : 'a tuple -> 'a t
-  | Object : 'a obj -> 'a t
+  | Object :
+      { field_hlist : 'a obj (* ordered list of fields *)
+      ; fieldname_key_map : anykey FieldKeyMap.t
+      ; field_hmap : Hmap.t (* unordered map of fields *)
+      }
+      -> 'a t
   | Conv :
       { serialisation : 'a -> 'b
       ; deserialisation : 'b -> ('a, string) result
@@ -36,11 +46,13 @@ and _ field =
   | Req :
       { encoding : 'a t
       ; name : string
+      ; key : 'a field Hmap.k
       }
       -> 'a field
   | Opt :
       { encoding : 'a t
       ; name : string
+      ; key : 'a option field Hmap.k
       }
       -> 'a option field
 
@@ -64,26 +76,58 @@ let string = String
 let seq t = Seq t
 let tuple t = Tuple t
 
-module FieldSet = Stdlib.Set.Make (String)
-
 let rec obj_has_duplicate_field_name : type o. FieldSet.t -> o obj -> bool =
  fun seen o ->
   match o with
   | [] -> false
-  | Req { name; encoding = _ } :: fields ->
+  | Req { name; encoding = _; key = _ } :: fields ->
     FieldSet.mem name seen || obj_has_duplicate_field_name (FieldSet.add name seen) fields
-  | Opt { name; encoding = _ } :: fields ->
+  | Opt { name; encoding = _; key = _ } :: fields ->
     FieldSet.mem name seen || obj_has_duplicate_field_name (FieldSet.add name seen) fields
 ;;
 
-let obj t =
-  if obj_has_duplicate_field_name FieldSet.empty t
+let rec fieldkeymap_of_obj : type o. anykey FieldKeyMap.t -> o obj -> anykey FieldKeyMap.t
+  =
+ fun fmap o ->
+  match o with
+  | [] -> fmap
+  | Req { name; key; encoding = _ } :: o ->
+    let fmap = FieldKeyMap.add name (Anykey key) fmap in
+    fieldkeymap_of_obj fmap o
+  | Opt { name; key; encoding = _ } :: o ->
+    let fmap = FieldKeyMap.add name (Anykey key) fmap in
+    fieldkeymap_of_obj fmap o
+;;
+
+let rec fieldhmap_of_obj : type o. Hmap.t -> o obj -> Hmap.t =
+ fun hmap o ->
+  match o with
+  | [] -> hmap
+  | (Req { name = _; key; encoding = _ } as field) :: o ->
+    let hmap = Hmap.add hmap key field in
+    fieldhmap_of_obj hmap o
+  | (Opt { name = _; key; encoding = _ } as field) :: o ->
+    let hmap = Hmap.add hmap key field in
+    fieldhmap_of_obj hmap o
+;;
+
+let obj field_hlist =
+  if obj_has_duplicate_field_name FieldSet.empty field_hlist
   then raise (Invalid_argument "Object has duplicate field name");
-  Object t
+  let fieldname_key_map = fieldkeymap_of_obj FieldKeyMap.empty field_hlist in
+  let field_hmap = fieldhmap_of_obj Hmap.empty field_hlist in
+  Object { field_hlist; fieldname_key_map; field_hmap }
 ;;
 
-let req name encoding = Req { encoding; name }
-let opt name encoding = Opt { encoding; name }
+let req name encoding =
+  let key = Hmap.k () in
+  Req { encoding; name; key }
+;;
+
+let opt name encoding =
+  let key = Hmap.k () in
+  Opt { encoding; name; key }
+;;
 
 let conv ~serialisation ~deserialisation encoding =
   Conv { serialisation; deserialisation; encoding }
@@ -247,9 +291,9 @@ let rec encoding_to_buffer : type a. Buffer.t -> a t -> unit =
     Buffer.add_char buffer '[';
     encoding_to_buffer_tuple buffer t;
     Buffer.add_char buffer ']'
-  | Object t ->
+  | Object { field_hlist; fieldname_key_map = _; field_hmap = _ } ->
     Buffer.add_char buffer '{';
-    encoding_to_buffer_obj buffer t;
+    encoding_to_buffer_obj buffer field_hlist;
     Buffer.add_char buffer '}'
   | Conv { serialisation = _; deserialisation = _; encoding } ->
     Buffer.add_string buffer "conv(";
@@ -274,21 +318,21 @@ and encoding_to_buffer_obj : type a. Buffer.t -> a obj -> unit =
  fun buffer obj ->
   match obj with
   | [] -> ()
-  | [ Req { encoding; name } ] ->
+  | [ Req { encoding; name; key = _ } ] ->
     Buffer.add_string buffer name;
     Buffer.add_char buffer '=';
     encoding_to_buffer buffer encoding
-  | [ Opt { encoding; name } ] ->
+  | [ Opt { encoding; name; key = _ } ] ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer "?=";
     encoding_to_buffer buffer encoding
-  | Req { encoding; name } :: tail ->
+  | Req { encoding; name; key = _ } :: tail ->
     Buffer.add_string buffer name;
     Buffer.add_char buffer '=';
     encoding_to_buffer buffer encoding;
     Buffer.add_string buffer ", ";
     encoding_to_buffer_obj buffer tail
-  | Opt { encoding; name } :: tail ->
+  | Opt { encoding; name; key = _ } :: tail ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer "?=";
     encoding_to_buffer buffer encoding;
@@ -396,9 +440,9 @@ let rec value_to_buffer : type a. Buffer.t -> a t -> a -> unit =
     Buffer.add_char buffer '[';
     value_to_buffer_tuple buffer t l;
     Buffer.add_char buffer ']'
-  | Object t, o ->
+  | Object { field_hlist; fieldname_key_map = _; field_hmap = _ }, o ->
     Buffer.add_char buffer '{';
-    value_to_buffer_obj buffer t o;
+    value_to_buffer_obj buffer field_hlist o;
     Buffer.add_char buffer '}'
   | Conv { serialisation; deserialisation = _; encoding }, v ->
     Buffer.add_string buffer "conv(";
@@ -440,11 +484,11 @@ and value_to_buffer_obj : type a. Buffer.t -> a obj -> a -> unit =
  fun buffer encoding obj ->
   match encoding, obj with
   | [], _ -> ()
-  | [ Req { encoding; name } ], [ x ] ->
+  | [ Req { encoding; name; key = _ } ], [ x ] ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer " = ";
     value_to_buffer buffer encoding x
-  | [ Opt { encoding; name } ], [ x ] ->
+  | [ Opt { encoding; name; key = _ } ], [ x ] ->
     (match x with
      | None ->
        Buffer.add_string buffer name;
@@ -453,13 +497,13 @@ and value_to_buffer_obj : type a. Buffer.t -> a obj -> a -> unit =
        Buffer.add_string buffer name;
        Buffer.add_string buffer " ?= ";
        value_to_buffer buffer encoding x)
-  | Req { encoding; name } :: tail, x :: xs ->
+  | Req { encoding; name; key = _ } :: tail, x :: xs ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer " = ";
     value_to_buffer buffer encoding x;
     Buffer.add_string buffer ", ";
     value_to_buffer_obj buffer tail xs
-  | Opt { encoding; name } :: tail, x :: xs ->
+  | Opt { encoding; name; key = _ } :: tail, x :: xs ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer " ?= ";
     (match x with
@@ -564,9 +608,9 @@ let rec value_to_buffer : type a. Buffer.t -> a t -> a -> unit =
     Buffer.add_char buffer '[';
     value_to_buffer_tuple buffer t l;
     Buffer.add_char buffer ']'
-  | Object t, o ->
+  | Object { field_hlist; fieldname_key_map = _; field_hmap = _ }, o ->
     Buffer.add_char buffer '{';
-    value_to_buffer_obj buffer t o;
+    value_to_buffer_obj buffer field_hlist o;
     Buffer.add_char buffer '}'
   | Conv { serialisation = _; deserialisation = _; encoding }, _ ->
     (* for conv, only print the type; not the functions *)
@@ -608,11 +652,11 @@ and value_to_buffer_obj : type a. Buffer.t -> a obj -> a -> unit =
  fun buffer encoding obj ->
   match encoding, obj with
   | [], _ -> ()
-  | [ Req { encoding; name } ], [ x ] ->
+  | [ Req { encoding; name; key = _ } ], [ x ] ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer " = ";
     value_to_buffer buffer encoding x
-  | [ Opt { encoding; name } ], [ x ] ->
+  | [ Opt { encoding; name; key = _ } ], [ x ] ->
     (match x with
      | None ->
        Buffer.add_string buffer name;
@@ -621,13 +665,13 @@ and value_to_buffer_obj : type a. Buffer.t -> a obj -> a -> unit =
        Buffer.add_string buffer name;
        Buffer.add_string buffer " ?= ";
        value_to_buffer buffer encoding x)
-  | Req { encoding; name } :: tail, x :: xs ->
+  | Req { encoding; name; key = _ } :: tail, x :: xs ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer " = ";
     value_to_buffer buffer encoding x;
     Buffer.add_string buffer "; ";
     value_to_buffer_obj buffer tail xs
-  | Opt { encoding; name } :: tail, x :: xs ->
+  | Opt { encoding; name; key = _ } :: tail, x :: xs ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer " ?= ";
     (match x with

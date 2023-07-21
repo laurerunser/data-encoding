@@ -79,7 +79,8 @@ let rec destruct : type a. a Encoding.t -> JSON.t -> (a, string) result =
      | other -> Error (Format.asprintf "Expected \"…\", got %a" PP.shape other))
   | Seq t -> destruct_seq t json
   | Tuple t -> destruct_tuple t json
-  | Object t -> destruct_obj t json
+  | Object { field_hlist; fieldname_key_map; field_hmap } ->
+    destruct_obj field_hlist fieldname_key_map field_hmap json
   | Conv { serialisation = _; deserialisation; encoding } ->
     (match destruct encoding json with
      | Error _ as err -> err
@@ -139,8 +140,19 @@ and destruct_tuple_seq : type a. a Encoding.tuple -> JSON.t Seq.t -> (a, string)
            | Ok vs -> Ok (v :: vs)))
      | Seq.Nil -> Error (Format.asprintf "Expected elements in array, got end of array"))
 
-and destruct_obj : type a. a Encoding.obj -> JSON.t -> (a, string) result =
- fun encoding json ->
+and destruct_obj
+  : type a.
+    a Encoding.obj
+    -> Encoding.anykey Encoding.FieldKeyMap.t
+    -> Commons.Hmap.t
+    -> JSON.t
+    -> (a, string) result
+  =
+ fun field_hlist fieldname_key_map field_hmap json ->
+  (* TODO: make use of maps *)
+  ignore fieldname_key_map;
+  ignore field_hmap;
+  let encoding = field_hlist in
   match json with
   | `O o -> destruct_obj_map encoding (JSON.FieldMap.of_seq (List.to_seq o))
   | `Oseq o -> destruct_obj_map encoding (JSON.FieldMap.of_seq o)
@@ -158,7 +170,7 @@ and destruct_obj_map
     else
       (* TODO: control what to do with left-over fields *)
       Error (Format.asprintf "Expected end-of-object, got additional fields")
-  | Req { encoding = t; name } :: ts ->
+  | Req { encoding = t; name; key = _ } :: ts ->
     (match JSON.FieldMap.find_opt name fields with
      | None -> Error (Format.asprintf "Can't find expected field %S" name)
      | Some json ->
@@ -169,7 +181,7 @@ and destruct_obj_map
           (match destruct_obj_map ts fields with
            | Error _ as err -> err
            | Ok vs -> Ok (v :: vs))))
-  | Opt { encoding = t; name } :: ts ->
+  | Opt { encoding = t; name; key = _ } :: ts ->
     (match JSON.FieldMap.find_opt name fields with
      | None ->
        (match destruct_obj_map ts fields with
@@ -289,9 +301,9 @@ let rec destruct_lexemes
   | Tuple t ->
     let* lxms = consume_1 lxms `As in
     destruct_lexemes_tuple t lxms
-  | Object o ->
+  | Object { field_hlist; fieldname_key_map; field_hmap } ->
     let* lxms = consume_1 lxms `Os in
-    destruct_lexemes_obj o lxms
+    destruct_lexemes_obj field_hlist fieldname_key_map field_hmap lxms
   | Conv { serialisation = _; deserialisation; encoding } ->
     let* w, lxms = destruct_lexemes encoding lxms in
     let* w = deserialisation w in
@@ -357,7 +369,7 @@ and destruct_lexemes_obj_reached_the_end
     if JSON.FieldMap.is_empty fields
     then Ok Commons.Hlist.[]
     else Error "Extraneous fields in object"
-  | Req { encoding = t; name } :: ts ->
+  | Req { encoding = t; name; key = _ } :: ts ->
     (match JSON.FieldMap.find_opt name fields with
      | None -> Error "Cannot find field"
      | Some json ->
@@ -365,7 +377,7 @@ and destruct_lexemes_obj_reached_the_end
        let fields = JSON.FieldMap.remove name fields in
        let* vs = destruct_lexemes_obj_reached_the_end ts fields in
        Ok (Commons.Hlist.( :: ) (v, vs)))
-  | Opt { encoding = t; name } :: ts ->
+  | Opt { encoding = t; name; key = _ } :: ts ->
     (match JSON.FieldMap.find_opt name fields with
      | None ->
        let* vs = destruct_lexemes_obj_reached_the_end ts fields in
@@ -398,9 +410,18 @@ and destruct_lexemes_fields fields lxms =
      as a sequence of lexemes
 *)
 and destruct_lexemes_obj
-  : type a. a Encoding.obj -> JSON.lexemes -> (a * JSON.lexemes, string) result
+  : type a.
+    a Encoding.obj
+    -> Encoding.anykey Encoding.FieldKeyMap.t
+    -> Commons.Hmap.t
+    -> JSON.lexemes
+    -> (a * JSON.lexemes, string) result
   =
- fun encoding lxms ->
+ fun field_hlist fieldname_key_map field_hmap lxms ->
+  (* TODO: make use of maps *)
+  ignore fieldname_key_map;
+  ignore field_hmap;
+  let encoding = field_hlist in
   let* fields, lxms = destruct_lexemes_fields JSON.FieldMap.empty lxms in
   let* o = destruct_lexemes_obj_reached_the_end encoding fields in
   Ok (o, lxms)
