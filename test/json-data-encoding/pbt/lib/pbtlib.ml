@@ -9,7 +9,8 @@ let rec generator_of_encoding : type t. t Json_data_encoding.Encoding.t -> t QCh
   | String -> QCheck2.Gen.(string_size ?gen:(Some printable) (0 -- 10))
   | Seq t -> QCheck2.Gen.map List.to_seq (QCheck2.Gen.list (generator_of_encoding t))
   | Tuple t -> generator_of_encoding_tuple t
-  | Object t -> generator_of_encoding_object t
+  | Object { field_hlist; fieldname_key_map = _; field_hmap = _ } ->
+    generator_of_encoding_object field_hlist
   | Conv { serialisation = _; deserialisation; encoding } ->
     (*TODO: support errors*)
     QCheck2.Gen.map
@@ -38,11 +39,11 @@ and generator_of_encoding_object
  fun t ->
   match t with
   | [] -> QCheck2.Gen.pure Commons.Hlist.[]
-  | Req { encoding = head; name = _ } :: tail ->
+  | Req { encoding = head; name = _; key = _ } :: tail ->
     let head = generator_of_encoding head in
     let tail = generator_of_encoding_object tail in
     QCheck2.Gen.map2 (fun h t -> Commons.Hlist.( :: ) (h, t)) head tail
-  | Opt { encoding = head; name = _ } :: tail ->
+  | Opt { encoding = head; name = _; key = _ } :: tail ->
     let head = generator_of_encoding head in
     let head = QCheck2.Gen.option head in
     let tail = generator_of_encoding_object tail in
@@ -59,7 +60,8 @@ let rec equal_of_encoding : type t. t Json_data_encoding.Encoding.t -> t -> t ->
   | String -> String.equal
   | Seq t -> Seq.for_all2 (equal_of_encoding t)
   | Tuple t -> equal_of_encoding_tuple t
-  | Object t -> equal_of_encoding_object t
+  | Object { field_hlist; fieldname_key_map = _; field_hmap = _ } ->
+    equal_of_encoding_object field_hlist
   | Conv { serialisation; deserialisation = _; encoding } ->
     fun a b -> (equal_of_encoding encoding) (serialisation a) (serialisation b)
   | Union { cases = _; serialisation; deserialisation = _ } ->
@@ -88,11 +90,11 @@ and equal_of_encoding_object : type t. t Json_data_encoding.Encoding.obj -> t ->
  fun t ->
   match t with
   | [] -> fun [] [] -> true
-  | Req { encoding = head; name = _ } :: tail ->
+  | Req { encoding = head; name = _; key = _ } :: tail ->
     let head = equal_of_encoding head in
     let tail = equal_of_encoding_object tail in
     fun (ah :: at) (bh :: bt) -> head ah bh && tail at bt
-  | Opt { encoding = head; name = _ } :: tail ->
+  | Opt { encoding = head; name = _; key = _ } :: tail ->
     let head = equal_of_encoding head in
     let head = Option.equal head in
     let tail = equal_of_encoding_object tail in

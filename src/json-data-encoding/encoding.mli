@@ -1,4 +1,8 @@
 module Hlist = Commons.Hlist
+module Hmap = Commons.Hmap
+module FieldKeyMap : Stdlib.Map.S with type key = string
+
+type anykey = Anykey : _ Hmap.k -> anykey
 
 [@@@warning "-30"]
 
@@ -10,7 +14,12 @@ type _ t =
   | String : string t
   | Seq : 'a t -> 'a Seq.t t
   | Tuple : 'a tuple -> 'a t
-  | Object : 'a obj -> 'a t
+  | Object :
+      { field_hlist : 'a obj (* ordered list of fields *)
+      ; fieldname_key_map : anykey FieldKeyMap.t (* field-name -> key*)
+      ; field_hmap : Hmap.t (* key -> field-encoding *)
+      }
+      -> 'a t
   | Conv :
       { serialisation : 'a -> 'b
       ; deserialisation : 'b -> ('a, string) result
@@ -36,11 +45,13 @@ and _ field =
   | Req :
       { encoding : 'a t
       ; name : string
+      ; key : 'a field Hmap.k
       }
       -> 'a field
   | Opt :
       { encoding : 'a t
       ; name : string
+      ; key : 'a option field Hmap.k
       }
       -> 'a option field
 
