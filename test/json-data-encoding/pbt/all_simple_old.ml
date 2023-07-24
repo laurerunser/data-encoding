@@ -1,4 +1,4 @@
-let () = Printf.printf "Testing all simple encodings (JSON)\n"
+let () = Printf.printf "OLD PARSER - Testing all simple encodings (JSON)\n"
 
 let seed_gen =
   match Sys.getenv_opt "PBT_ROUNDTRIP_SEED" with
@@ -20,17 +20,10 @@ let run tests =
   let exitcode =
     QCheck_runner.run_tests
       ~rand
-      ((* List.of_seq (* tests with 1 full input *)
+      (List.of_seq (* test with the old parser *)
          (Seq.map
             (fun (Json_data_encoding_test_pbt.Testable.AnyE (name, t)) ->
-              Json_data_encoding_test_pbt.Pbtlib.to_test name t)
-            tests)
-      @  *)
-       List.of_seq
-         (* test with input cut in 2 parts *)
-         (Seq.map
-            (fun (Json_data_encoding_test_pbt.Testable.AnyE (name, t)) ->
-              Json_data_encoding_test_pbt.Pbtlib.to_test2 name t)
+              Json_data_encoding_test_pbt.Pbtlib.to_test_old name t)
             tests))
   in
   if exitcode <> 0 then exit exitcode

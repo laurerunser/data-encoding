@@ -1,5 +1,5 @@
 (tests
- (names all_simple tuple_sample)
+ (names all_simple tuple_sample all_simple_old)
  (package json-data-encoding)
  (libraries
   json_data_encoding_test_pbt

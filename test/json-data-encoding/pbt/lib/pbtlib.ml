@@ -166,3 +166,15 @@ let to_test2 : type t. string -> t Json_data_encoding.Encoding.t -> QCheck2.Test
       failwith ("Incomplete input, should fail. Error was: " ^ str ^ " " ^ e)
     | Ok _ -> failwith "Incomplete input, should fail but returned ok")
 ;;
+
+let to_test_old : type t. string -> t Json_data_encoding.Encoding.t -> QCheck2.Test.t =
+ fun name encoding ->
+  let generator = generator_of_encoding encoding in
+  let equal = equal_of_encoding encoding in
+  QCheck2.Test.make ~name generator (fun v ->
+    let* j = Json_data_encoding.Construct.construct encoding v in
+    let vv = Json_data_encoding.Destruct.destruct encoding j in
+    match vv with
+    | Error e -> failwith e
+    | Ok vv -> equal v vv)
+;;
