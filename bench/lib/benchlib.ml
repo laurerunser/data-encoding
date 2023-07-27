@@ -243,27 +243,16 @@ let measurer2 repeats f ss =
 
 (******************)
 
-let timer3
-  (f : Json_data_encoding.JSON.flex -> ('a, string) Stdlib.result)
-  (ss : string Seq.t)
-  =
+let timer3 (f : string Seq.t -> ('a, string) Stdlib.result) (s : string Seq.t) =
   let t0 = Mtime_clock.now () in
-  let rec run tacc ss =
-    match ss () with
-    | Seq.Nil -> tacc
-    | Seq.Cons (s, ss) ->
-      let src = Ezjsonm.from_string s in
-      (match f (src : Json_data_encoding.JSON.compat :> Json_data_encoding.JSON.flex) with
-       | Ok _ ->
-         let t = Mtime_clock.now () in
-         run (t :: tacc) ss
-       | Error e ->
-         print_string e;
-         print_newline ();
-         let t = Mtime_clock.now () in
-         run (t :: tacc) ss)
+  let run acc s =
+    match f s with
+    | Ok _ ->
+      let t = Mtime_clock.now () in
+      t :: acc
+    | Error _ -> []
   in
-  let ts = run [ t0 ] ss in
+  let ts = run [ t0 ] s in
   match ts with
   | [] -> assert false
   | [ t0 ] ->

@@ -4,7 +4,10 @@
   binary_writing
   json_writing
   json_reading
-  old_json_reading)
+  old_json_reading
+  more_detailed_new
+  more_detailed_old
+  bin_to_read_str_array)
  (libraries
   buffy
   binary-data-encoding

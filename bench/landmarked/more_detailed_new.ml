@@ -1,13 +1,16 @@
 let run name encoding =
+  Format.kasprintf Benchlib.log "MORE DETAILED NEW PARSER %s\n" name;
   let buffer = Bytes.make Benchlib.json_buffer_size '\x00' in
   List.iter
     (fun size ->
       Format.printf "File: %s \n" (Benchlib.payload_file_name_json name size);
       let sources =
-        Benchlib.src_seq_of_file (Benchlib.payload_file_name_json name size) buffer
+        Benchlib.strs_seq_of_file (Benchlib.payload_file_name_json name size) buffer
       in
       let read = Json_data_encoding.Destruct_incremental.destruct_incremental encoding in
-      let _ = Benchlib.rr_json read sources in
+      let serialisations = Benchlib.measurer2 Benchlib.repeats read sources in
+      let serialisations = Benchlib.flatten serialisations in
+      Benchlib.print_summary size Benchlib.buffer_size serialisations;
       ())
     Benchlib.json_sizes
 ;;
