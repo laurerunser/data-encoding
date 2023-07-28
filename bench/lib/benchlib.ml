@@ -26,7 +26,7 @@ let sizes =
 
 let json_sizes =
   match Sys.getenv_opt "BENCHDATASIZES" with
-  | None -> [ 1_000; 5_000; 25_000; 125_000; 625_000; 3_125_000 ]
+  | None -> [ 1_000; 125_000; 3_125_000 ]
   | Some s ->
     let ss = String.split_on_char ',' s in
     List.map int_of_string ss

@@ -1,0 +1,32 @@
+Incremental Json reading
+Benchable0
+MORE DETAILED NEW PARSER list[ui30](array[ui8](record(i64,i64)))
+
+File: payload-1b48215b-1000_json 
+size(abstract)         1000  -  buffer(bytes) 1000000  -  average chunk     0.007441132  -  max chunk     0.017311155  -  average total     0.007441132  -  max total     0.017311155
+File: payload-1b48215b-125000_json 
+size(abstract)       125000  -  buffer(bytes) 1000000  -  average chunk     0.009756203  -  max chunk     0.016942754  -  average total     0.595128418  -  max total     0.623825908
+File: payload-1b48215b-3125000_json 
+size(abstract)      3125000  -  buffer(bytes) 1000000  -  average chunk     0.009532100  -  max chunk     0.037710549  -  average total    14.536453880  -  max total    14.663808038
+
+
+Benchable1
+MORE DETAILED NEW PARSER array[ui30](either(conv(i64,i64),option(conv(ui30,list(i8)))))
+
+File: payload-19c3a778-1000_json 
+size(abstract)         1000  -  buffer(bytes) 1000000  -  average chunk     0.002918739  -  max chunk     0.003978907  -  average total     0.002918739  -  max total     0.003978907
+File: payload-19c3a778-125000_json 
+size(abstract)       125000  -  buffer(bytes) 1000000  -  average chunk     0.006742371  -  max chunk     0.016744631  -  average total     0.370830424  -  max total     0.390441086
+File: payload-19c3a778-3125000_json 
+size(abstract)      3125000  -  buffer(bytes) 1000000  -  average chunk     0.006327123  -  max chunk     0.042128824  -  average total     8.744085268  -  max total     9.393630332
+
+
+Benchable2
+MORE DETAILED NEW PARSER list(union(…))
+
+File: payload-27f41cd8-1000_json 
+size(abstract)         1000  -  buffer(bytes) 1000000  -  average chunk     0.003809148  -  max chunk     0.004842747  -  average total     0.003809148  -  max total     0.004842747
+File: payload-27f41cd8-125000_json 
+size(abstract)       125000  -  buffer(bytes) 1000000  -  average chunk     0.003249141  -  max chunk     0.007513125  -  average total     0.487371184  -  max total     0.500322056
+File: payload-27f41cd8-3125000_json 
+size(abstract)      3125000  -  buffer(bytes) 1000000  -  average chunk     0.003242983  -  max chunk     0.022309481  -  average total    12.099570300  -  max total    12.662249890
