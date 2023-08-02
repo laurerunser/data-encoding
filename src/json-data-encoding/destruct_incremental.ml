@@ -234,9 +234,9 @@ let rec destruct_value : type a. a Encoding.t -> state -> a result =
   | Tuple e ->
     let* () = check_lexeme_is state OpenA in
     destruct_tuple e state
-  | Object { field_hlist; fieldname_key_map = _; field_hmap = _ } ->
+  | Object { field_hlist; fieldname_key_map; field_hmap } ->
     let* () = check_lexeme_is state OpenO in
-    destruct_obj field_hlist state
+    destruct_obj field_hlist fieldname_key_map field_hmap state
   | Conv { serialisation = _; deserialisation; encoding } ->
     let* v = destruct_value encoding state in
     (match deserialisation v with
@@ -355,70 +355,77 @@ and destruct_obj_reached_the_end
           then Ok (Commons.Hlist.( :: ) (Some v, vs))
           else Error "Too many lexemes in sequence"))
 
-and destruct_obj_fields
-  : type a. a Encoding.obj -> state -> Jsonm.lexeme list StringMap.t -> a result
+and destruct_obj
+  : type a.
+    a Encoding.obj
+    -> Encoding.anykey Encoding.FieldKeyMap.t
+    -> Encoding.Hmap.t
+    -> state
+    -> Encoding.Hmap.t
+    -> a result
   =
- fun encoding state fields ->
+ fun encoding keymap fieldmap state already_seen_fields ->
+  let open Encoding in
   match encoding with
   | [] ->
     let* () = check_lexeme_is state CloseO in
     Ok Commons.Hlist.[]
-  | Req { encoding = e; name; key = _ } :: ts ->
-    (match StringMap.find_opt name fields with
-     | Some tokens ->
-       (* field is already parsed in the fields map *)
-       (* remove from the map *)
-       let fields = StringMap.remove name fields in
-       (* parse the value of the field *)
-       let new_state = use_tokens tokens in
-       let* v = destruct_value e new_state in
-       let* vs = destruct_obj_fields ts state fields in
-       let { tokens; token_peeked } = state in
-       (match tokens with
-        | UseBuffy _ -> Ok (Commons.Hlist.( :: ) (v, vs))
-        | UseTokens tokens ->
-          if is_empty tokens && Option.is_none !token_peeked
-          then Ok (Commons.Hlist.( :: ) (v, vs))
-          else Error "Too many lexemes in sequence")
-     | None ->
-       let* tokens, map = parse_fields_until_name_match name state fields in
-       (match tokens with
-        | None -> Error (Format.sprintf "Missing field %s" name)
-        | Some tokens ->
-          let* a = destruct_value e (use_tokens tokens) in
-          let* rest_of_values = destruct_obj_fields ts state map in
-          Ok (Commons.Hlist.( :: ) (a, rest_of_values))))
-  | Opt { encoding = e; name; key = _ } :: ts ->
-    (match StringMap.find_opt name fields with
-     | Some tokens ->
-       (* field is already parsed in the fields map *)
-       (* remove from the map *)
-       let fields = StringMap.remove name fields in
-       (* parse the value of the field *)
-       let new_state = use_tokens tokens in
-       let* v = destruct_value e new_state in
-       let* vs = destruct_obj_fields ts state fields in
-       let { tokens; token_peeked } = state in
-       (match tokens with
-        | UseBuffy _ -> Ok (Commons.Hlist.( :: ) (Some v, vs))
-        | UseTokens tokens ->
-          if is_empty tokens && Option.is_none !token_peeked
-          then Ok (Commons.Hlist.( :: ) (Some v, vs))
-          else Error "Too many lexemes in sequence")
-     | None ->
-       let* tokens, map = parse_fields_until_name_match name state fields in
-       (match tokens with
+  | Req { encoding = e; name; key = k} :: ts ->
+    let (Anykey key) = FieldKeyMap.find name keymap in
+    let field_definition = Hmap.find fieldmap key in
+    (match field_definition with 
+    | None -> assert false
+    | Some e ->
+    (* ?????? *)
+       (match Hmap.find already_seen_fields key with
+        | Some v ->
+          (* field is already parsed in the fields map *)
+          (* parse the rest of the fields *)
+          let* vs = destruct_obj ts keymap fieldmap state in
+          let { tokens; token_peeked } = state in
+          (match tokens with
+           | UseBuffy _ -> Ok (Commons.Hlist.( :: ) (v, vs))
+           | UseTokens tokens ->
+             if is_empty tokens && Option.is_none !token_peeked
+             then Ok (Commons.Hlist.( :: ) (v, vs))
+             else Error "Too many lexemes in sequence")
         | None ->
-          let* rest_of_values = destruct_obj_reached_the_end ts state map in
-          (* make the result with None for this element *)
-          Ok (Commons.Hlist.( :: ) (None, rest_of_values))
+          let* tokens, map = parse_fields_until_name_match name state fields in
+          (match tokens with
+           | None -> Error (Format.sprintf "Missing field %s" name)
+           | Some tokens ->
+             let* a = destruct_value e (use_tokens tokens) in
+             let* rest_of_values = destruct_obj ts keymap fieldmap state in
+             Ok (Commons.Hlist.( :: ) (a, rest_of_values))))
+    )
+     | Opt { encoding = e; name; key = _ } :: ts ->
+       (match StringMap.find_opt name fields with
         | Some tokens ->
-          let* a = destruct_value e (use_tokens tokens) in
-          let* rest_of_values = destruct_obj_fields ts state map in
-          Ok (Commons.Hlist.( :: ) (Some a, rest_of_values))))
-
-and destruct_obj : type a. a Encoding.obj -> state -> a result =
- fun encoding state -> destruct_obj_fields encoding state StringMap.empty
+          (* field is already parsed in the fields map *)
+          (* remove from the map *)
+          let fields = StringMap.remove name fields in
+          (* parse the value of the field *)
+          let new_state = use_tokens tokens in
+          let* v = destruct_value e new_state in
+          let* vs = destruct_obj ts keymap fieldmap state in
+          let { tokens; token_peeked } = state in
+          (match tokens with
+           | UseBuffy _ -> Ok (Commons.Hlist.( :: ) (Some v, vs))
+           | UseTokens tokens ->
+             if is_empty tokens && Option.is_none !token_peeked
+             then Ok (Commons.Hlist.( :: ) (Some v, vs))
+             else Error "Too many lexemes in sequence")
+        | None ->
+          let* tokens, map = parse_fields_until_name_match name state fields in
+          (match tokens with
+           | None ->
+             let* rest_of_values = destruct_obj_reached_the_end ts state map in
+             (* make the result with None for this element *)
+             Ok (Commons.Hlist.( :: ) (None, rest_of_values))
+           | Some tokens ->
+             let* a = destruct_value e (use_tokens tokens) in
+             let* rest_of_values = destruct_obj ts keymap fieldmap state in
+             Ok (Commons.Hlist.( :: ) (Some a, rest_of_values)))))
 
 and destruct_union : type a. a Encoding.t -> state -> a result =
  fun union state ->
