@@ -7,4 +7,5 @@
   mtime
   mtime.clock.os
   benchlib
-  landmarks))
+  landmarks
+  cmdliner))

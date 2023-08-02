@@ -1,29 +1,83 @@
+open Cmdliner
+
+let sizes_t =
+  let default = [ 1_000; 5_000; 25_000; 125_000; 625_000; 3_125_000 ] in
+  let info =
+    Arg.info
+      [ "s"; "sizes" ]
+      ~docv:"SIZES"
+      ~doc:
+        "The sizes of payload to use. Default is '[ 1_000; 5_000; 25_000; 125_000; \
+         625_000; 3_125_000 ]`."
+  in
+  Arg.value (Arg.opt (Arg.list Arg.int) default info)
+;;
+
+let bench_t =
+  let default = [ 0; 1; 2 ] in
+  let info =
+    Arg.info
+      [ "k"; "bench-kind" ]
+      ~docv:"BENCH_KIND"
+      ~doc:"Which kinds of bench should be used, starts at 0. Default is `[0, 1, 2]`."
+  in
+  Arg.value (Arg.opt (Arg.list Arg.int) default info)
+;;
+
+let repeats_t =
+  let default = 5 in
+  let info =
+    Arg.info
+      [ "r"; "repeats" ]
+      ~docv:"REPEATS"
+      ~doc:"How many times each bench/payload pair is run. Default is `5`."
+  in
+  Arg.value (Arg.opt Arg.int default info)
+;;
+
+let buffer_size_t =
+  let default = 10_000 in
+  let info =
+    Arg.info
+      [ "b"; "buffer-size" ]
+      ~docv:"BUFFER_SIZE"
+      ~doc:"The size of each chunk of data. Default is `10_000`."
+  in
+  Arg.value (Arg.opt Arg.int default info)
+;;
+
+let quiet_t =
+  let info = Arg.info [ "q"; "quiet" ] ~doc:"Quiet flag" in
+  Arg.value (Arg.flag info)
+;;
+
+(* 
 let repeats =
   match Sys.getenv_opt "BENCHREPEAT" with
   | None -> 5
   | Some s -> int_of_string s
-;;
+;; *)
 
-let buffer_size =
+(* let buffer_size =
   match Sys.getenv_opt "BENCHBUFFSIZE" with
   | None -> 1_000_000
   | Some s -> int_of_string s
-;;
+;; *)
 
-let sizes =
+(* let sizes =
   match Sys.getenv_opt "BENCHDATASIZES" with
   | None -> [ 1_000; 5_000; 25_000; 125_000; 625_000; 3_125_000 ]
   | Some s ->
     let ss = String.split_on_char ',' s in
     List.map int_of_string ss
-;;
+;; *)
 
-let quiet =
+(* let quiet =
   match Sys.getenv_opt "BENCHQUIET" with
   | None -> false
   | Some "yes" -> true
   | Some _ -> false
-;;
+;; *)
 
 let payload_file_name name size =
   Format.asprintf "payload-%08x-%d" (Stdlib.Hashtbl.hash name) size
@@ -181,7 +235,7 @@ let pp_ns fmt ns =
   Format.fprintf fmt "%5Ld.%0.9Ld" s ns
 ;;
 
-let print_summary size buffer_size { chunks; totals } =
+let print_summary size buffer_size { chunks; totals } quiet =
   if quiet
   then ()
   else
@@ -200,6 +254,6 @@ let print_summary size buffer_size { chunks; totals } =
       (max_ns totals)
 ;;
 
-let log s = if quiet then () else print_endline s
+let log s quiet = if quiet then () else print_endline s
 
 include Benchable

@@ -6,4 +6,5 @@
   json-data-encoding
   buffy
   mtime
-  mtime.clock.os))
+  mtime.clock.os
+  cmdliner))

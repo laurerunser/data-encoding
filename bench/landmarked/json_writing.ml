@@ -3,18 +3,17 @@ let serialise encoding data dst =
   Json_data_encoding.Construct.write state encoding data
 ;;
 
-let run name encoding make_data =
-  Format.kasprintf Benchlib.log "%s.to_JSON_string (%d samples)\n" name Benchlib.repeats;
-  let buffer = Bytes.make Benchlib.buffer_size '0' in
+let run name encoding make_data sizes buffer_size repeats quiet =
+  let log s = Benchlib.log s quiet in
+  Format.kasprintf log "%s.to_JSON_string (%d samples)\n" name repeats;
+  let buffer = Bytes.make buffer_size '0' in
   List.iter
     (fun size ->
       let data = make_data size in
-      let serialisations =
-        Benchlib.measurew Benchlib.repeats (serialise encoding data) buffer
-      in
+      let serialisations = Benchlib.measurew repeats (serialise encoding data) buffer in
       let serialisations = Benchlib.flatten serialisations in
-      Benchlib.print_summary size Benchlib.buffer_size serialisations)
-    Benchlib.sizes;
+      Benchlib.print_summary size buffer_size serialisations quiet)
+    sizes;
   ()
 ;;
 
@@ -53,5 +52,20 @@ module M = struct
     mk sz []
   ;;
 
-  let () = run "list(array(record(i64,i64)))" encoding make_data
+  let main = run "list(array(record(i64,i64)))" encoding make_data
+
+  let main_t =
+    let open Benchlib in
+    Cmdliner.Term.(const main $ sizes_t $ buffer_size_t $ repeats_t $ quiet_t)
+  ;;
+
+  let main_cmd =
+    let open Cmdliner in
+    let doc = "Runs the json writing benches repeatedly and prints report" in
+    let man = [ `S Manpage.s_bugs; `P "Email bugs reports to ??" ] in
+    let info = Cmd.info "json writing bench" ~version:"0.1" ~doc ~man in
+    Cmd.v info main_t
+  ;;
+
+  let () = exit (Cmdliner.Cmd.eval main_cmd)
 end
