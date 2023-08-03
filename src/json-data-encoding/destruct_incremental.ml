@@ -197,6 +197,26 @@ let rec parse_fields_until_name_match field_name state map =
   | l -> Error (Format.asprintf "Unexpected lexeme in field: %a" Jsonm.pp_lexeme l)
 ;;
 
+let rec hlist_of_vmap : type a. a Encoding.obj -> Encoding.Hmap.t -> a result =
+ fun o vmap ->
+  match o with
+  | [] -> Ok Commons.Hlist.[]
+  | Req { encoding = _; fkey = _; name = _; vkey } :: o ->
+    (match Encoding.Hmap.find vmap vkey with
+     | None -> failwith "missing field" (* TODO: better message *)
+     | Some v ->
+       let* vs = hlist_of_vmap o vmap in
+       Ok (Commons.Hlist.( :: ) (v, vs)))
+  | Opt { encoding = _; fkey = _; name = _; vkey } :: o ->
+    (match Encoding.Hmap.find vmap vkey with
+     | None ->
+       let* vs = hlist_of_vmap o vmap in
+       Ok (Commons.Hlist.( :: ) (None, vs))
+     | Some v ->
+       let* vs = hlist_of_vmap o vmap in
+       Ok (Commons.Hlist.( :: ) (Some v, vs)))
+;;
+
 let rec destruct_value : type a. a Encoding.t -> state -> a result =
  fun encoding state ->
   match encoding with
@@ -234,9 +254,9 @@ let rec destruct_value : type a. a Encoding.t -> state -> a result =
   | Tuple e ->
     let* () = check_lexeme_is state OpenA in
     destruct_tuple e state
-  | Object { field_hlist; fieldname_key_map = _; field_hmap = _ } ->
+  | Object { field_hlist; fieldname_key_map; field_hmap } ->
     let* () = check_lexeme_is state OpenO in
-    destruct_obj field_hlist state
+    destruct_obj field_hlist fieldname_key_map field_hmap state
   | Conv { serialisation = _; deserialisation; encoding } ->
     let* v = destruct_value encoding state in
     (match deserialisation v with
@@ -281,9 +301,9 @@ and destruct_seq : type a. a Encoding.t -> state -> a list -> a Seq.t result =
     let* _ = read_lexeme state in
     let* tuple = destruct_tuple e state in
     destruct_seq encoding state (tuple :: contents_so_far)
-  | `Os, Object { field_hlist; fieldname_key_map = _; field_hmap = _ } ->
+  | `Os, Object { field_hlist; fieldname_key_map; field_hmap } ->
     let* _ = read_lexeme state in
-    let* obj = destruct_obj field_hlist state in
+    let* obj = destruct_obj field_hlist fieldname_key_map field_hmap state in
     destruct_seq encoding state (obj :: contents_so_far)
   | _, Union u ->
     let* v = destruct_union (Union u) state in
@@ -317,7 +337,7 @@ and destruct_obj_reached_the_end
     if StringMap.is_empty fields_and_tokens_map
     then Ok Commons.Hlist.[]
     else Error "Extraneous fields in object"
-  | Req { encoding = e; name = field_name; key = _ } :: ts ->
+  | Req { encoding = e; name = field_name; fkey = _; vkey = _ } :: ts ->
     (match StringMap.find_opt field_name fields_and_tokens_map with
      | None -> Error (Format.sprintf "Can't find field name %s" field_name)
      | Some tokens ->
@@ -334,7 +354,7 @@ and destruct_obj_reached_the_end
           if is_empty tokens && Option.is_none !token_peeked
           then Ok (Commons.Hlist.( :: ) (v, vs))
           else Error "Too many lexemes in sequence"))
-  | Opt { encoding = e; name = field_name; key = _ } :: ts ->
+  | Opt { encoding = e; name = field_name; fkey = _; vkey = _ } :: ts ->
     (match StringMap.find_opt field_name fields_and_tokens_map with
      | None ->
        (* optional field: don't fail, just parse the rest of the fields *)
@@ -356,69 +376,51 @@ and destruct_obj_reached_the_end
           else Error "Too many lexemes in sequence"))
 
 and destruct_obj_fields
-  : type a. a Encoding.obj -> state -> Jsonm.lexeme list StringMap.t -> a result
+  :  Encoding.anykey Encoding.FieldKeyMap.t -> Encoding.Hmap.t -> state -> Commons.Hmap.t
+  -> Commons.Hmap.t result
   =
- fun encoding state fields ->
-  match encoding with
-  | [] ->
-    let* () = check_lexeme_is state CloseO in
-    Ok Commons.Hlist.[]
-  | Req { encoding = e; name; key = _ } :: ts ->
-    (match StringMap.find_opt name fields with
-     | Some tokens ->
-       (* field is already parsed in the fields map *)
-       (* remove from the map *)
-       let fields = StringMap.remove name fields in
-       (* parse the value of the field *)
-       let new_state = use_tokens tokens in
-       let* v = destruct_value e new_state in
-       let* vs = destruct_obj_fields ts state fields in
-       let { tokens; token_peeked } = state in
-       (match tokens with
-        | UseBuffy _ -> Ok (Commons.Hlist.( :: ) (v, vs))
-        | UseTokens tokens ->
-          if is_empty tokens && Option.is_none !token_peeked
-          then Ok (Commons.Hlist.( :: ) (v, vs))
-          else Error "Too many lexemes in sequence")
-     | None ->
-       let* tokens, map = parse_fields_until_name_match name state fields in
-       (match tokens with
-        | None -> Error (Format.sprintf "Missing field %s" name)
-        | Some tokens ->
-          let* a = destruct_value e (use_tokens tokens) in
-          let* rest_of_values = destruct_obj_fields ts state map in
-          Ok (Commons.Hlist.( :: ) (a, rest_of_values))))
-  | Opt { encoding = e; name; key = _ } :: ts ->
-    (match StringMap.find_opt name fields with
-     | Some tokens ->
-       (* field is already parsed in the fields map *)
-       (* remove from the map *)
-       let fields = StringMap.remove name fields in
-       (* parse the value of the field *)
-       let new_state = use_tokens tokens in
-       let* v = destruct_value e new_state in
-       let* vs = destruct_obj_fields ts state fields in
-       let { tokens; token_peeked } = state in
-       (match tokens with
-        | UseBuffy _ -> Ok (Commons.Hlist.( :: ) (Some v, vs))
-        | UseTokens tokens ->
-          if is_empty tokens && Option.is_none !token_peeked
-          then Ok (Commons.Hlist.( :: ) (Some v, vs))
-          else Error "Too many lexemes in sequence")
-     | None ->
-       let* tokens, map = parse_fields_until_name_match name state fields in
-       (match tokens with
-        | None ->
-          let* rest_of_values = destruct_obj_reached_the_end ts state map in
-          (* make the result with None for this element *)
-          Ok (Commons.Hlist.( :: ) (None, rest_of_values))
-        | Some tokens ->
-          let* a = destruct_value e (use_tokens tokens) in
-          let* rest_of_values = destruct_obj_fields ts state map in
-          Ok (Commons.Hlist.( :: ) (Some a, rest_of_values))))
+ fun fkmap fmap state seenfields ->
+  let open Encoding in
+  let* t = peek state in
+  match t with
+  | `Oe ->
+    let* _ = read_lexeme state in
+    Ok seenfields
+  | `Name fname ->
+    let afk = FieldKeyMap.find_opt fname fkmap in
+    (match afk with
+     | None -> failwith "unknown filed name"
+     | Some (Anykey afk) ->
+       let f = Hmap.find fmap afk in
+       (match f with
+        | None -> assert false (* internal issue with constructing objects *)
+        | Some (Req { encoding; fkey = _; vkey; name }) ->
+          assert (name = fname);
+          let* v = destruct_value encoding state in
+          (* TODO: check for collisions: field already seen *)
+          let seenfields = Hmap.add seenfields vkey v in
+          destruct_obj_fields fkmap fmap state seenfields
+        | Some (Opt { encoding; fkey = _; vkey; name }) ->
+          assert (name = fname);
+          let* v = destruct_value encoding state in
+          (* TODO: check for collisions: field already seen *)
+          let seenfields = Hmap.add seenfields vkey v in
+          destruct_obj_fields fkmap fmap state seenfields))
+  | _ -> failwith "TODO nice error message"
 
-and destruct_obj : type a. a Encoding.obj -> state -> a result =
- fun encoding state -> destruct_obj_fields encoding state StringMap.empty
+and destruct_obj
+  : type a.
+    a Encoding.obj
+    -> Encoding.anykey Encoding.FieldKeyMap.t
+    -> Encoding.Hmap.t
+    -> state
+    -> a result
+  =
+ fun fieldlist fieldname_key_map field_hmap state ->
+  let* seen =
+    destruct_obj_fields fieldname_key_map field_hmap state Encoding.Hmap.empty
+  in
+  hlist_of_vmap fieldlist seen
 
 and destruct_union : type a. a Encoding.t -> state -> a result =
  fun union state ->
@@ -493,15 +495,18 @@ let%expect_test _ =
   w Unit "";
   [%expect {| Waiting |}];
   w Unit "} ";
-  [%expect {| Error Jsonm: (line:1, col:3) (line:1, col:3) expected JSON text (JSON value) |}];
+  [%expect
+    {| Error Jsonm: (line:1, col:3) (line:1, col:3) expected JSON text (JSON value) |}];
   w Unit "}{ ";
-  [%expect {| Error Jsonm: (line:1, col:3) (line:1, col:4) expected JSON text (JSON value) |}];
+  [%expect
+    {| Error Jsonm: (line:1, col:3) (line:1, col:4) expected JSON text (JSON value) |}];
   w Unit "{";
   [%expect {| Waiting |}];
   w Unit "[]";
   [%expect {| Error Unexpected lexeme in sequence: received `As, expected `Os |}];
   w Unit "][ ";
-  [%expect {| Error Jsonm: (line:1, col:3) (line:1, col:4) expected JSON text (JSON value) |}];
+  [%expect
+    {| Error Jsonm: (line:1, col:3) (line:1, col:4) expected JSON text (JSON value) |}];
   w Unit "null ";
   [%expect {| Error Unexpected lexeme in sequence: received `Null, expected `Os |}];
   w Unit {| {"foo": null} |};
@@ -534,7 +539,8 @@ let%expect_test _ =
   w String {| "\u0068\u0123" |};
   [%expect {| Ok hģ |}];
   w String {| "\128" |};
-  [%expect {|
+  [%expect
+    {|
     Error Jsonm: (line:1, col:4) (line:1, col:6) illegal escape, '1' (U+0031) not an
                                            escaped character |}];
   w String {| "\ntest\u03BB"|};
@@ -697,9 +703,11 @@ let%expect_test _ =
   w Unit "{" "}";
   [%expect {| Ok unit |}];
   w Unit "}" " ";
-  [%expect {| Error Jsonm: (line:1, col:3) (line:1, col:3) expected JSON text (JSON value) |}];
+  [%expect
+    {| Error Jsonm: (line:1, col:3) (line:1, col:3) expected JSON text (JSON value) |}];
   w Unit "}{" " ";
-  [%expect {| Error Jsonm: (line:1, col:3) (line:1, col:4) expected JSON text (JSON value) |}];
+  [%expect
+    {| Error Jsonm: (line:1, col:3) (line:1, col:4) expected JSON text (JSON value) |}];
   w Unit "nu" "ll ";
   [%expect {| Error Unexpected lexeme in sequence: received `Null, expected `Os |}];
   w Bool "f" "alse ";
