@@ -57,7 +57,7 @@ and construct_obj : type a. a Encoding.obj -> a -> (JSON.t, string) result =
  fun encoding v ->
   match encoding with
   | [] -> Ok (`O [])
-  | Req { encoding = t; name; key = _ } :: ts ->
+  | Req { encoding = t; name; vkey = _; fkey = _ } :: ts ->
     let (v :: vs) = v in
     (match construct t v with
      | Error _ as err -> err
@@ -67,7 +67,7 @@ and construct_obj : type a. a Encoding.obj -> a -> (JSON.t, string) result =
         | Ok (`Oseq jsons) -> Ok (`Oseq (Seq.cons (name, json) jsons))
         | Ok (`O []) -> Ok (`Oseq (Seq.return (name, json)))
         | Ok _ -> assert false))
-  | Opt { encoding = t; name; key = _ } :: ts ->
+  | Opt { encoding = t; name; vkey = _; fkey = _ } :: ts ->
     let (v :: vs) = v in
     (match v with
      | None -> construct_obj ts vs
@@ -174,13 +174,13 @@ and construct_obj_lexemes : type a. a Encoding.obj -> a -> JSON.lexeme Seq.t =
  fun encoding v () ->
   match encoding with
   | [] -> Seq.Nil
-  | Req { encoding = t; name; key = _ } :: ts ->
+  | Req { encoding = t; name; vkey = _; fkey = _ } :: ts ->
     let (v :: vs) = v in
     Seq.append
       (Seq.cons (`Name name) (construct_lexemes t v))
       (construct_obj_lexemes ts vs)
       ()
-  | Opt { encoding = t; name; key = _ } :: ts ->
+  | Opt { encoding = t; name; vkey = _; fkey = _ } :: ts ->
     let (v :: vs) = v in
     (match v with
      | None -> construct_obj_lexemes ts vs ()
@@ -478,7 +478,7 @@ and write_object
  fun depth first state encoding v ->
   match encoding with
   | [] -> Buffy.W.Written { state }
-  | Req { encoding; name; key = _ } :: ts ->
+  | Req { encoding; name; vkey = _; fkey = _ } :: ts ->
     let (v :: vs) = v in
     let* state =
       if depth > 0 && not first
@@ -489,7 +489,7 @@ and write_object
     let* state = Buffy.W.write_string state "\":" in
     let* state = write depth true state encoding v in
     write_object depth false state ts vs
-  | Opt { encoding; name; key = _ } :: ts ->
+  | Opt { encoding; name; vkey = _; fkey = _ } :: ts ->
     (match v with
      | None :: vs -> write_object depth first state ts vs
      | Some v :: vs ->

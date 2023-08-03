@@ -5,35 +5,17 @@ type 'a result =
   | Error of string
   | Await of (Buffy.Src.t -> 'a result)
 
-type buffy_state =
+type state =
   { decoder : Jsonm.decoder
   ; buffy : Buffy.Src.t
   ; transfer_buffer : Bytes.t
-  }
-
-type tokens_state =
-  | UseBuffy of buffy_state
-  | UseTokens of Jsonm.lexeme list ref
-
-type state =
-  { tokens : tokens_state
   ; token_peeked : Jsonm.lexeme option ref
   }
 
-let use_tokens tokens = { tokens = UseTokens (ref tokens); token_peeked = ref None }
-let use_buffy tokens_state token_peeked = { tokens = UseBuffy tokens_state; token_peeked }
-let switch_buffy_src old_state new_buffy = { old_state with buffy = new_buffy }
+let buffer_size = 4000 (* size of the Buffer to transfer bytes from Buffy to Jsonm *)
+let change_buffy old_state new_buffy = { old_state with buffy = new_buffy }
 
-let change_buffy_src old_tokens_state token_peeked new_buffy_src =
-  let new_tokens_state = switch_buffy_src old_tokens_state new_buffy_src in
-  use_buffy new_tokens_state token_peeked
-;;
-
-let is_empty tokens = !tokens = []
-let buffer_size = 1_000_000 (* size of the Buffer to transfer bytes from Buffy to Jsonm *)
-
-let read_from_buffy state =
-  let { decoder; buffy; transfer_buffer; _ } = state in
+let read_from_buffy decoder buffy transfer_buffer =
   let available = min (Buffy.Src.available buffy) buffer_size in
   if available <> 0
   then (
@@ -45,7 +27,8 @@ let read_from_buffy state =
   else Jsonm.Manual.src decoder transfer_buffer 0 0
 ;;
 
-let rec read_lexeme { tokens; token_peeked } =
+let rec read_lexeme state =
+  let { decoder; buffy; transfer_buffer; token_peeked } = state in
   (* if the token has been peeked, remove it and return it*)
   if Option.is_some !token_peeked
   then (
@@ -53,40 +36,30 @@ let rec read_lexeme { tokens; token_peeked } =
     token_peeked := None;
     Ok tmp)
   else (
-    (* else, read from the appropriate source of tokens *)
-    match tokens with
-    | UseBuffy ({ decoder; buffy; transfer_buffer = _ } as s) ->
-      (match Jsonm.decode decoder with
-       | `Lexeme v -> Ok v
-       | `End -> assert false (* see Jsonm.Manual docs *)
-       | `Error e ->
-         let (a, b), (c, d) = Jsonm.decoded_range decoder in
-         Error
-           (Format.asprintf
-              "Jsonm: (line:%d, col:%d) (line:%d, col:%d) %a"
-              a
-              b
-              c
-              d
-              Jsonm.pp_error
-              e)
-       | `Await ->
-         if Buffy.Src.available buffy > 0
-         then (
-           read_from_buffy s;
-           read_lexeme (use_buffy s token_peeked))
-         else
-           Await
-             (fun src ->
-               read_from_buffy (switch_buffy_src s src);
-               read_lexeme (change_buffy_src s token_peeked src)))
-    | UseTokens tokens ->
-      if is_empty tokens
-      then Error "Reading from memorized tokens: Unexpected end of input"
-      else (
-        let t = List.hd !tokens in
-        tokens := List.tl !tokens;
-        Ok t))
+    match Jsonm.decode decoder with
+    | `Lexeme v -> Ok v
+    | `End -> assert false (* see Jsonm.Manual docs *)
+    | `Error e ->
+      let (a, b), (c, d) = Jsonm.decoded_range decoder in
+      Error
+        (Format.asprintf
+           "Jsonm: (line:%d, col:%d) (line:%d, col:%d) %a"
+           a
+           b
+           c
+           d
+           Jsonm.pp_error
+           e)
+    | `Await ->
+      if Buffy.Src.available buffy > 0
+      then (
+        read_from_buffy decoder buffy transfer_buffer;
+        read_lexeme state)
+      else
+        Await
+          (fun src ->
+            read_from_buffy decoder src transfer_buffer;
+            read_lexeme (change_buffy state src)))
 ;;
 
 let rec ( let* ) res (cont : 'a -> 'b result) : 'b result =
@@ -101,7 +74,7 @@ let rec ( let* ) res (cont : 'a -> 'b result) : 'b result =
 ;;
 
 let peek state =
-  let { tokens = _; token_peeked } = state in
+  let { decoder = _; buffy = _; transfer_buffer = _; token_peeked } = state in
   if Option.is_some !token_peeked
   then Ok (Option.get !token_peeked)
   else
@@ -156,45 +129,26 @@ let consume_q state f_expected expected_msg =
          expected_msg)
 ;;
 
-let get_value_as_tokens : state -> Jsonm.lexeme list result =
- fun state ->
-  let rec loop acc nb_bracket_open nb_curly_open =
-    let* t = read_lexeme state in
-    match t with
-    | `Os -> loop (`Os :: acc) nb_bracket_open (nb_curly_open + 1)
-    | `Oe ->
-      if nb_curly_open - 1 = 0 && nb_bracket_open = 0
-      then Ok (List.rev (`Oe :: acc))
-      else loop (`Oe :: acc) nb_bracket_open (nb_curly_open - 1)
-    | `As -> loop (`As :: acc) (nb_bracket_open + 1) nb_curly_open
-    | `Ae ->
-      if nb_bracket_open - 1 = 0 && nb_curly_open = 0
-      then Ok (List.rev (`Ae :: acc))
-      else loop (`Ae :: acc) (nb_bracket_open - 1) nb_curly_open
-    | token ->
-      if nb_curly_open = 0
-      then Ok (List.rev (token :: acc))
-      else loop (token :: acc) nb_bracket_open nb_curly_open
-  in
-  loop [] 0 0
-;;
-
 module StringMap = Map.Make (String)
 
-let rec parse_fields_until_name_match field_name state map =
-  let* v = read_lexeme state in
-  match v with
-  | `Name res when res = field_name ->
-    let* tokens = get_value_as_tokens state in
-    Ok (Some tokens, map)
-  | `Name other_field_name ->
-    let* tokens = get_value_as_tokens state in
-    parse_fields_until_name_match
-      field_name
-      state
-      (StringMap.add other_field_name tokens map)
-  | `Oe -> Ok (None, map)
-  | l -> Error (Format.asprintf "Unexpected lexeme in field: %a" Jsonm.pp_lexeme l)
+let rec hlist_of_vmap : type a. a Encoding.obj -> Encoding.Hmap.t -> a result =
+ fun o vmap ->
+  match o with
+  | [] -> Ok Commons.Hlist.[]
+  | Req { encoding = _; fkey = _; name = _; vkey } :: o ->
+    (match Encoding.Hmap.find vmap vkey with
+     | None -> failwith "missing field" (* TODO: better message *)
+     | Some v ->
+       let* vs = hlist_of_vmap o vmap in
+       Ok (Commons.Hlist.( :: ) (v, vs)))
+  | Opt { encoding = _; fkey = _; name = _; vkey } :: o ->
+    (match Encoding.Hmap.find vmap vkey with
+     | None ->
+       let* vs = hlist_of_vmap o vmap in
+       Ok (Commons.Hlist.( :: ) (None, vs))
+     | Some v ->
+       let* vs = hlist_of_vmap o vmap in
+       Ok (Commons.Hlist.( :: ) (Some v, vs)))
 ;;
 
 let rec destruct_value : type a. a Encoding.t -> state -> a result =
@@ -281,9 +235,9 @@ and destruct_seq : type a. a Encoding.t -> state -> a list -> a Seq.t result =
     let* _ = read_lexeme state in
     let* tuple = destruct_tuple e state in
     destruct_seq encoding state (tuple :: contents_so_far)
-  | `Os, Object { field_hlist; fieldname_key_map = _; field_hmap = _ } ->
+  | `Os, Object { field_hlist; fieldname_key_map; field_hmap } ->
     let* _ = read_lexeme state in
-    let* obj = destruct_obj field_hlist state in
+    let* obj = destruct_obj field_hlist fieldname_key_map field_hmap state in
     destruct_seq encoding state (obj :: contents_so_far)
   | _, Union u ->
     let* v = destruct_union (Union u) state in
@@ -307,53 +261,36 @@ and destruct_tuple : type a. a Encoding.tuple -> state -> a result =
     let* t = destruct_tuple ts state in
     Ok (Commons.Hlist.( :: ) (v, t))
 
-and destruct_obj_reached_the_end
-  : type a. a Encoding.obj -> state -> Jsonm.lexeme list StringMap.t -> a result
+and destruct_obj_fields
+  :  Encoding.anykey Encoding.FieldKeyMap.t -> Encoding.Hmap.t -> state -> Commons.Hmap.t
+  -> Commons.Hmap.t result
   =
- fun encoding state fields_and_tokens_map ->
-  match encoding with
-  | [] ->
-    (* make sure there are no extra things in the fields map *)
-    if StringMap.is_empty fields_and_tokens_map
-    then Ok Commons.Hlist.[]
-    else Error "Extraneous fields in object"
-  | Req { encoding = e; name = field_name; key = _ } :: ts ->
-    (match StringMap.find_opt field_name fields_and_tokens_map with
-     | None -> Error (Format.sprintf "Can't find field name %s" field_name)
-     | Some tokens ->
-       (* remove from the map *)
-       let fields = StringMap.remove field_name fields_and_tokens_map in
-       (* parse the value of the field *)
-       let state = use_tokens tokens in
-       let* v = destruct_value e state in
-       let* vs = destruct_obj_reached_the_end ts state fields in
-       let { tokens; token_peeked } = state in
-       (match tokens with
-        | UseBuffy _ -> Ok (Commons.Hlist.( :: ) (v, vs))
-        | UseTokens tokens ->
-          if is_empty tokens && Option.is_none !token_peeked
-          then Ok (Commons.Hlist.( :: ) (v, vs))
-          else Error "Too many lexemes in sequence"))
-  | Opt { encoding = e; name = field_name; key = _ } :: ts ->
-    (match StringMap.find_opt field_name fields_and_tokens_map with
-     | None ->
-       (* optional field: don't fail, just parse the rest of the fields *)
-       let* vs = destruct_obj_reached_the_end ts state fields_and_tokens_map in
-       Ok (Commons.Hlist.( :: ) (None, vs))
-     | Some tokens ->
-       (* remove from the map *)
-       let fields = StringMap.remove field_name fields_and_tokens_map in
-       (* parse the value of the field *)
-       let state = use_tokens tokens in
-       let* v = destruct_value e state in
-       let* vs = destruct_obj_reached_the_end ts state fields in
-       let { tokens; token_peeked } = state in
-       (match tokens with
-        | UseBuffy _ -> Ok (Commons.Hlist.( :: ) (Some v, vs))
-        | UseTokens tokens ->
-          if is_empty tokens && Option.is_none !token_peeked
-          then Ok (Commons.Hlist.( :: ) (Some v, vs))
-          else Error "Too many lexemes in sequence"))
+ fun fkmap fmap state seenfields ->
+  let open Encoding in
+  let* t = read_lexeme state in
+  match t with
+  | `Oe -> Ok seenfields
+  | `Name fname ->
+    let afk = FieldKeyMap.find_opt fname fkmap in
+    (match afk with
+     | None -> failwith "unknown filed name"
+     | Some (Anykey afk) ->
+       let f = Hmap.find fmap afk in
+       (match f with
+        | None -> assert false (* internal issue with constructing objects *)
+        | Some (Req { encoding; fkey = _; vkey; name }) ->
+          assert (name = fname);
+          let* v = destruct_value encoding state in
+          (* TODO: check for collisions: field already seen *)
+          let seenfields = Hmap.add seenfields vkey v in
+          destruct_obj_fields fkmap fmap state seenfields
+        | Some (Opt { encoding; fkey = _; vkey; name }) ->
+          assert (name = fname);
+          let* v = destruct_value encoding state in
+          (* TODO: check for collisions: field already seen *)
+          let seenfields = Hmap.add seenfields vkey v in
+          destruct_obj_fields fkmap fmap state seenfields))
+  | _ -> failwith "TODO nice error message"
 
 and destruct_obj
   : type a.
@@ -361,71 +298,13 @@ and destruct_obj
     -> Encoding.anykey Encoding.FieldKeyMap.t
     -> Encoding.Hmap.t
     -> state
-    -> Encoding.Hmap.t
     -> a result
   =
- fun encoding keymap fieldmap state already_seen_fields ->
-  let open Encoding in
-  match encoding with
-  | [] ->
-    let* () = check_lexeme_is state CloseO in
-    Ok Commons.Hlist.[]
-  | Req { encoding = e; name; key = k} :: ts ->
-    let (Anykey key) = FieldKeyMap.find name keymap in
-    let field_definition = Hmap.find fieldmap key in
-    (match field_definition with 
-    | None -> assert false
-    | Some e ->
-    (* ?????? *)
-       (match Hmap.find already_seen_fields key with
-        | Some v ->
-          (* field is already parsed in the fields map *)
-          (* parse the rest of the fields *)
-          let* vs = destruct_obj ts keymap fieldmap state in
-          let { tokens; token_peeked } = state in
-          (match tokens with
-           | UseBuffy _ -> Ok (Commons.Hlist.( :: ) (v, vs))
-           | UseTokens tokens ->
-             if is_empty tokens && Option.is_none !token_peeked
-             then Ok (Commons.Hlist.( :: ) (v, vs))
-             else Error "Too many lexemes in sequence")
-        | None ->
-          let* tokens, map = parse_fields_until_name_match name state fields in
-          (match tokens with
-           | None -> Error (Format.sprintf "Missing field %s" name)
-           | Some tokens ->
-             let* a = destruct_value e (use_tokens tokens) in
-             let* rest_of_values = destruct_obj ts keymap fieldmap state in
-             Ok (Commons.Hlist.( :: ) (a, rest_of_values))))
-    )
-     | Opt { encoding = e; name; key = _ } :: ts ->
-       (match StringMap.find_opt name fields with
-        | Some tokens ->
-          (* field is already parsed in the fields map *)
-          (* remove from the map *)
-          let fields = StringMap.remove name fields in
-          (* parse the value of the field *)
-          let new_state = use_tokens tokens in
-          let* v = destruct_value e new_state in
-          let* vs = destruct_obj ts keymap fieldmap state in
-          let { tokens; token_peeked } = state in
-          (match tokens with
-           | UseBuffy _ -> Ok (Commons.Hlist.( :: ) (Some v, vs))
-           | UseTokens tokens ->
-             if is_empty tokens && Option.is_none !token_peeked
-             then Ok (Commons.Hlist.( :: ) (Some v, vs))
-             else Error "Too many lexemes in sequence")
-        | None ->
-          let* tokens, map = parse_fields_until_name_match name state fields in
-          (match tokens with
-           | None ->
-             let* rest_of_values = destruct_obj_reached_the_end ts state map in
-             (* make the result with None for this element *)
-             Ok (Commons.Hlist.( :: ) (None, rest_of_values))
-           | Some tokens ->
-             let* a = destruct_value e (use_tokens tokens) in
-             let* rest_of_values = destruct_obj ts keymap fieldmap state in
-             Ok (Commons.Hlist.( :: ) (Some a, rest_of_values)))))
+ fun fieldlist fieldname_key_map field_hmap state ->
+  let* seen =
+    destruct_obj_fields fieldname_key_map field_hmap state Encoding.Hmap.empty
+  in
+  hlist_of_vmap fieldlist seen
 
 and destruct_union : type a. a Encoding.t -> state -> a result =
  fun union state ->
@@ -471,19 +350,14 @@ let destruct_incremental : type a. a Encoding.t -> Buffy.Src.t -> a result =
      if there are less than 3 chars, the decoder returns Await) *)
   Jsonm.Manual.src decoder (Bytes.of_string "  ") 0 2;
   let transfer_buffer = Bytes.make buffer_size ' ' in
-  let tokens_state = UseBuffy { decoder; buffy; transfer_buffer } in
-  let state = { tokens = tokens_state; token_peeked = ref None } in
+  let state = { decoder; buffy; transfer_buffer; token_peeked = ref None } in
   let res = destruct_value encoding state in
-  match res, state.tokens with
-  | Ok _, UseTokens tokens ->
-    if is_empty tokens && Option.is_none !(state.token_peeked)
-    then res
-    else Error "Too many lexemes"
-  | Ok _, UseBuffy _ ->
+  match res with
+  | Ok _ ->
     if Option.is_some !(state.token_peeked)
     then Error "Too many lexemes"
     else res (* TODO: check if the end of Jsonm *)
-  | res, _ -> res
+  | res -> res
 ;;
 
 let%expect_test _ =

@@ -170,7 +170,7 @@ and destruct_obj_map
     else
       (* TODO: control what to do with left-over fields *)
       Error (Format.asprintf "Expected end-of-object, got additional fields")
-  | Req { encoding = t; name; key = _ } :: ts ->
+  | Req { encoding = t; name; vkey = _; fkey = _ } :: ts ->
     (match JSON.FieldMap.find_opt name fields with
      | None -> Error (Format.asprintf "Can't find expected field %S" name)
      | Some json ->
@@ -181,7 +181,7 @@ and destruct_obj_map
           (match destruct_obj_map ts fields with
            | Error _ as err -> err
            | Ok vs -> Ok (v :: vs))))
-  | Opt { encoding = t; name; key = _ } :: ts ->
+  | Opt { encoding = t; name; vkey = _; fkey = _ } :: ts ->
     (match JSON.FieldMap.find_opt name fields with
      | None ->
        (match destruct_obj_map ts fields with
@@ -369,7 +369,7 @@ and destruct_lexemes_obj_reached_the_end
     if JSON.FieldMap.is_empty fields
     then Ok Commons.Hlist.[]
     else Error "Extraneous fields in object"
-  | Req { encoding = t; name; key = _ } :: ts ->
+  | Req { encoding = t; name; vkey = _; fkey = _ } :: ts ->
     (match JSON.FieldMap.find_opt name fields with
      | None -> Error "Cannot find field"
      | Some json ->
@@ -377,7 +377,7 @@ and destruct_lexemes_obj_reached_the_end
        let fields = JSON.FieldMap.remove name fields in
        let* vs = destruct_lexemes_obj_reached_the_end ts fields in
        Ok (Commons.Hlist.( :: ) (v, vs)))
-  | Opt { encoding = t; name; key = _ } :: ts ->
+  | Opt { encoding = t; name; vkey = _; fkey = _ } :: ts ->
     (match JSON.FieldMap.find_opt name fields with
      | None ->
        let* vs = destruct_lexemes_obj_reached_the_end ts fields in

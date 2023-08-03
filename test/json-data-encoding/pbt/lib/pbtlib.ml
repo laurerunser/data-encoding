@@ -39,11 +39,11 @@ and generator_of_encoding_object
  fun t ->
   match t with
   | [] -> QCheck2.Gen.pure Commons.Hlist.[]
-  | Req { encoding = head; name = _; key = _ } :: tail ->
+  | Req { encoding = head; name = _; vkey = _; fkey = _ } :: tail ->
     let head = generator_of_encoding head in
     let tail = generator_of_encoding_object tail in
     QCheck2.Gen.map2 (fun h t -> Commons.Hlist.( :: ) (h, t)) head tail
-  | Opt { encoding = head; name = _; key = _ } :: tail ->
+  | Opt { encoding = head; name = _; vkey = _; fkey = _ } :: tail ->
     let head = generator_of_encoding head in
     let head = QCheck2.Gen.option head in
     let tail = generator_of_encoding_object tail in
@@ -90,11 +90,11 @@ and equal_of_encoding_object : type t. t Json_data_encoding.Encoding.obj -> t ->
  fun t ->
   match t with
   | [] -> fun [] [] -> true
-  | Req { encoding = head; name = _; key = _ } :: tail ->
+  | Req { encoding = head; name = _; vkey = _; fkey = _ } :: tail ->
     let head = equal_of_encoding head in
     let tail = equal_of_encoding_object tail in
     fun (ah :: at) (bh :: bt) -> head ah bh && tail at bt
-  | Opt { encoding = head; name = _; key = _ } :: tail ->
+  | Opt { encoding = head; name = _; vkey = _; fkey = _ } :: tail ->
     let head = equal_of_encoding head in
     let head = Option.equal head in
     let tail = equal_of_encoding_object tail in
