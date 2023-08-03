@@ -2,8 +2,6 @@ module Hlist = Commons.Hlist
 module Hmap = Commons.Hmap
 module FieldKeyMap : Stdlib.Map.S with type key = string
 
-type anykey = Anykey : _ Hmap.k -> anykey
-
 [@@@warning "-30"]
 
 type _ t =
@@ -45,15 +43,19 @@ and _ field =
   | Req :
       { encoding : 'a t
       ; name : string
-      ; key : 'a field Hmap.k
+      ; fkey : 'a field Hmap.k
+      ; vkey : 'a Hmap.k
       }
       -> 'a field
   | Opt :
       { encoding : 'a t
       ; name : string
-      ; key : 'a option field Hmap.k
+      ; fkey : 'a option field Hmap.k
+      ; vkey : 'a Hmap.k
       }
       -> 'a option field
+
+and anykey = Anykey : _ field Hmap.k -> anykey
 
 and ('payload, 'union) case_descr =
   { tag : string

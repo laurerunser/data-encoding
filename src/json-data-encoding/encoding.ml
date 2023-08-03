@@ -3,8 +3,6 @@ module Hmap = Commons.Hmap
 module FieldSet = Stdlib.Set.Make (String)
 module FieldKeyMap = Stdlib.Map.Make (String)
 
-type anykey = Anykey : _ Hmap.k -> anykey
-
 [@@@warning "-30"]
 
 type _ t =
@@ -46,15 +44,19 @@ and _ field =
   | Req :
       { encoding : 'a t
       ; name : string
-      ; key : 'a field Hmap.k
+      ; fkey : 'a field Hmap.k
+      ; vkey : 'a Hmap.k
       }
       -> 'a field
   | Opt :
       { encoding : 'a t
       ; name : string
-      ; key : 'a option field Hmap.k
+      ; fkey : 'a option field Hmap.k
+      ; vkey : 'a Hmap.k
       }
       -> 'a option field
+
+and anykey = Anykey : _ field Hmap.k -> anykey
 
 and ('payload, 'union) case_descr =
   { tag : string
@@ -80,9 +82,9 @@ let rec obj_has_duplicate_field_name : type o. FieldSet.t -> o obj -> bool =
  fun seen o ->
   match o with
   | [] -> false
-  | Req { name; encoding = _; key = _ } :: fields ->
+  | Req { name; encoding = _; vkey = _; fkey = _ } :: fields ->
     FieldSet.mem name seen || obj_has_duplicate_field_name (FieldSet.add name seen) fields
-  | Opt { name; encoding = _; key = _ } :: fields ->
+  | Opt { name; encoding = _; vkey = _; fkey = _ } :: fields ->
     FieldSet.mem name seen || obj_has_duplicate_field_name (FieldSet.add name seen) fields
 ;;
 
@@ -91,11 +93,11 @@ let rec fieldkeymap_of_obj : type o. anykey FieldKeyMap.t -> o obj -> anykey Fie
  fun fmap o ->
   match o with
   | [] -> fmap
-  | Req { name; key; encoding = _ } :: o ->
-    let fmap = FieldKeyMap.add name (Anykey key) fmap in
+  | Req { name; fkey; encoding = _; vkey = _ } :: o ->
+    let fmap = FieldKeyMap.add name (Anykey fkey) fmap in
     fieldkeymap_of_obj fmap o
-  | Opt { name; key; encoding = _ } :: o ->
-    let fmap = FieldKeyMap.add name (Anykey key) fmap in
+  | Opt { name; fkey; encoding = _; vkey = _ } :: o ->
+    let fmap = FieldKeyMap.add name (Anykey fkey) fmap in
     fieldkeymap_of_obj fmap o
 ;;
 
@@ -103,11 +105,11 @@ let rec fieldhmap_of_obj : type o. Hmap.t -> o obj -> Hmap.t =
  fun hmap o ->
   match o with
   | [] -> hmap
-  | (Req { name = _; key; encoding = _ } as field) :: o ->
-    let hmap = Hmap.add hmap key field in
+  | (Req { name = _; fkey; encoding = _; vkey = _ } as field) :: o ->
+    let hmap = Hmap.add hmap fkey field in
     fieldhmap_of_obj hmap o
-  | (Opt { name = _; key; encoding = _ } as field) :: o ->
-    let hmap = Hmap.add hmap key field in
+  | (Opt { name = _; fkey; encoding = _; vkey = _ } as field) :: o ->
+    let hmap = Hmap.add hmap fkey field in
     fieldhmap_of_obj hmap o
 ;;
 
@@ -120,13 +122,15 @@ let obj field_hlist =
 ;;
 
 let req name encoding =
-  let key = Hmap.k () in
-  Req { encoding; name; key }
+  let fkey = Hmap.k () in
+  let vkey = Hmap.k () in
+  Req { encoding; name; vkey; fkey }
 ;;
 
 let opt name encoding =
-  let key = Hmap.k () in
-  Opt { encoding; name; key }
+  let fkey = Hmap.k () in
+  let vkey = Hmap.k () in
+  Opt { encoding; name; vkey; fkey }
 ;;
 
 let conv ~serialisation ~deserialisation encoding =
@@ -318,21 +322,21 @@ and encoding_to_buffer_obj : type a. Buffer.t -> a obj -> unit =
  fun buffer obj ->
   match obj with
   | [] -> ()
-  | [ Req { encoding; name; key = _ } ] ->
+  | [ Req { encoding; name; fkey = _; vkey = _ } ] ->
     Buffer.add_string buffer name;
     Buffer.add_char buffer '=';
     encoding_to_buffer buffer encoding
-  | [ Opt { encoding; name; key = _ } ] ->
+  | [ Opt { encoding; name; fkey = _; vkey = _ } ] ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer "?=";
     encoding_to_buffer buffer encoding
-  | Req { encoding; name; key = _ } :: tail ->
+  | Req { encoding; name; fkey = _; vkey = _ } :: tail ->
     Buffer.add_string buffer name;
     Buffer.add_char buffer '=';
     encoding_to_buffer buffer encoding;
     Buffer.add_string buffer ", ";
     encoding_to_buffer_obj buffer tail
-  | Opt { encoding; name; key = _ } :: tail ->
+  | Opt { encoding; name; fkey = _; vkey = _ } :: tail ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer "?=";
     encoding_to_buffer buffer encoding;
@@ -484,11 +488,11 @@ and value_to_buffer_obj : type a. Buffer.t -> a obj -> a -> unit =
  fun buffer encoding obj ->
   match encoding, obj with
   | [], _ -> ()
-  | [ Req { encoding; name; key = _ } ], [ x ] ->
+  | [ Req { encoding; name; fkey = _; vkey = _ } ], [ x ] ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer " = ";
     value_to_buffer buffer encoding x
-  | [ Opt { encoding; name; key = _ } ], [ x ] ->
+  | [ Opt { encoding; name; fkey = _; vkey = _ } ], [ x ] ->
     (match x with
      | None ->
        Buffer.add_string buffer name;
@@ -497,13 +501,13 @@ and value_to_buffer_obj : type a. Buffer.t -> a obj -> a -> unit =
        Buffer.add_string buffer name;
        Buffer.add_string buffer " ?= ";
        value_to_buffer buffer encoding x)
-  | Req { encoding; name; key = _ } :: tail, x :: xs ->
+  | Req { encoding; name; fkey = _; vkey = _ } :: tail, x :: xs ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer " = ";
     value_to_buffer buffer encoding x;
     Buffer.add_string buffer ", ";
     value_to_buffer_obj buffer tail xs
-  | Opt { encoding; name; key = _ } :: tail, x :: xs ->
+  | Opt { encoding; name; fkey = _; vkey = _ } :: tail, x :: xs ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer " ?= ";
     (match x with
@@ -652,11 +656,11 @@ and value_to_buffer_obj : type a. Buffer.t -> a obj -> a -> unit =
  fun buffer encoding obj ->
   match encoding, obj with
   | [], _ -> ()
-  | [ Req { encoding; name; key = _ } ], [ x ] ->
+  | [ Req { encoding; name; fkey = _; vkey = _ } ], [ x ] ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer " = ";
     value_to_buffer buffer encoding x
-  | [ Opt { encoding; name; key = _ } ], [ x ] ->
+  | [ Opt { encoding; name; fkey = _; vkey = _ } ], [ x ] ->
     (match x with
      | None ->
        Buffer.add_string buffer name;
@@ -665,13 +669,13 @@ and value_to_buffer_obj : type a. Buffer.t -> a obj -> a -> unit =
        Buffer.add_string buffer name;
        Buffer.add_string buffer " ?= ";
        value_to_buffer buffer encoding x)
-  | Req { encoding; name; key = _ } :: tail, x :: xs ->
+  | Req { encoding; name; fkey = _; vkey = _ } :: tail, x :: xs ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer " = ";
     value_to_buffer buffer encoding x;
     Buffer.add_string buffer "; ";
     value_to_buffer_obj buffer tail xs
-  | Opt { encoding; name; key = _ } :: tail, x :: xs ->
+  | Opt { encoding; name; fkey = _; vkey = _ } :: tail, x :: xs ->
     Buffer.add_string buffer name;
     Buffer.add_string buffer " ?= ";
     (match x with
