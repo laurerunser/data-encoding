@@ -126,8 +126,13 @@ let rec value_to_buffer buffer (lexemes : t) =
   match lexemes with
   | `Bool true -> Buffer.add_string buffer "true"
   | `Bool false -> Buffer.add_string buffer "false"
-  | `Float f -> Buffer.add_string buffer (Format.sprintf "%f" f)
-  | `String s -> Buffer.add_string buffer (Format.sprintf "\"%s\"" s)
+  | `Float f ->
+    (* TODO: %f vs %g? roundtripping floats? *)
+    Buffer.add_string buffer (Format.sprintf "%f" f)
+  | `String s ->
+    (* TODO: escaping *)
+    (* TODO: check utf8 *)
+    Buffer.add_string buffer (Format.sprintf "\"%s\"" s)
   | `Null -> Buffer.add_string buffer "null"
   | `O l ->
     Buffer.add_char buffer '{';
