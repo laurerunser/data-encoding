@@ -57,8 +57,7 @@
     :with-test
     (= 0.24.1)))
   (landmarks :dev)
-  (landmarks-ppx :dev)
-  ezjsonm))
+  (landmarks-ppx :dev)))
 
 (package
  (name binary-data-encoding)

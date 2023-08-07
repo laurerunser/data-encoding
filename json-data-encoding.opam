@@ -20,7 +20,6 @@ depends: [
   "ocamlformat" {with-test & = "0.24.1"}
   "landmarks" {dev}
   "landmarks-ppx" {dev}
-  "ezjsonm"
   "odoc" {with-doc}
 ]
 build: [
