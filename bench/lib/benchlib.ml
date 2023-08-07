@@ -2,48 +2,63 @@ open Cmdliner
 
 let sizes_t =
   let default = [ 1_000; 5_000; 25_000; 125_000; 625_000; 3_125_000 ] in
-  let info =
+  let info_doc =
     Arg.info [ "s"; "sizes" ] ~docv:"SIZES" ~doc:"The sizes of payload to use."
   in
-  Arg.value (Arg.opt (Arg.list Arg.int) default info)
+  Arg.(value (opt (list int) default info_doc))
 ;;
 
 let bench_t =
-  let default = [ 0; 1; 2 ] in
-  let info =
+  let default = 0 in
+  let info_doc =
     Arg.info
       [ "k"; "bench-kind" ]
       ~docv:"BENCH_KIND"
-      ~doc:"Which kinds of bench should be used, starts at 0."
+      ~doc:
+        "Which kinds of bench should be used, starts at 0.\n\
+        \ - 0 : a list of array of records {x:int; y:int}\n\
+        \ - 1 : an array of objects representing Right or Left\n\
+        \ - 2 : an array of objects representing a complexe type with 4 contructors\n\
+        \ Use --all to run everything"
   in
-  Arg.value (Arg.opt (Arg.list Arg.int) default info)
+  Arg.(value (opt (enum [ "0", 0; "1", 1; "2", 2 ]) default info_doc))
+;;
+
+let bench_all_t =
+  let info_doc =
+    Arg.info
+      [ "all" ]
+      ~docv:"ALL_BENCH"
+      ~doc:"Run all the benchmarks. See the descriptions in BENCH_KIND"
+  in
+  Arg.(value (flag info_doc))
 ;;
 
 let repeats_t =
   let default = 5 in
-  let info =
+  let info_doc =
     Arg.info
       [ "r"; "repeats" ]
       ~docv:"REPEATS"
       ~doc:"How many times each bench/payload pair is run."
   in
-  Arg.value (Arg.opt Arg.int default info)
+  Arg.(value (opt int default info_doc))
 ;;
 
 let buffer_size_t =
   let default = 10_000 in
-  let info =
+  let info_doc =
     Arg.info
       [ "b"; "buffer-size" ]
       ~docv:"BUFFER_SIZE"
       ~doc:"The size of each chunk of data."
   in
-  Arg.value (Arg.opt Arg.int default info)
+  Arg.(value (opt int default info_doc))
 ;;
 
 let quiet_t =
-  let info = Arg.info [ "q"; "quiet" ] ~doc:"Quiet flag" in
-  Arg.value (Arg.flag info)
+  let info_doc = Arg.info [ "q"; "quiet" ] ~doc:"Quiet flag" in
+  Arg.(value (flag info_doc))
 ;;
 
 let payload_file_name name size =

@@ -24,7 +24,7 @@ let get_bench_name b =
   else run (module Benchlib.Benchable2)
 ;;
 
-let main sizes benches =
+let main sizes all_benches bench_kind =
   let rec run_all benches =
     match benches with
     | [] -> ()
@@ -33,10 +33,11 @@ let main sizes benches =
       r sizes;
       run_all bs
   in
+  let benches = if all_benches then [ 0; 1; 2 ] else [ bench_kind ] in
   run_all benches
 ;;
 
-let main_t = Term.(const main $ sizes_t $ bench_t)
+let main_t = Term.(const main $ sizes_t $ bench_all_t $ bench_t)
 
 let main_cmd =
   let open Cmdliner in

@@ -26,7 +26,7 @@ let get_bench_name b =
   else run (module Benchlib.Benchable2)
 ;;
 
-let main sizes benches buffer_size =
+let main sizes all_bench bench_kind buffer_size =
   let rec run_all benches =
     match benches with
     | [] -> ()
@@ -35,12 +35,13 @@ let main sizes benches buffer_size =
       r sizes buffer_size;
       run_all bs
   in
+  let benches = if all_bench then [ 0; 1; 2 ] else [ bench_kind ] in
   run_all benches
 ;;
 
 let main_t =
   let open Benchlib in
-  Cmdliner.Term.(const main $ sizes_t $ bench_t $ buffer_size_t)
+  Cmdliner.Term.(const main $ sizes_t $ bench_all_t $ bench_t $ buffer_size_t)
 ;;
 
 let main_cmd =
