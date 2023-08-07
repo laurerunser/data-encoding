@@ -3,12 +3,7 @@ open Cmdliner
 let sizes_t =
   let default = [ 1_000; 5_000; 25_000; 125_000; 625_000; 3_125_000 ] in
   let info =
-    Arg.info
-      [ "s"; "sizes" ]
-      ~docv:"SIZES"
-      ~doc:
-        "The sizes of payload to use. Default is '[ 1_000; 5_000; 25_000; 125_000; \
-         625_000; 3_125_000 ]`."
+    Arg.info [ "s"; "sizes" ] ~docv:"SIZES" ~doc:"The sizes of payload to use."
   in
   Arg.value (Arg.opt (Arg.list Arg.int) default info)
 ;;
@@ -19,7 +14,7 @@ let bench_t =
     Arg.info
       [ "k"; "bench-kind" ]
       ~docv:"BENCH_KIND"
-      ~doc:"Which kinds of bench should be used, starts at 0. Default is `[0, 1, 2]`."
+      ~doc:"Which kinds of bench should be used, starts at 0."
   in
   Arg.value (Arg.opt (Arg.list Arg.int) default info)
 ;;
@@ -30,7 +25,7 @@ let repeats_t =
     Arg.info
       [ "r"; "repeats" ]
       ~docv:"REPEATS"
-      ~doc:"How many times each bench/payload pair is run. Default is `5`."
+      ~doc:"How many times each bench/payload pair is run."
   in
   Arg.value (Arg.opt Arg.int default info)
 ;;
@@ -41,7 +36,7 @@ let buffer_size_t =
     Arg.info
       [ "b"; "buffer-size" ]
       ~docv:"BUFFER_SIZE"
-      ~doc:"The size of each chunk of data. Default is `10_000`."
+      ~doc:"The size of each chunk of data."
   in
   Arg.value (Arg.opt Arg.int default info)
 ;;
@@ -50,34 +45,6 @@ let quiet_t =
   let info = Arg.info [ "q"; "quiet" ] ~doc:"Quiet flag" in
   Arg.value (Arg.flag info)
 ;;
-
-(* 
-let repeats =
-  match Sys.getenv_opt "BENCHREPEAT" with
-  | None -> 5
-  | Some s -> int_of_string s
-;; *)
-
-(* let buffer_size =
-  match Sys.getenv_opt "BENCHBUFFSIZE" with
-  | None -> 1_000_000
-  | Some s -> int_of_string s
-;; *)
-
-(* let sizes =
-  match Sys.getenv_opt "BENCHDATASIZES" with
-  | None -> [ 1_000; 5_000; 25_000; 125_000; 625_000; 3_125_000 ]
-  | Some s ->
-    let ss = String.split_on_char ',' s in
-    List.map int_of_string ss
-;; *)
-
-(* let quiet =
-  match Sys.getenv_opt "BENCHQUIET" with
-  | None -> false
-  | Some "yes" -> true
-  | Some _ -> false
-;; *)
 
 let payload_file_name name size =
   Format.asprintf "payload-%08x-%d" (Stdlib.Hashtbl.hash name) size
