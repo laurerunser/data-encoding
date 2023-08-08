@@ -47,7 +47,7 @@ let main_t =
 let main_cmd =
   let open Cmdliner in
   let doc = "Runs the binary reading benches repeatedly and prints report" in
-  let man = [ `S Manpage.s_bugs; `P "Email bugs reports to ??" ] in
+  let man = [] in
   let info = Cmd.info "binary reading bench" ~version:"0.1" ~doc ~man in
   Cmd.v info main_t
 ;;

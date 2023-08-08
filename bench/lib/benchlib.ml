@@ -3,7 +3,13 @@ open Cmdliner
 let sizes_t =
   let default = [ 1_000; 5_000; 25_000; 125_000; 625_000; 3_125_000 ] in
   let info_doc =
-    Arg.info [ "s"; "sizes" ] ~docv:"SIZES" ~doc:"The sizes of payload to use."
+    Arg.info
+      [ "s"; "sizes" ]
+      ~docv:"SIZES"
+      ~doc:
+        "The sizes of payload to use. This number is an abstract measure. Depending on \
+         the benchmark, it can be depth, width, sum of cardinals of inner collections or \
+         a combinaison or those. It is not a number of bytes/chars."
   in
   Arg.(value (opt (list int) default info_doc))
 ;;
@@ -17,8 +23,10 @@ let bench_t =
       ~doc:
         "Which kinds of bench should be used, starts at 0.\n\
         \ - 0 : a list of array of records {x:int; y:int}\n\
-        \ - 1 : an array of objects representing Right or Left\n\
-        \ - 2 : an array of objects representing a complexe type with 4 contructors\n\
+        \ - 1 : an array of objects with 2 contructors Right or Left containing an \
+         optional object {x:int; y:int}\n\
+        \ - 2 : an array of objects representing a complexe type with 4 contructors \
+         containing a variety of values\n\
         \ Use --all to run everything"
   in
   Arg.(value (opt (enum [ "0", 0; "1", 1; "2", 2 ]) default info_doc))
@@ -29,7 +37,9 @@ let bench_all_t =
     Arg.info
       [ "all" ]
       ~docv:"ALL_BENCH"
-      ~doc:"Run all the benchmarks. See the descriptions in BENCH_KIND"
+      ~doc:
+        "Run all the benchmarks. See BENCH_KIND to run them individually and to see \
+         their descriptions."
   in
   Arg.(value (flag info_doc))
 ;;
@@ -37,10 +47,7 @@ let bench_all_t =
 let repeats_t =
   let default = 5 in
   let info_doc =
-    Arg.info
-      [ "r"; "repeats" ]
-      ~docv:"REPEATS"
-      ~doc:"How many times each bench/payload pair is run."
+    Arg.info [ "r"; "repeats" ] ~docv:"REPEATS" ~doc:"How many times each payload is run."
   in
   Arg.(value (opt int default info_doc))
 ;;
@@ -51,13 +58,15 @@ let buffer_size_t =
     Arg.info
       [ "b"; "buffer-size" ]
       ~docv:"BUFFER_SIZE"
-      ~doc:"The size of each chunk of data."
+      ~doc:
+        "The data is fed to the deserialiser in chunks to test its incremental nature. \
+         This is the size of one chunk."
   in
   Arg.(value (opt int default info_doc))
 ;;
 
 let quiet_t =
-  let info_doc = Arg.info [ "q"; "quiet" ] ~doc:"Quiet flag" in
+  let info_doc = Arg.info [ "q"; "quiet" ] ~doc:"Don't print the report." in
   Arg.(value (flag info_doc))
 ;;
 
